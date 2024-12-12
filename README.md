@@ -31,13 +31,13 @@ To install and run this tool locally, follow the steps below:
 
 1. **Clone or Download the Repository:**
    ```bash
-   git clone https://github.com/aytzey/code_to_prompt_generator.git
+   git clone https://github.com/aytzey/CodetoPromptGenerator.git
    ```
    If you don't have Git, you can download a ZIP of the repository and extract it.
 
 2. **Navigate into the Project Directory:**
    ```bash
-   cd my-offline-llm-tool
+   cd CodetoPromptGenerator
    ```
 
 3. **Install Dependencies:**
