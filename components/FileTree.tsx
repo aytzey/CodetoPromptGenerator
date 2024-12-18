@@ -10,13 +10,13 @@ interface FileNode {
 interface FileTreeProps {
   tree: FileNode[];
   onSelectFiles: (selectedFiles: string[]) => void;
+  filterExtensions?: string[];
 }
 
-const FileTree: React.FC<FileTreeProps> = ({ tree, onSelectFiles }) => {
+const FileTree: React.FC<FileTreeProps> = ({ tree, onSelectFiles, filterExtensions = [] }) => {
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
   const [collapsedPaths, setCollapsedPaths] = useState<string[]>([]);
 
-  // On initial load, collapse all directories for faster initial rendering.
   useEffect(() => {
     const allDirs = getAllDirectories(tree);
     setCollapsedPaths(allDirs);
@@ -24,23 +24,40 @@ const FileTree: React.FC<FileTreeProps> = ({ tree, onSelectFiles }) => {
 
   const handleToggleSelect = (node: FileNode) => {
     let newSelected = [...selectedPaths];
-    if (node.type === 'directory' && node.children) {
-      const allChildFiles = getAllChildFiles(node.children);
-      const anyUnselected = allChildFiles.some(f => !newSelected.includes(f));
+
+    if (node.type === 'directory') {
+      const allChildPaths = getAllChildPaths(node, filterExtensions);
+
+      // Determine if we need to add or remove them
+      const anyUnselected = allChildPaths.some(p => !newSelected.includes(p));
       if (anyUnselected) {
-        for (const f of allChildFiles) {
-          if (!newSelected.includes(f)) newSelected.push(f);
+        for (const p of allChildPaths) {
+          if (!newSelected.includes(p)) newSelected.push(p);
         }
       } else {
-        newSelected = newSelected.filter(p => !allChildFiles.includes(p));
+        // Remove all children paths
+        newSelected = newSelected.filter(p => !allChildPaths.includes(p));
       }
+
+      // Also toggle the directory itself
+      if (anyUnselected) {
+        if (!newSelected.includes(node.relativePath)) {
+          newSelected.push(node.relativePath);
+        }
+      } else {
+        // removing
+        newSelected = newSelected.filter(p => p !== node.relativePath);
+      }
+
     } else {
+      // File
       if (newSelected.includes(node.relativePath)) {
         newSelected = newSelected.filter(p => p !== node.relativePath);
       } else {
         newSelected.push(node.relativePath);
       }
     }
+
     setSelectedPaths(newSelected);
     onSelectFiles(newSelected);
   };
@@ -56,13 +73,13 @@ const FileTree: React.FC<FileTreeProps> = ({ tree, onSelectFiles }) => {
   };
 
   const renderTree = useMemo(() => {
+    const filteredTree = filterNodes(tree, filterExtensions);
+
     const renderNodes = (nodes: FileNode[]) => {
       return (
         <ul className="list-none pl-5 text-sm">
           {nodes.map(node => {
-            const isSelected = node.type === 'file' 
-              ? selectedPaths.includes(node.relativePath) 
-              : areAllChildrenSelected(node, selectedPaths);
+            const isSelected = isNodeSelected(node, selectedPaths, filterExtensions);
             const isCollapsed = node.type === 'directory' && collapsedPaths.includes(node.relativePath);
 
             return (
@@ -102,8 +119,8 @@ const FileTree: React.FC<FileTreeProps> = ({ tree, onSelectFiles }) => {
         </ul>
       );
     };
-    return renderNodes(tree);
-  }, [tree, selectedPaths, collapsedPaths]);
+    return renderNodes(filteredTree);
+  }, [tree, selectedPaths, collapsedPaths, filterExtensions]);
 
   return <div>{renderTree}</div>;
 };
@@ -111,27 +128,58 @@ const FileTree: React.FC<FileTreeProps> = ({ tree, onSelectFiles }) => {
 export default React.memo(FileTree);
 
 // Helper functions
-function getAllChildFiles(nodes: FileNode[]): string[] {
-  let files: string[] = [];
-  for (const n of nodes) {
-    if (n.type === 'file') {
-      files.push(n.relativePath);
-    } else if (n.children) {
-      files = files.concat(getAllChildFiles(n.children));
+function getAllChildPaths(node: FileNode, filterExtensions: string[]): string[] {
+  // If no filter: include all directories and files
+  // If filter: include only matched files and directories that eventually contain matched files
+
+  const paths: string[] = [];
+
+  // If no extensions, we include directories too
+  if (filterExtensions.length === 0) {
+    // Add all descendants (files and directories)
+    addAllDescendants(node, paths);
+  } else {
+    // Add only matched files (directories are just containers, we don't add them if filter applied)
+    addMatchedFiles(node, paths, filterExtensions);
+  }
+
+  return paths;
+}
+
+function addAllDescendants(node: FileNode, paths: string[]) {
+  // Add current node if it's a file or directory
+  // We'll rely on handleToggleSelect to add the directory itself
+  // Here we just add children.
+  if (node.children) {
+    for (const child of node.children) {
+      paths.push(child.relativePath);
+      if (child.type === 'directory') {
+        addAllDescendants(child, paths);
+      }
     }
   }
-  return files;
 }
 
-function areAllChildrenSelected(node: FileNode, selectedPaths: string[]): boolean {
-  if (node.type === 'file') return selectedPaths.includes(node.relativePath);
-  if (node.children) {
-    return getAllChildFiles(node.children).every(f => selectedPaths.includes(f));
+function addMatchedFiles(node: FileNode, paths: string[], filterExtensions: string[]) {
+  if (node.type === 'file') {
+    if (matchesExtensionFilter(node, filterExtensions)) {
+      paths.push(node.relativePath);
+    }
+  } else if (node.children) {
+    for (const child of node.children) {
+      addMatchedFiles(child, paths, filterExtensions);
+    }
   }
-  return false;
 }
 
-// New helper to get all directories' paths for initial collapse
+function isNodeSelected(node: FileNode, selectedPaths: string[], filterExtensions: string[]): boolean {
+  if (node.type === 'file') return selectedPaths.includes(node.relativePath);
+  
+  // Directory
+  // Directory is considered selected if it's in the selectedPaths
+  return selectedPaths.includes(node.relativePath);
+}
+
 function getAllDirectories(nodes: FileNode[]): string[] {
   let dirs: string[] = [];
   for (const n of nodes) {
@@ -143,4 +191,35 @@ function getAllDirectories(nodes: FileNode[]): string[] {
     }
   }
   return dirs;
+}
+
+// Filter nodes by extension
+function filterNodes(nodes: FileNode[], extensions: string[]): FileNode[] {
+  if (extensions.length === 0) return nodes;
+
+  const filtered: FileNode[] = [];
+
+  for (const node of nodes) {
+    if (node.type === 'file') {
+      if (matchesExtensionFilter(node, extensions)) {
+        filtered.push(node);
+      }
+    } else {
+      const filteredChildren = node.children ? filterNodes(node.children, extensions) : [];
+      if (filteredChildren.length > 0) {
+        filtered.push({
+          ...node,
+          children: filteredChildren
+        });
+      }
+    }
+  }
+
+  return filtered;
+}
+
+function matchesExtensionFilter(node: FileNode, extensions: string[]): boolean {
+  if (node.type !== 'file') return false;
+  const lowerName = node.name.toLowerCase();
+  return extensions.some(ext => lowerName.endsWith(ext.toLowerCase()));
 }

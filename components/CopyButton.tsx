@@ -12,17 +12,22 @@ interface FileNode {
 interface CopyButtonProps {
   metaPrompt: string;
   mainInstructions: string;
-  filesData: { path: string; content: string; tokenCount: number }[];
+  selectedFiles: string[];
+  fileList: FileList | null;
   tree: FileNode[];
   excludedPaths: string[];
+  filterExtensions: string[];
 }
 
-const CopyButton: React.FC<CopyButtonProps> = ({ metaPrompt, mainInstructions, filesData, tree, excludedPaths }) => {
+const CopyButton: React.FC<CopyButtonProps> = ({ metaPrompt, mainInstructions, selectedFiles, fileList, tree, excludedPaths, filterExtensions }) => {
   const handleCopy = async () => {
-    console.log('[Debug] handleCopy triggered');
-    console.log('[Debug] excludedPaths:', excludedPaths);
-    console.log('[Debug] filesData:', filesData.map(f => f.path));
-    console.log('[Debug] tree:', tree);
+    // Filter selected files by extension if necessary
+    const filesToCopy = filterExtensions.length > 0
+      ? selectedFiles.filter(filePath => matchesAnyExtension(filePath, filterExtensions))
+      : selectedFiles;
+
+    // Get latest contents for each file from fileList only
+    const filesData = await getLocalFilesContent(filesToCopy, fileList);
 
     let combined = '';
     if (metaPrompt.trim()) {
@@ -32,10 +37,7 @@ const CopyButton: React.FC<CopyButtonProps> = ({ metaPrompt, mainInstructions, f
       combined += `# Main Instructions:\n${mainInstructions}\n\n`;
     }
 
-    console.log('[Debug] Generating textual tree with exclusions...');
-    const treeText = generateTextualTree(tree, excludedPaths);
-    console.log('[Debug] Generated treeText:', treeText);
-
+    const treeText = generateTextualTree(tree, excludedPaths, filterExtensions);
     if (treeText.trim()) {
       combined += `# Project Tree:\n${treeText}\n\n`;
     }
@@ -46,8 +48,6 @@ const CopyButton: React.FC<CopyButtonProps> = ({ metaPrompt, mainInstructions, f
         combined += `## File: ${f.path}\n${f.content}\n\n`;
       }
     }
-
-    console.log('[Debug] Final combined text to copy:', combined);
 
     await navigator.clipboard.writeText(combined);
     alert('Copied to clipboard!');
@@ -65,45 +65,66 @@ const CopyButton: React.FC<CopyButtonProps> = ({ metaPrompt, mainInstructions, f
 
 export default CopyButton;
 
+async function getLocalFilesContent(filesToCopy: string[], fileList: FileList | null): Promise<{path: string, content: string}[]> {
+  const results: {path: string, content: string}[] = [];
 
-function generateTextualTree(tree: FileNode[], excludedPaths: string[], depth: number = 0): string {
+  for (const filePath of filesToCopy) {
+    let content = '';
+    if (fileList) {
+      const fileItem = findFileInList(fileList, filePath);
+      if (fileItem) {
+        content = await fileItem.text();
+      } else {
+        content = 'File not found in local selection.';
+      }
+    } else {
+      content = 'No local files selected. Unable to load content offline.';
+    }
+
+    results.push({ path: filePath, content });
+  }
+
+  return results;
+}
+
+function findFileInList(fileList: FileList | null, relativePath: string): File | null {
+  if (!fileList) return null;
+  for (let i = 0; i < fileList.length; i++) {
+    const f = fileList[i];
+    if ((f as any).webkitRelativePath === relativePath) return f;
+  }
+  return null;
+}
+
+function generateTextualTree(tree: FileNode[], excludedPaths: string[], filterExtensions: string[], depth: number = 0): string {
   let result = '';
   const indent = '  '.repeat(depth);
 
-  const filteredNodes = tree.filter(node => {
-    const excluded = isExcluded(node, excludedPaths);
-    console.log(`[Debug] Checking node "${node.relativePath}" type:${node.type}, excluded:`, excluded);
-    return !excluded;
-  });
+  // For offline mode, we do not exclude paths anymore and we rely solely on user selection
+  // We'll just print the entire tree as is, filtered by extension.
+  const filteredNodes = tree.filter(node => nodeMatchesExtensions(node, filterExtensions));
 
   for (const node of filteredNodes) {
     const icon = node.type === 'directory' ? '📁' : '📄';
-    console.log(`[Debug] Including node "${node.relativePath}" type:${node.type}`);
     result += `${indent}${icon} ${node.name}\n`;
     if (node.children && node.children.length > 0) {
-      result += generateTextualTree(node.children, excludedPaths, depth + 1);
+      result += generateTextualTree(node.children, excludedPaths, filterExtensions, depth + 1);
     }
   }
   return result;
 }
 
-function isExcluded(node: FileNode, excludedPaths: string[]): boolean {
-    const nodePath = node.relativePath;
-  
-    // Hard-code exclusion if path contains `.next` or `node_modules`
-    if (nodePath.includes('.next') || nodePath.includes('node_modules')) {
-      console.log(`[Debug] Excluding "${nodePath}" because it contains .next or node_modules`);
-      return true;
-    }
-  
-    // Also check against explicitly excluded paths
-    for (const p of excludedPaths) {
-      if (nodePath === p || nodePath.startsWith(p + '/')) {
-        console.log(`[Debug] Excluding "${nodePath}" due to match with excludedPaths: ${p}`);
-        return true;
-      }
-    }
-  
-    return false;
+function nodeMatchesExtensions(node: FileNode, extensions: string[]): boolean {
+  if (extensions.length === 0) return true;
+  if (node.type === 'directory') {
+    return node.children ? node.children.some(child => nodeMatchesExtensions(child, extensions)) : false;
+  } else {
+    return matchesAnyExtension(node.name, extensions);
   }
-  
+}
+
+function matchesAnyExtension(fileNameOrPath: string, extensions: string[]): boolean {
+  if (extensions.length === 0) return true;
+  const lowerName = fileNameOrPath.toLowerCase();
+  return extensions.some(ext => lowerName.endsWith(ext.toLowerCase()));
+}
