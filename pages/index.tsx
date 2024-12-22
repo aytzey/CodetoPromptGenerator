@@ -3,7 +3,7 @@ import FileTree from '../components/FileTree';
 import SelectedFilesList from '../components/SelectedFilesList';
 import InstructionsInput from '../components/InstructionsInput';
 import CopyButton from '../components/CopyButton';
-import TodoList from '../components/TodoList'; // NEW IMPORT
+import TodoList from '../components/TodoList'; 
 
 interface FileNode {
   name: string;
@@ -67,7 +67,7 @@ export default function HomePage() {
   useEffect(() => {
     if (fileList) {
       const filesArray = Array.from(fileList);
-      const builtTree = buildTreeFromFileList(filesArray);
+      const builtTree = buildTreeFromFileList(filesArray); // ADDED OR MODIFIED
       setTree(builtTree);
     } else {
       setTree([]);
@@ -93,7 +93,7 @@ export default function HomePage() {
     // Just rebuild from FileList
     if (fileList) {
       const filesArray = Array.from(fileList);
-      const builtTree = buildTreeFromFileList(filesArray);
+      const builtTree = buildTreeFromFileList(filesArray); // ADDED OR MODIFIED
       setTree(builtTree);
     }
   }
@@ -369,11 +369,21 @@ function findFileInList(fileList: FileList | null, relativePath: string): File |
   return null;
 }
 
+// --- ADDED OR MODIFIED ---
 function buildTreeFromFileList(files: File[]): FileNode[] {
+  // We'll skip entries if they include .git, node_modules, or .next
+  const skipDirs = [".git", "node_modules", ".next"]; // ADDED OR MODIFIED
+
   const root: { [key: string]: any } = {};
 
   for (const file of files) {
     const parts = (file as any).webkitRelativePath.split('/');
+
+    // If any part is in skipDirs, skip the entire file
+    if (parts.some((segment: string) => skipDirs.includes(segment))) {
+      continue; // ADDED OR MODIFIED
+    }
+
     let current = root;
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];

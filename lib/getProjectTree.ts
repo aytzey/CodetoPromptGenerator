@@ -34,7 +34,9 @@ function buildTree(currentDir: string, baseDir: string, ignoredDirs: string[]): 
   return entries
     .map(entry => {
       const fullPath = path.join(currentDir, entry.name);
-      const relativePath = path.relative(baseDir, fullPath);
+      // Convert any backslashes to forward slashes in the relative path.
+      const relativePathRaw = path.relative(baseDir, fullPath);
+      const relativePath = unifySlashes(relativePathRaw);
 
       if (isExcluded(relativePath, ignoredDirs)) {
         console.log('Excluding:', relativePath, 'based on ignoreDirs settings');
@@ -60,9 +62,10 @@ function buildTree(currentDir: string, baseDir: string, ignoredDirs: string[]): 
 }
 
 function isExcluded(relativePath: string, ignoredDirs: string[]): boolean {
+  // The incoming relativePath is already slash-unified by unifySlashes.
   for (const ignorePath of ignoredDirs) {
-    // If relativePath matches the ignorePath exactly or starts with it followed by a slash, exclude it.
-    if (relativePath === ignorePath || relativePath.startsWith(ignorePath + path.sep)) {
+    // If relativePath matches the ignorePath exactly or starts with it followed by '/'.
+    if (relativePath === ignorePath || relativePath.startsWith(ignorePath + '/')) {
       return true;
     }
   }
@@ -70,7 +73,12 @@ function isExcluded(relativePath: string, ignoredDirs: string[]): boolean {
 }
 
 function normalizeIgnorePath(ignoreStr: string): string {
-  // Remove leading and trailing slashes
-  let normalized = ignoreStr.replace(/^\/+/, '').replace(/\/+$/, '');
+  // First, replace all backslashes with forward slashes, then remove leading/trailing slashes.
+  let normalized = ignoreStr.replace(/\\/g, '/').replace(/^[/]+/, '').replace(/[/]+$/, '');
   return normalized;
+}
+
+function unifySlashes(s: string): string {
+  // Convert all backslashes to forward slashes.
+  return s.replace(/\\/g, '/');
 }

@@ -19,7 +19,15 @@ interface CopyButtonProps {
   filterExtensions: string[];
 }
 
-const CopyButton: React.FC<CopyButtonProps> = ({ metaPrompt, mainInstructions, selectedFiles, fileList, tree, excludedPaths, filterExtensions }) => {
+const CopyButton: React.FC<CopyButtonProps> = ({
+  metaPrompt,
+  mainInstructions,
+  selectedFiles,
+  fileList,
+  tree,
+  excludedPaths,
+  filterExtensions,
+}) => {
   const handleCopy = async () => {
     // Filter selected files by extension if necessary
     const filesToCopy = filterExtensions.length > 0
@@ -37,6 +45,7 @@ const CopyButton: React.FC<CopyButtonProps> = ({ metaPrompt, mainInstructions, s
       combined += `# Main Instructions:\n${mainInstructions}\n\n`;
     }
 
+    // Generate textual project tree while excluding ignored directories
     const treeText = generateTextualTree(tree, excludedPaths, filterExtensions);
     if (treeText.trim()) {
       combined += `# Project Tree:\n${treeText}\n\n`;
@@ -65,8 +74,8 @@ const CopyButton: React.FC<CopyButtonProps> = ({ metaPrompt, mainInstructions, s
 
 export default CopyButton;
 
-async function getLocalFilesContent(filesToCopy: string[], fileList: FileList | null): Promise<{path: string, content: string}[]> {
-  const results: {path: string, content: string}[] = [];
+async function getLocalFilesContent(filesToCopy: string[], fileList: FileList | null): Promise<{ path: string; content: string }[]> {
+  const results: { path: string; content: string }[] = [];
 
   for (const filePath of filesToCopy) {
     let content = '';
@@ -96,18 +105,40 @@ function findFileInList(fileList: FileList | null, relativePath: string): File |
   return null;
 }
 
-function generateTextualTree(tree: FileNode[], excludedPaths: string[], filterExtensions: string[], depth: number = 0): string {
+/**
+ * Generate a textual tree of the project, excluding any directory
+ * whose path matches an item in `excludedPaths`.
+ */
+function generateTextualTree(
+  tree: FileNode[],
+  excludedPaths: string[],
+  filterExtensions: string[],
+  depth: number = 0
+): string {
   let result = '';
   const indent = '  '.repeat(depth);
 
-  // For offline mode, we do not exclude paths anymore and we rely solely on user selection
-  // We'll just print the entire tree as is, filtered by extension.
-  const filteredNodes = tree.filter(node => nodeMatchesExtensions(node, filterExtensions));
+  // Filter out nodes that are in excludedPaths or whose ancestors are in excludedPaths
+  const filteredNodes = tree.filter(node => {
+    // If node's relativePath matches or starts with any excluded path, skip it.
+    if (
+      excludedPaths.some(
+        ignored =>
+          node.relativePath === ignored ||
+          node.relativePath.startsWith(ignored + '/')
+      )
+    ) {
+      return false;
+    }
+    // If it's a directory or file that doesn't match the extension filter, skip
+    return nodeMatchesExtensions(node, filterExtensions);
+  });
 
   for (const node of filteredNodes) {
     const icon = node.type === 'directory' ? '📁' : '📄';
     result += `${indent}${icon} ${node.name}\n`;
     if (node.children && node.children.length > 0) {
+      // Recurse deeper
       result += generateTextualTree(node.children, excludedPaths, filterExtensions, depth + 1);
     }
   }
@@ -117,7 +148,10 @@ function generateTextualTree(tree: FileNode[], excludedPaths: string[], filterEx
 function nodeMatchesExtensions(node: FileNode, extensions: string[]): boolean {
   if (extensions.length === 0) return true;
   if (node.type === 'directory') {
-    return node.children ? node.children.some(child => nodeMatchesExtensions(child, extensions)) : false;
+    // Keep directories if they have any child that matches
+    return node.children
+      ? node.children.some(child => nodeMatchesExtensions(child, extensions))
+      : false;
   } else {
     return matchesAnyExtension(node.name, extensions);
   }
