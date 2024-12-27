@@ -1,259 +1,290 @@
-import React, { useEffect, useState } from 'react';
-import FileTree from '../components/FileTree';
-import SelectedFilesList from '../components/SelectedFilesList';
-import InstructionsInput from '../components/InstructionsInput';
-import CopyButton from '../components/CopyButton';
+// pages/index.tsx
+
+import React, { useEffect, useState } from 'react'
+import FileTree from '../views/FileTreeView'
+import SelectedFilesList from '../views/SelectedFilesListView'
+import InstructionsInput from '../views/InstructionsInputView'
+import CopyButton from '../views/CopyButtonView'
+import TodoList from '../views/TodoListView'
+
+const BACKEND_URL = 'http://localhost:5000'
 
 interface FileNode {
-  name: string;
-  relativePath: string;
-  type: 'file' | 'directory';
-  children?: FileNode[];
+  name: string
+  relativePath: string
+  type: 'file' | 'directory'
+  children?: FileNode[]
 }
 
 interface FileData {
-  path: string;
-  content: string;
-  tokenCount: number;
+  path: string
+  content: string
+  tokenCount: number
 }
 
 export default function HomePage() {
-  const [tree, setTree] = useState<FileNode[]>([]);
-  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
-  const [metaPrompt, setMetaPrompt] = useState('');
-  const [mainInstructions, setMainInstructions] = useState('');
-  const [filesData, setFilesData] = useState<FileData[]>([]);
-  const [excludedPaths, setExcludedPaths] = useState<string[]>(['.next', 'node_modules']);
-  const [fileList, setFileList] = useState<FileList | null>(null);
-  const [showTree, setShowTree] = useState(true);
+  // ---------- States ----------
+  const [metaPrompt, setMetaPrompt] = useState('')
+  const [mainInstructions, setMainInstructions] = useState('')
+  const [metaPromptFiles, setMetaPromptFiles] = useState<string[]>([])
+  const [selectedMetaFile, setSelectedMetaFile] = useState('')
+  const [newMetaFileName, setNewMetaFileName] = useState('')
 
-  // Meta prompt related states
-  const [metaPromptFiles, setMetaPromptFiles] = useState<string[]>([]);
-  const [selectedMetaFile, setSelectedMetaFile] = useState('');
-  const [newMetaFileName, setNewMetaFileName] = useState('');
+  const [rootDir, setRootDir] = useState('')
+  const [extensionFilterInput, setExtensionFilterInput] = useState('')
+  const filterExtensions = extensionFilterInput
+    .split(',')
+    .map(ext => ext.trim())
+    .filter(ext => ext)
 
-  // Settings for meta prompts folder
-  const [selectedMetaPromptDir, setSelectedMetaPromptDir] = useState('');
+  const [tree, setTree] = useState<FileNode[]>([])
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([])
+  const [filesData, setFilesData] = useState<FileData[]>([])
+
+  const [showTree, setShowTree] = useState(true)
+  const [showExtensionFilter, setShowExtensionFilter] = useState(false)
+
+  // ---------- Lifecycle ----------
+  useEffect(() => {
+    const savedMeta = localStorage.getItem('currentMetaPrompt') || ''
+    const savedMain = localStorage.getItem('currentMainInstructions') || ''
+    setMetaPrompt(savedMeta)
+    setMainInstructions(savedMain)
+    refreshMetaPromptList()
+  }, [])
 
   useEffect(() => {
-    // Load last chosen directory from localStorage
-    const savedDir = localStorage.getItem('selectedMetaPromptDir');
-    if (savedDir) {
-      setSelectedMetaPromptDir(savedDir);
-    } else {
-      // Default to sample_project/meta_prompts if none chosen
-      setSelectedMetaPromptDir('sample_project/meta_prompts');
+    localStorage.setItem('currentMetaPrompt', metaPrompt)
+  }, [metaPrompt])
+
+  useEffect(() => {
+    localStorage.setItem('currentMainInstructions', mainInstructions)
+  }, [mainInstructions])
+
+  // ---------- API calls ----------
+  async function loadTreeFromBackend() {
+    if (!rootDir.trim()) {
+      alert('Please enter a directory path.')
+      return
     }
-  }, []);
-
-  useEffect(() => {
-    // Whenever selectedMetaPromptDir changes, save it and refresh meta prompt files
-    localStorage.setItem('selectedMetaPromptDir', selectedMetaPromptDir);
-    if (selectedMetaPromptDir.trim()) {
-      fetchMetaPromptFiles();
-    }
-  }, [selectedMetaPromptDir]);
-
-  useEffect(() => {
-    if (fileList) {
-      const filesArray = Array.from(fileList);
-      const builtTree = buildTreeFromFileList(filesArray);
-      setTree(builtTree);
-    } else {
-      fetchInitialTreeFromAPI();
-    }
-  }, [fileList]);
-
-  async function fetchInitialTreeFromAPI() {
-    const res = await fetch('/api/files?action=tree', { cache: 'no-store' });
-    const data = await res.json();
-    setTree(data.tree);
-  }
-
-  useEffect(() => {
-    (async () => {
-      const newFilesData: FileData[] = [];
-      for (const filePath of selectedFiles) {
-        const fileItem = findFileInList(fileList, filePath);
-        if (!fileItem) continue;
-        const content = await fileItem.text();
-        const tokenCount = approximateTokenCount(content);
-        newFilesData.push({ path: filePath, content, tokenCount });
+    try {
+      const resp = await fetch(
+        `${BACKEND_URL}/api/projects/tree?rootDir=${encodeURIComponent(rootDir.trim())}`
+      )
+      const json = await resp.json()
+      if (json.success) {
+        setTree(json.data)
+      } else {
+        alert('Error fetching tree: ' + json.message)
       }
-      setFilesData(newFilesData);
-    })();
-  }, [selectedFiles, fileList]);
-
-  function getFilteredFilesData() {
-    return filesData.filter(fd => !isPathExcluded(fd.path, excludedPaths));
-  }
-
-  function isPathExcluded(p: string, excluded: string[]): boolean {
-    return excluded.some(ex => p === ex || p.startsWith(ex + '/'));
-  }
-
-  function handleDirectoryChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      setFileList(files);
-    } else {
-      setFileList(null);
+    } catch (err) {
+      console.error('Network or server error:', err)
+      alert('Failed to fetch project tree. Check console for details.')
     }
   }
 
-  async function handleRefresh() {
-    await fetchInitialTreeFromAPI();
-  }
-
-  async function fetchMetaPromptFiles() {
-    if (!selectedMetaPromptDir.trim()) return;
-    const res = await fetch(`/api/metaprompts?action=list&dir=${encodeURIComponent(selectedMetaPromptDir)}`);
-    const data = await res.json();
-    if (data.files) {
-      setMetaPromptFiles(data.files);
-    } else {
-      setMetaPromptFiles([]);
+  /**
+   * Fetch content for each selected file from the backend.
+   * We pass `rootDir` as the baseDir, plus the relative file paths in `paths`.
+   */
+  async function fetchSelectedFilesFromBackend(paths: string[]): Promise<FileData[]> {
+    try {
+      const resp = await fetch(`${BACKEND_URL}/api/projects/files`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseDir: rootDir.trim(),
+          paths,
+        }),
+      })
+      const json = await resp.json()
+      if (json.success) {
+        return json.data
+      } else {
+        console.error('Error fetching file content:', json.message)
+        return []
+      }
+    } catch (err) {
+      console.error('Network error:', err)
+      return []
     }
   }
 
-  async function onLoadMetaPrompt() {
-    if (!selectedMetaFile) return;
-    if (!selectedMetaPromptDir.trim()) return;
-    const res = await fetch(`/api/metaprompts?action=load&file=${encodeURIComponent(selectedMetaFile)}&dir=${encodeURIComponent(selectedMetaPromptDir)}`);
-    const data = await res.json();
-    if (data.content !== undefined) {
-      setMetaPrompt(data.content);
-    } else {
-      alert('Failed to load meta prompt file');
+  // Whenever selectedFiles changes, fetch file data
+  useEffect(() => {
+    if (selectedFiles.length === 0) {
+      setFilesData([])
+      return
     }
+    fetchSelectedFilesFromBackend(selectedFiles).then(data => {
+      setFilesData(data)
+    })
+  }, [selectedFiles])
+
+  // ---------- Meta Prompt Storage ----------
+  function onLoadMetaPrompt() {
+    if (!selectedMetaFile) {
+      alert('No meta prompt file selected.')
+      return
+    }
+    const content = localStorage.getItem('metaprompt:' + selectedMetaFile)
+    if (content !== null) setMetaPrompt(content)
+    else alert('Meta prompt file not found in localStorage.')
   }
 
-  async function onSaveMetaPrompt() {
-    let filename = newMetaFileName.trim() || selectedMetaFile.trim();
+  function onSaveMetaPrompt() {
+    const filename = newMetaFileName.trim() || selectedMetaFile.trim()
     if (!filename) {
-      alert('Please provide a filename or select an existing file to save.');
-      return;
+      alert('Please provide a filename before saving.')
+      return
     }
-
-    // Ensure .txt extension
-    if (!filename.endsWith('.txt')) {
-      filename = filename + '.txt';
+    if (!metaPrompt.trim()) {
+      alert('Meta prompt content is empty.')
+      return
     }
-
-    const res = await fetch(`/api/metaprompts?dir=${encodeURIComponent(selectedMetaPromptDir)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename, content: metaPrompt })
-    });
-    const data = await res.json();
-    if (data.success) {
-      alert('Meta prompt saved successfully!');
-      setNewMetaFileName('');
-      setSelectedMetaFile(filename);
-      await fetchMetaPromptFiles();
-    } else {
-      alert(`Failed to save: ${data.error || 'Unknown error'}`);
+    let finalName = filename
+    if (!finalName.endsWith('.txt')) {
+      finalName += '.txt'
     }
+    localStorage.setItem('metaprompt:' + finalName, metaPrompt)
+    alert('Meta prompt saved successfully!')
+    refreshMetaPromptList()
   }
 
-  // Refresh meta list with the currently selected directory
-  function onRefreshMetaList() {
-    fetchMetaPromptFiles();
+  function refreshMetaPromptList() {
+    const keys = Object.keys(localStorage)
+    const files = keys
+      .filter(k => k.startsWith('metaprompt:'))
+      .map(k => k.replace('metaprompt:', ''))
+    setMetaPromptFiles(files)
   }
 
+  // ---------- Render ----------
   return (
-    <div className="min-h-screen flex flex-col bg-[#1e1f29] text-[#e0e2f0]">
-
-      {/* Header / Navbar */}
-      <div className="w-full px-6 py-4 border-b border-[#3f4257] flex items-center justify-between bg-[#1e1f29] bg-opacity-90">
-        <h1 className="text-2xl font-bold tracking-wide text-[#e0e2f0] hover:text-[#8be9fd]">
+    <div className="min-h-screen flex flex-col">
+      {/* Header */}
+      <div className="border-b border-panel bg-panel px-6 py-4 flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-[#fff] hover:text-[#7b93fd] transition-colors">
           My Offline LLM Tool
         </h1>
-        <div className="text-sm text-[#bd93f9] hover:text-[#ff79c6] transition-colors">
-          A professional prompt composition environment
+        <div className="text-sm text-gray-300 hover:text-gray-200">
+          All logic from Python backend
         </div>
       </div>
 
-      <div className="px-6 py-2 flex items-center gap-4 bg-[#1e1f29] bg-opacity-70 border-b border-[#3f4257]">
-        <span className="text-[#e0e2f0] text-sm">Show Project Tree?</span>
-        <div className="flex items-center gap-2">
-          <label className="flex items-center text-sm text-[#e0e2f0] cursor-pointer">
-            <input type="radio" name="showTree" checked={showTree} onChange={() => setShowTree(true)} className="mr-1" />
-            On
-          </label>
-          <label className="flex items-center text-sm text-[#e0e2f0] cursor-pointer">
-            <input type="radio" name="showTree" checked={!showTree} onChange={() => setShowTree(false)} className="mr-1" />
-            Off
-          </label>
-        </div>
+      {/* Tools row */}
+      <div className="px-6 py-2 flex items-center gap-4 border-b border-panel bg-panel shadow-panel">
+        <label className="text-sm text-gray-200 flex items-center gap-2">
+          Show Project Tree?
+          <div className="flex items-center gap-2">
+            <label className="cursor-pointer flex items-center gap-1">
+              <input
+                type="radio"
+                name="showTree"
+                checked={showTree}
+                onChange={() => setShowTree(true)}
+                className="accent-[#7b93fd]"
+              />
+              On
+            </label>
+            <label className="cursor-pointer flex items-center gap-1">
+              <input
+                type="radio"
+                name="showTree"
+                checked={!showTree}
+                onChange={() => setShowTree(false)}
+                className="accent-[#7b93fd]"
+              />
+              Off
+            </label>
+          </div>
+        </label>
       </div>
 
+      {/* Main layout */}
       <div className="flex flex-1 overflow-hidden">
+        {/* Left side: Project Tree */}
         {showTree && (
-          <div className="w-1/4 border-r border-[#3f4257] p-4 overflow-auto bg-[#1e1f29] bg-opacity-85">
-            <h2 className="text-lg font-semibold mb-4 border-b border-[#3f4257] pb-2 text-[#e0e2f0]">
+          <div className="w-1/4 border-r border-panel bg-panel shadow-panel p-3 overflow-auto scrollbar-thin">
+            <h2 className="text-lg font-semibold mb-2 border-b border-panel pb-1 text-[#bd93f9]">
               Project Tree
             </h2>
-            <div className="mb-4 flex flex-col gap-2">
-              <label className="font-medium text-sm text-[#e0e2f0]">
-                Select Folder:
-                <input
-                  type="file"
-                  webkitdirectory="true"
-                  directory="true"
-                  multiple
-                  className="mt-1 block w-full text-sm text-[#e0e2f0] bg-[#2c2f3f] border border-[#3f4257] rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#8be9fd]"
-                  onChange={handleDirectoryChange}
-                />
-              </label>
+
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Enter directory path:
+            </label>
+            <input
+              type="text"
+              value={rootDir}
+              onChange={e => setRootDir(e.target.value)}
+              placeholder="e.g. /home/user/your-project"
+              className="w-full mb-2 text-sm rounded border border-[#3f4257] bg-[#1e1f29] px-2 py-1 text-gray-100 focus:outline-none focus:border-[#7b93fd]"
+            />
+
+            <div className="flex gap-2 mb-3">
               <button
-                onClick={handleRefresh}
-                className="text-sm px-3 py-1 bg-[#8be9fd] hover:bg-[#50fa7b] rounded font-medium text-[#1e1f29]"
+                onClick={loadTreeFromBackend}
+                className="text-sm px-3 py-1 bg-[#7b93fd] hover:bg-[#50fa7b] rounded font-medium text-[#1e1f29]"
               >
-                Refresh
+                Load Tree
+              </button>
+              <button
+                onClick={() => setShowExtensionFilter(!showExtensionFilter)}
+                className="text-sm px-3 py-1 bg-[#ff79c6] hover:bg-[#ff92dd] rounded font-medium text-[#1e1f29]"
+              >
+                Filter
               </button>
             </div>
-            <p className="mb-2 text-sm text-[#e0e2f0]">
-              Select files or directories to include:
-            </p>
-            <div className="bg-[#2c2f3f] rounded p-2 border border-[#3f4257] shadow-sm">
-              <FileTree tree={tree} onSelectFiles={setSelectedFiles} />
+
+            {showExtensionFilter && (
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-gray-300">
+                  Extensions (.js, .ts, etc):
+                </label>
+                <input
+                  type="text"
+                  value={extensionFilterInput}
+                  onChange={e => setExtensionFilterInput(e.target.value)}
+                  className="w-full mt-1 text-sm rounded border border-[#3f4257] bg-[#1e1f29] px-2 py-1 text-gray-100 focus:outline-none focus:border-[#7b93fd]"
+                />
+              </div>
+            )}
+
+            <div className="text-sm text-gray-300 mb-1">
+              Select files or directories:
+            </div>
+            <div className="bg-[#1e1f29] rounded border border-[#3f4257] p-2 scrollbar-thin max-h-[60vh] overflow-auto">
+              <FileTree
+                tree={tree}
+                onSelectFiles={setSelectedFiles}
+                filterExtensions={filterExtensions}
+              />
             </div>
           </div>
         )}
 
-        <div className="flex-1 p-6 overflow-auto">
-          <div className="max-w-5xl mx-auto space-y-8">
-            <div className="space-y-4">
-              <h1 className="text-3xl font-extrabold text-[#e0e2f0] hover:text-[#8be9fd]">
+        {/* Middle content */}
+        <div className="flex-1 bg-[#1e1f29] p-6 overflow-auto scrollbar-thin">
+          <div className="max-w-5xl mx-auto space-y-6">
+            <header className="space-y-1">
+              <h1 className="text-3xl font-bold text-gray-100 hover:text-[#50fa7b] transition-colors">
                 Compose Your Prompt
               </h1>
-              <p className="text-sm text-[#bd93f9] hover:text-[#ff79c6]">
-                Combine files and instructions to create a perfect prompt.
+              <p className="text-sm text-gray-400">
+                Combine files, meta, main instructions, and copy the entire context.
               </p>
-            </div>
+            </header>
 
-            {/* Settings Menu for Meta Prompts Folder */}
-            <div className="bg-[#2c2f3f] bg-opacity-90 p-4 rounded-lg shadow-lg border border-[#3f4257] space-y-4">
-              <h2 className="text-xl font-semibold text-[#e0e2f0] border-b border-[#3f4257] pb-2">
+            <div className="bg-panel p-4 rounded border border-panel shadow-panel space-y-3">
+              <h2 className="text-xl font-semibold text-[#7b93fd] border-b border-panel pb-1">
                 Settings
               </h2>
-              <label className="block font-medium mb-1 text-[#e0e2f0] text-sm">
-                Meta Prompts Folder (relative or absolute path):
-              </label>
-              <input
-                type="text"
-                value={selectedMetaPromptDir}
-                onChange={(e) => setSelectedMetaPromptDir(e.target.value)}
-                className="w-full p-2 bg-[#1e1f29] border border-[#3f4257] rounded text-[#e0e2f0] text-sm focus:outline-none focus:border-[#8be9fd]"
-                placeholder="e.g., sample_project/meta_prompts"
-              />
-              <p className="text-xs text-gray-400">
-                Changes will be saved and the meta prompt list will refresh automatically.
+              <p className="text-sm text-gray-400">
+                All meta prompts are stored in local storage by default.
               </p>
             </div>
 
-            <div className="bg-[#2c2f3f] bg-opacity-90 p-4 rounded-lg shadow-lg border border-[#3f4257] space-y-4">
+            <div className="bg-panel p-4 rounded border border-panel shadow-panel space-y-3">
               <InstructionsInput
                 metaPrompt={metaPrompt}
                 setMetaPrompt={setMetaPrompt}
@@ -266,87 +297,43 @@ export default function HomePage() {
                 onSaveMetaPrompt={onSaveMetaPrompt}
                 newMetaFileName={newMetaFileName}
                 setNewMetaFileName={setNewMetaFileName}
-                onRefreshMetaList={onRefreshMetaList}
+                onRefreshMetaList={refreshMetaPromptList}
               />
             </div>
 
-            <div className="bg-[#2c2f3f] bg-opacity-90 p-4 rounded-lg shadow-lg border border-[#3f4257] space-y-4">
-              <h2 className="text-xl font-semibold text-[#e0e2f0] border-b border-[#3f4257] pb-2">
+            <div className="bg-panel p-4 rounded border border-panel shadow-panel space-y-3">
+              <h2 className="text-xl font-semibold text-[#7b93fd] border-b border-panel pb-1">
                 Selected Files
               </h2>
               <SelectedFilesList
-                filesData={getFilteredFilesData().map(({ path, tokenCount }) => ({ path, tokenCount }))}
+                selectedFiles={selectedFiles}
+                filterExtensions={filterExtensions}
+                filesData={filesData}
               />
             </div>
 
-            <div className="text-right">
+            <div className="flex justify-end">
               <CopyButton
                 metaPrompt={metaPrompt}
                 mainInstructions={mainInstructions}
-                filesData={getFilteredFilesData()}
+                selectedFiles={selectedFiles}
+                filesData={filesData}
                 tree={tree}
-                excludedPaths={excludedPaths}
+                excludedPaths={[]}
+                filterExtensions={filterExtensions}
               />
             </div>
           </div>
         </div>
+
+        {/* Right side: Todo List */}
+        <div className="w-1/4 border-l border-panel bg-panel shadow-panel p-3 overflow-auto scrollbar-thin">
+          <h2 className="text-lg font-semibold mb-2 border-b border-panel pb-1 text-[#7b93fd]">
+            To-Do List
+          </h2>
+          <TodoList />
+        </div>
       </div>
     </div>
-  );
-}
-
-function buildTreeFromFileList(files: File[]): FileNode[] {
-  const root: { [key: string]: any } = {};
-
-  for (const file of files) {
-    const parts = file.webkitRelativePath.split('/');
-    let current = root;
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i];
-      if (i === parts.length - 1) {
-        current[part] = null;
-      } else {
-        if (!current[part]) current[part] = {};
-        current = current[part];
-      }
-    }
-  }
-
-  function buildNodes(obj: any, base: string = ''): FileNode[] {
-    const entries = Object.keys(obj).sort();
-    return entries.map(entry => {
-      const fullPath = base ? base + '/' + entry : entry;
-      if (obj[entry] === null) {
-        return {
-          name: entry,
-          relativePath: fullPath,
-          type: 'file'
-        } as FileNode;
-      } else {
-        return {
-          name: entry,
-          relativePath: fullPath,
-          type: 'directory',
-          children: buildNodes(obj[entry], fullPath)
-        } as FileNode;
-      }
-    });
-  }
-
-  return buildNodes(root);
-}
-
-function findFileInList(fileList: FileList | null, relativePath: string): File | null {
-  if (!fileList) return null;
-  for (let i = 0; i < fileList.length; i++) {
-    const f = fileList[i];
-    if (f.webkitRelativePath === relativePath) return f;
-  }
-  return null;
-}
-
-function approximateTokenCount(text: string): number {
-  const trimmed = text.trim();
-  if (!trimmed) return 0;
-  return trimmed.split(/\s+/).length;
+  )
 }

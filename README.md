@@ -20,10 +20,7 @@ Code to Prompt Generator Tool is an environment for composing, refining, and gen
 
 ## Installation & Setup
 
-To install and run this tool locally, follow the steps below:
-
 ### Prerequisites
-
 - **Node.js & npm:** Make sure you have Node.js (v14 or higher recommended) and npm installed.
 - **Git (optional):** If you are cloning from a repository, ensure Git is installed.
 
@@ -31,13 +28,13 @@ To install and run this tool locally, follow the steps below:
 
 1. **Clone or Download the Repository:**
    ```bash
-   git clone https://github.com/aytzey/CodetoPromptGenerator.git
+   git clone https://github.com/aytzey/code_to_prompt_generator.git
    ```
    If you don't have Git, you can download a ZIP of the repository and extract it.
 
 2. **Navigate into the Project Directory:**
    ```bash
-   cd CodetoPromptGenerator
+   cd my-offline-llm-tool
    ```
 
 3. **Install Dependencies:**
@@ -53,9 +50,6 @@ To install and run this tool locally, follow the steps below:
    After running this command, the application will start on `http://localhost:3000`. Open this URL in your web browser to access the UI.
 
 ### Production Build (Optional)
-
-To create a production-ready build:
-
 1. **Build the Application:**
    ```bash
    npm run build
@@ -69,11 +63,11 @@ To create a production-ready build:
 ## Usage Instructions
 
 1. **Select a Folder:** In the UI, click the "Browse" button under the "Project Tree" panel and choose the folder containing your project files. All supported files will be listed in a hierarchical tree.
-   
+
 2. **Filter and Select Files:** Expand directories and select or deselect files or entire folders you want to include. This helps narrow down the context for your prompt.
 
 3. **Set the Meta Prompts Directory:** In the "Settings" section, specify the path (relative or absolute) to a directory containing your meta prompt files. This directory is remembered automatically.
-   
+
 4. **Load or Create a Meta Prompt:**
    - **Loading:** Select a meta prompt from the dropdown and click "Load" to load it into the editing area.
    - **Creating New Files:** Type a new filename (e.g., `NewPrompt.txt`) and click "Save Current Prompt" to create or overwrite a meta prompt file.
@@ -96,15 +90,32 @@ To create a production-ready build:
 - **Refresh Lists:** Use the "Refresh" buttons if you add new files or meta prompts outside of the tool. This ensures the UI is always up-to-date.
 - **Token Counts:** The tool provides a rough word-based count of tokens. For more accurate token measurements specific to a particular model, additional integration would be needed.
 
-## Contributing
+## Testing
 
-If you’d like to contribute:
+We have a `scripts/autotest.js` file that runs a series of automated tests against the Python Flask backend and the Next.js frontend to ensure core functionality. These tests include:
 
-1. Fork the repository and create a new branch for your changes.
-2. Make your improvements or additions and test them thoroughly.
-3. Submit a pull request with a clear description of your modifications.
+1. **Todo Tests**  
+   - `GET /api/todos` returns a valid list.  
+   - `POST /api/todos` checks both valid and empty text requests.  
+   - `DELETE /api/todos/:id` ensures items are removed correctly.
 
-## License
+2. **Project Tree & File Endpoint Tests**  
+   - `GET /api/projects/tree` verifies both error handling (missing rootDir) and valid directory usage.  
+   - `POST /api/projects/files` fetches file content and token counts, including an error test for missing files.
 
-This project is provided under the MIT License. See the `license` file for more details.
+3. **Front-End Basic Checks**  
+   - Confirms that the root (`/`) page loads Next.js HTML.  
+   - Checks behavior on an invalid route, ensuring a 404 or custom Next.js error.
 
+To run these tests:
+
+1. **Install** dependencies (`npm install node-fetch`) if needed.  
+2. **Start** the Flask backend (`python app.py`) at `http://localhost:5000`.  
+3. **Start** the Next.js frontend (`npm run dev`) at `http://localhost:3000`.  
+4. **Execute** the test script:
+   ```bash
+   node scripts/autotest.js
+   ```
+A summary of passed/failed tests will be displayed, and the script will exit with status code `0` on success or `1` on any failure.
+
+---
