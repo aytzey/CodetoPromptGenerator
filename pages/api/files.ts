@@ -1,11 +1,11 @@
-// In pages/api/files.ts
+// pages/api/files.ts
 
-// Remove the old PROJECT_DIR line and replace with:
 import path from 'path';
 import fs from 'fs';
+import { NextApiRequest, NextApiResponse } from 'next';
 import { getProjectTree } from '../../lib/getProjectTree';
 
-export default function handler(req, res) {
+export default function handler(req: NextApiRequest, res: NextApiResponse) {
   const { action, filePath, projectDir } = req.query;
 
   // Determine base directory:
@@ -18,7 +18,7 @@ export default function handler(req, res) {
       return res.status(400).json({ error: 'Specified directory does not exist' });
     }
   } else {
-    baseDir = process.env.PROJECT_DIR 
+    baseDir = process.env.PROJECT_DIR
       ? path.resolve(process.env.PROJECT_DIR)
       : path.join(process.cwd(), 'sample_project');
   }
