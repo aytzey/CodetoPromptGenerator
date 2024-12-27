@@ -9,9 +9,13 @@ import TodoList from '../views/TodoListView'
 
 const BACKEND_URL = 'http://localhost:5000'
 
+/**
+ * FIXED: Added `absolutePath: string` to match FileTreeView's FileNode definition
+ */
 interface FileNode {
   name: string
   relativePath: string
+  absolutePath: string
   type: 'file' | 'directory'
   children?: FileNode[]
 }
