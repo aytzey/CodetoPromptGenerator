@@ -1,23 +1,46 @@
-/* globals.css */
+/* styles/globals.css */
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Custom animations */
-@layer utilities {
-  @keyframes fade-in {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', sans-serif;
+    background-color: #12131C;
+    color: #E0E2F0;
   }
+}
 
-  .animate-fade-in {
-    animation: fade-in 0.5s ease-out forwards;
+/* Add some custom transitions and subtle animations */
+@layer components {
+  .transition-colors,
+  .transition-all {
+    transition: all 0.3s ease-in-out;
+  }
+}
+
+/* Global classes to unify the UI design */
+@layer utilities {
+  .bg-panel {
+    background-color: #1C1D26;
+  }
+  .border-panel {
+    border-color: #3C3F57;
+  }
+  .hover-panel:hover {
+    background-color: #2E3140;
+  }
+  .shadow-panel {
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: #3C3F57;
+    border-radius: 3px;
   }
 }

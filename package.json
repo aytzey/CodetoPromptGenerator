@@ -9,6 +9,7 @@
     },
     "dependencies": {
         "next": "13.4.8",
+        "node-fetch": "^3.3.2",
         "react": "18.2.0",
         "react-dom": "18.2.0",
         "tiktoken": "^1.0.3",
