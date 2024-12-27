@@ -5,7 +5,7 @@ import React, { useState, useMemo } from 'react'
 /**
  * Represents a node in the file tree.
  */
-interface FileNode {
+export interface FileNode {
   name: string
   relativePath: string
   absolutePath: string
