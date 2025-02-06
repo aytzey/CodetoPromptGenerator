@@ -8,9 +8,7 @@ import { getProjectTree } from '../../lib/getProjectTree';
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
   const { action, filePath, projectDir } = req.query;
 
-  // Determine base directory:
-  // 1) If projectDir query provided, use it (resolved and validated).
-  // 2) Else fallback to process.env.PROJECT_DIR or sample_project.
+  // Determine base directory
   let baseDir: string;
   if (typeof projectDir === 'string' && projectDir.trim()) {
     baseDir = path.resolve(projectDir.trim());

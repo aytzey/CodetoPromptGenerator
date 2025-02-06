@@ -10,7 +10,7 @@ import TodoList from '../views/TodoListView'
 const BACKEND_URL = 'http://localhost:5000'
 
 /**
- * FIXED: Added `absolutePath: string` to match FileTreeView's FileNode definition
+ * For reference: shape of tree nodes.
  */
 interface FileNode {
   name: string
@@ -124,6 +124,18 @@ export default function HomePage() {
       setFilesData(data)
     })
   }, [selectedFiles])
+
+  async function fetchLatestFileData() {
+    if (selectedFiles.length === 0) {
+      return []
+    }
+    // Fetch from backend again for the currently selected files
+    const updated = await fetchSelectedFilesFromBackend(selectedFiles)
+    // Update state
+    setFilesData(updated)
+    // Return fresh data so CopyButton can use it right away
+    return updated
+  }
 
   // ---------- Meta Prompt Storage ----------
   function onLoadMetaPrompt() {
@@ -317,7 +329,7 @@ export default function HomePage() {
             </div>
 
             <div className="flex justify-end">
-              <CopyButton
+                <CopyButton
                 metaPrompt={metaPrompt}
                 mainInstructions={mainInstructions}
                 selectedFiles={selectedFiles}
@@ -325,6 +337,10 @@ export default function HomePage() {
                 tree={tree}
                 excludedPaths={[]}
                 filterExtensions={filterExtensions}
+                /**
+                 * Now you actually pass the callback:
+                 */
+                onFetchLatestFileData={fetchLatestFileData}
               />
             </div>
           </div>

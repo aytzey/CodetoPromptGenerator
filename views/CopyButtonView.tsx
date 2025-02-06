@@ -23,6 +23,11 @@ interface CopyButtonProps {
   tree: FileNode[]
   excludedPaths: string[]
   filterExtensions: string[]
+  /**
+   * NEW: Callback to re-fetch the latest file content from the backend
+   * so we have fresh data each time we copy.
+   */
+  onFetchLatestFileData: () => Promise<FileData[]>
 }
 
 const CopyButtonView: React.FC<CopyButtonProps> = ({
@@ -33,38 +38,45 @@ const CopyButtonView: React.FC<CopyButtonProps> = ({
   tree,
   excludedPaths,
   filterExtensions,
+  onFetchLatestFileData, // <-- NEW
 }) => {
-  // Ref for hidden textarea fallback
   const hiddenTextAreaRef = useRef<HTMLTextAreaElement | null>(null)
 
-  const handleCopy = () => {
+  /**
+   * CHANGED: make handleCopy async, call onFetchLatestFileData() to refresh contents
+   */
+  const handleCopy = async () => {
+    // 1) Re-fetch from the backend to ensure we have the latest
+    const freshFilesData = await onFetchLatestFileData()
+
+    // 2) Build the combined text from the newly fetched data
     let combined = ''
 
-    // 1) Write meta prompt
+    // Write meta prompt
     if (metaPrompt.trim()) {
       combined += `# Meta Prompt:\n${metaPrompt}\n\n`
     }
 
-    // 2) Write main instructions
+    // Write main instructions
     if (mainInstructions.trim()) {
       combined += `# Main Instructions:\n${mainInstructions}\n\n`
     }
 
-    // 3) Write textual project tree
+    // Write textual project tree
     const treeText = generateTextualTree(tree, excludedPaths, filterExtensions)
     if (treeText.trim()) {
       combined += `# Project Tree:\n${treeText}\n\n`
     }
 
-    // 4) Write file contents from `filesData`
-    if (filesData.length > 0) {
+    // Write file contents from *freshly fetched* data
+    if (freshFilesData.length > 0) {
       combined += `# Selected Files:\n`
-      for (const f of filesData) {
+      for (const f of freshFilesData) {
         combined += `## File: ${f.path}\n${f.content}\n\n`
       }
     }
 
-    // Attempt to use the Clipboard API
+    // Try using the Clipboard API
     if (navigator?.clipboard?.writeText) {
       navigator.clipboard
         .writeText(combined)
@@ -76,7 +88,6 @@ const CopyButtonView: React.FC<CopyButtonProps> = ({
           fallbackCopyMethod(combined)
         })
     } else {
-      // Fallback if Clipboard API is not available
       fallbackCopyMethod(combined)
     }
   }
@@ -123,10 +134,10 @@ const CopyButtonView: React.FC<CopyButtonProps> = ({
 
 export default CopyButtonView
 
-//
-// Helper function to produce a textual tree of your project,
-// respecting excluded paths and extension filters
-//
+/**
+ * Produce a textual tree of your project,
+ * respecting excluded paths and extension filters
+ */
 function generateTextualTree(
   tree: FileNode[],
   excludedPaths: string[],

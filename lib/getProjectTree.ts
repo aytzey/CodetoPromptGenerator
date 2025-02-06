@@ -16,18 +16,18 @@ export interface FileNode {
 
 /**
  * Recursively scan the given rootDir and construct a tree of files and directories,
- * ignoring any folders listed in 'ignoreDirs.txt' if present.
+ * ignoring any folders listed in 'ignoreDirs.txt' (which we read from the project root).
  * 
- * IMPORTANT CHANGE: We now call `path.resolve(...)` on rootDir to ensure
- * every file node's `absolutePath` is truly absolute, so the backend can read it.
+ * Note: We now read 'ignoreDirs.txt' with a fixed path at process.cwd(), so it is
+ * always found in your main project root (instead of the user-supplied rootDir).
  */
 export function getProjectTree(rootDir: string, baseDir: string = rootDir): FileNode[] {
-  // Convert rootDir to an absolute path to avoid "File not found on server" errors:
+  // Convert rootDir to an absolute path to avoid "File not found on server" issues
   const resolvedRootDir = path.resolve(rootDir)
   console.log('getProjectTree called with resolvedRootDir:', resolvedRootDir)
 
-  // Read ignoreDirs.txt and parse its contents
-  const ignoreFilePath = path.join(resolvedRootDir, 'ignoreDirs.txt')
+  // IMPORTANT: Read ignoreDirs.txt from the project root
+  const ignoreFilePath = path.join(process.cwd(), 'ignoreDirs.txt')
   let ignoredDirs: string[] = []
   if (fs.existsSync(ignoreFilePath)) {
     const content = fs.readFileSync(ignoreFilePath, 'utf-8')
@@ -38,7 +38,7 @@ export function getProjectTree(rootDir: string, baseDir: string = rootDir): File
       .map(line => normalizeIgnorePath(line))
   }
 
-  // We also pass the resolvedRootDir as the baseDir
+  // Build and return the tree
   return buildTree(resolvedRootDir, resolvedRootDir, ignoredDirs)
 }
 
@@ -91,11 +91,15 @@ function buildTree(currentDir: string, baseDir: string, ignoredDirs: string[]): 
 }
 
 /**
- * Return true if relativePath matches or starts with any path in ignoredDirs.
+ * Return true if `relativePath` contains any ignored directory name
+ * in its path segments. For example, if we want to ignore `.git`,
+ * then anything with a path segment `.git` is excluded (including subfolders).
  */
 function isExcluded(relativePath: string, ignoredDirs: string[]): boolean {
+  // Split the relative path by '/' to check each segment
+  const pathSegments = relativePath.split('/')
   for (const ignorePath of ignoredDirs) {
-    if (relativePath === ignorePath || relativePath.startsWith(ignorePath + '/')) {
+    if (pathSegments.includes(ignorePath)) {
       return true
     }
   }
@@ -106,8 +110,10 @@ function isExcluded(relativePath: string, ignoredDirs: string[]): boolean {
  * Normalize an ignore path by replacing backslashes and trimming leading/trailing slashes.
  */
 function normalizeIgnorePath(ignoreStr: string): string {
-  let normalized = ignoreStr.replace(/\\/g, '/').replace(/^[/]+/, '').replace(/[/]+$/, '')
-  return normalized
+  return ignoreStr
+    .replace(/\\/g, '/')
+    .replace(/^[/]+/, '')
+    .replace(/[/]+$/, '')
 }
 
 /**
