@@ -271,7 +271,7 @@ export default function Home() {
     <div className={darkMode ? 'dark' : ''}>
       <div className="min-h-screen bg-gray-100 dark:bg-gradient-to-br dark:from-[#141527] dark:to-[#0B0C1B]">
         <Head>
-          <title>Code to Prompt Generator</title>
+          <title>CodeToPromptGenerator</title>
           <meta name="description" content="Generate LLM prompts from your code" />
           <link rel="icon" href="/favicon.ico" />
         </Head>
@@ -286,14 +286,13 @@ export default function Home() {
         >
           <div className="container mx-auto flex justify-between items-center">
             <div className="flex items-center space-x-2">
-              <FileCode size={28} className="text-[#bd93f9]" />
               <h1
                 className="
                   text-2xl font-bold bg-gradient-to-r from-[#8be9fd] to-[#50fa7b]
                   text-transparent bg-clip-text
                 "
               >
-                Code to Prompt Generator
+                Code to LLM Prompt Generator by Aytzey
               </h1>
             </div>
 
@@ -313,7 +312,7 @@ export default function Home() {
                 )}
               </button>
               <button
-                onClick={() => window.open('https://github.com', '_blank')}
+                onClick={() => window.open('https://github.com/aytzey/CodetoPromptGenerator', '_blank')}
                 className={`
                   flex items-center space-x-2 px-3 py-1.5 rounded-md text-sm font-medium shadow-md
                   transition-all duration-300
