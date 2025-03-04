@@ -2,6 +2,9 @@
 
 A tool for quickly assembling Large Language Model (LLM) prompts from a local file tree. You can select or exclude specific files/folders, compose meta and main instructions, and instantly copy everything (including file contents) to your clipboard for LLM usage.
 
+![Screenshot from 2025-03-05 01-14-47](https://github.com/user-attachments/assets/3a82881f-41f9-4268-9778-fc9c314aa4ee)
+
+
 ---
 
 ## Table of Contents
