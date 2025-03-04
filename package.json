@@ -9,7 +9,8 @@
         "lint": "next lint",
         "backend": "cd python_backend && python app.py",
         "start:dev": "node start.js",
-        "start:all": "node start.js"
+        "start:all": "node start.js",
+        "postinstall": "node scripts/postinstall.js"
     },
     "dependencies": {
         "lucide-react": "^0.477.0",
