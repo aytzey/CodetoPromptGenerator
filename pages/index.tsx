@@ -67,7 +67,7 @@ export default function Home() {
   // Global exclusions from ignoreDirs.txt
   const [excludedPaths, setExcludedPaths] = useState<string[]>([])
 
-  // Project-specific localExclusions (not hidden, but excluded from "Select All")
+  // Project-specific localExclusions
   const [localExcludedPaths, setLocalExcludedPaths] = useState<string[]>([])
 
   // Meta-prompt fields
@@ -277,7 +277,7 @@ export default function Home() {
   }
 
   /**
-   * Select all *visible* files/folders, except any in localExcludedPaths (and their descendants).
+   * Select all *visible* files/folders, except any in localExcludedPaths
    */
   function handleSelectAll() {
     const allPaths = flattenTree(filteredTree)
@@ -333,18 +333,10 @@ export default function Home() {
     return applySearchFilter(afterExtFilter, fileSearchTerm.toLowerCase())
   }, [fileTree, filterExtensions, fileSearchTerm])
 
-  // ------------------------------------------
-  //   Callback from LocalExclusionsManagerView
-  // ------------------------------------------
-  function onLocalExclusionsChange(newList: string[]) {
-    // The child component will do server calls. Once done, it calls us with the updated list.
-    setLocalExcludedPaths(newList)
-  }
-
+  // Local exclusions callback
   function handleLocalExclusionsChange(newList: string[]) {
     setLocalExcludedPaths(newList)
   }
-  
 
   // -------------------------------------------------------------------------
   //                               RENDER
@@ -586,13 +578,12 @@ export default function Home() {
                       onUpdateExclusions={updateExclusions}
                     />
 
-                    {/* 2) Project-specific localExclusions in .codetoprompt */}
+                    {/* 2) Project-specific localExclusions */}
                     {projectPath ? (
                       <LocalExclusionsManagerView
                         projectPath={projectPath}
                         onChange={handleLocalExclusionsChange}
                       />
-
                     ) : (
                       <p className="text-gray-400 text-xs">
                         Select a project folder first to manage local exclusions.

@@ -25,13 +25,10 @@ jobs:
           python-version: "3.9"
 
       # 3) Install Python dependencies
-      #    (Adjust below command if you have a different requirements file or approach)
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          # If you have a requirements.txt, uncomment and adapt the following line:
-          # pip install -r python_backend/requirements.txt
-          pip install flask flask-cors
+          pip install -r python_backend/requirements.txt
 
       # 4) Start the Python backend in the background
       - name: Start Python Backend
@@ -45,9 +42,9 @@ jobs:
         with:
           node-version: "16"
 
-      # 6) Install Node dependencies
+      # 6) Install Node dependencies (CI-friendly)
       - name: Install Node Dependencies
-        run: npm install
+        run: npm ci
 
       # 7) Build the Next.js app
       - name: Build Next.js
@@ -59,6 +56,6 @@ jobs:
           nohup npm run start &
           sleep 10
 
-      # 9) Run the auto-tests (which will test both the Python backend & Next.js frontend)
+      # 9) Run the auto-tests (Python + Next.js)
       - name: Run AutoTests
         run: node scripts/autotest.js

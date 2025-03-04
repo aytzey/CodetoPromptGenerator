@@ -2,35 +2,22 @@
 // scripts/autotest.js
 
 /**
- * AutoTest Script (Dynamic Import for node-fetch v3+)
+ * AutoTest Script (with one extra health-check test).
  * ---------------------------------------------------
  * This script performs checks on the Python backend (Flask) and
  * the Next.js frontend to ensure they satisfy project requirements.
- *
- * Usage:
- *   1. Ensure the Python backend is running at http://localhost:5000
- *      (e.g., via `python app.py`).
- *   2. Ensure the Next.js frontend is running at http://localhost:3000
- *      (e.g., via `npm run dev`).
- *   3. Run `node scripts/autotest.js`.
- *
- * Note: Since node-fetch v3 is ESM-only, we dynamically import it below.
  */
 
 (async () => {
-  // Dynamically import node-fetch in CommonJS
   const { default: fetch } = await import('node-fetch');
 
-  // Simple color utilities for console output
+  // Simple color utilities
   const green = str => `\x1b[32m${str}\x1b[0m`;
   const red = str => `\x1b[31m${str}\x1b[0m`;
 
   let passed = 0;
   let failed = 0;
 
-  /**
-   * Helper to run async tests with standardized pass/fail output.
-   */
   async function runTest(testName, testFn) {
     try {
       await testFn();
@@ -43,6 +30,20 @@
   }
 
   console.log("Starting AutoTest for Next.js + Python backend...\n");
+
+  // --------------------------------------------------------------------------
+  // EXTRA: Health check
+  // --------------------------------------------------------------------------
+  await runTest("Backend: GET /health returns healthy status", async () => {
+    const resp = await fetch("http://localhost:5000/health");
+    if (!resp.ok) {
+      throw new Error("Expected HTTP 200 but got " + resp.status);
+    }
+    const data = await resp.json();
+    if (!data.status || data.status !== "healthy") {
+      throw new Error("Expected { status: 'healthy' } in response");
+    }
+  });
 
   // --------------------------------------------------------------------------
   // (1) BACKEND: TODO ENDPOINTS
@@ -69,14 +70,13 @@
     }
   });
 
-  // CHANGED: Additional negative test for empty text
+  // Additional negative test for empty text
   await runTest("Backend: POST /api/todos with empty text yields 400", async () => {
     const resp = await fetch("http://localhost:5000/api/todos", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: "" }),
     });
-    // We expect a 400
     if (resp.status !== 400) {
       throw new Error("Expected HTTP 400 when posting an empty todo text");
     }
@@ -112,10 +112,8 @@
     }
   });
 
-  // CHANGED: Additional check for a valid directory (modify the path below as you wish)
-  await runTest("Backend: GET /api/projects/tree returns valid structure for a known directory", async () => {
-    // You can adjust this path to match your environment
-    const testDir = __dirname; // e.g. the scripts folder
+  await runTest("Backend: GET /api/projects/tree returns valid structure for known directory", async () => {
+    const testDir = __dirname; // for example
     const url = `http://localhost:5000/api/projects/tree?rootDir=${encodeURIComponent(testDir)}`;
     const resp = await fetch(url);
     if (!resp.ok) throw new Error("Expected HTTP 200 but got " + resp.status);
@@ -125,16 +123,12 @@
     if (!Array.isArray(data.data)) {
       throw new Error("Expected data to be an array of FileNode objects");
     }
-    if (data.data.length === 0) {
-      console.warn("Warning: The test directory might be empty or filtered out.");
-    }
   });
 
-  // CHANGED: Test POST /api/projects/files to retrieve content of known files
   await runTest("Backend: POST /api/projects/files fetches file contents with correct tokenCount", async () => {
-    // We'll attempt to fetch the content of this very file (autotest.js) as an example
-    const baseDir = __dirname.replace(/\\/g, "/"); // unify slashes
-    const relativePaths = ["autotest.js"]; // assuming this file is inside scripts/
+    // We'll attempt to fetch the content of this very file.
+    const baseDir = __dirname.replace(/\\/g, "/");
+    const relativePaths = ["autotest.js"];
     const resp = await fetch("http://localhost:5000/api/projects/files", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -153,7 +147,6 @@
     }
   });
 
-  // CHANGED: Negative test for a non-existent file
   await runTest("Backend: POST /api/projects/files returns 'File not found' for invalid path", async () => {
     const baseDir = __dirname.replace(/\\/g, "/");
     const resp = await fetch("http://localhost:5000/api/projects/files", {
@@ -185,23 +178,19 @@
     }
   });
 
-  // CHANGED: Additional minimal check for a front-end route
-  // In a real scenario, you'd do more thorough tests with a headless browser or something like Cypress.
-  // We'll just confirm the path /some-non-existent-page returns a 200 or 404 from Next.js (this can vary).
-  await runTest("Frontend: GET /some-invalid-route yields a Next.js 404 or SSR fallback", async () => {
+  await runTest("Frontend: GET /some-invalid-route yields 200 or 404", async () => {
     const resp = await fetch("http://localhost:3000/some-non-existent-route");
-    // Next.js typically returns 200 with a custom 404 page or an actual 404 status
     if (resp.status !== 200 && resp.status !== 404) {
       throw new Error("Expected a 200 or 404, got " + resp.status);
     }
   });
 
   // --------------------------------------------------------------------------
-  // Display final results
+  // Results
   // --------------------------------------------------------------------------
   console.log(`\nTests completed. Passed: ${passed}, Failed: ${failed}`);
   if (failed > 0) {
-    console.error(red("Some tests failed. Check the logs above for details."));
+    console.error(red("Some tests failed. Check logs above."));
     process.exit(1);
   } else {
     console.log(green("All tests passed successfully!"));
