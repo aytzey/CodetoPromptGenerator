@@ -18,6 +18,7 @@ import CopyButtonView from '../views/CopyButtonView'
 import SelectedFilesListView from '../views/SelectedFilesListView'
 import FolderPickerView from '../views/FolderPickerView'
 import ExclusionsManagerView from '../views/ExclusionsManagerView'
+import LocalExclusionsManagerView from '../views/LocalExclusionsManagerView'
 import TodoListView from '../views/TodoListView'
 
 import {
@@ -36,13 +37,39 @@ interface FileData {
 // Change the base URL to match your Flask backend:
 const BACKEND_URL = 'http://localhost:5000'
 
+// Utility: get all descendant paths from a folder path if needed
+function getAllDescendantsOfPath(tree: FileNode[], targetPath: string): string[] {
+  // For convenience, unify slashes
+  const normTarget = targetPath.replace(/\\/g, '/')
+
+  // Flatten entire tree
+  const allNodes = flattenTree(tree) // each entry is a relative path
+
+  // For each node, we check if it starts with `targetPath + '/'`
+  // If the targetPath is a file, it won't have children, so it won't match
+  // But if it's a directory, all children will match
+  const results: string[] = []
+  for (const p of allNodes) {
+    if (p === normTarget || p.startsWith(normTarget + '/')) {
+      results.push(p)
+    }
+  }
+  return results
+}
+
 export default function Home() {
   const [projectPath, setProjectPath] = useState<string>('')
+
   const [fileTree, setFileTree] = useState<FileNode[]>([])
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [filesData, setFilesData] = useState<FileData[]>([])
   const [isLoadingTree, setIsLoadingTree] = useState<boolean>(false)
+
+  // ----------- ignoreDirs.txt Exclusions -----------
   const [excludedPaths, setExcludedPaths] = useState<string[]>([])
+
+  // ----- NEW: local (project-specific) exclusions that do NOT hide files -----
+  const [localExcludedPaths, setLocalExcludedPaths] = useState<string[]>([])
 
   const [metaPrompt, setMetaPrompt] = useState<string>('')
   const [mainInstructions, setMainInstructions] = useState<string>('')
@@ -57,9 +84,23 @@ export default function Home() {
   const [darkMode, setDarkMode] = useState<boolean>(true)
   const [fileSearchTerm, setFileSearchTerm] = useState<string>('')
 
+  // ---------- On mount, fetch ignoreDirs exclusions + meta prompts, and load localExcludedPaths from localStorage ----------
   useEffect(() => {
     fetchExclusions()
     fetchMetaPromptList()
+
+    // Load local-excluded paths from localStorage
+    const stored = window.localStorage.getItem('localExcludedPaths')
+    if (stored) {
+      try {
+        const arr = JSON.parse(stored)
+        if (Array.isArray(arr)) {
+          setLocalExcludedPaths(arr)
+        }
+      } catch (err) {
+        console.warn('Failed to parse localExcludedPaths from localStorage.')
+      }
+    }
   }, [])
 
   useEffect(() => {
@@ -110,6 +151,12 @@ export default function Home() {
     }
   }
 
+  // ---------- Manage local-excluded paths in localStorage ----------
+  function handleUpdateLocalExclusions(newPaths: string[]) {
+    setLocalExcludedPaths(newPaths)
+    window.localStorage.setItem('localExcludedPaths', JSON.stringify(newPaths))
+  }
+
   const loadProjectTree = async () => {
     if (!projectPath) return
     setIsLoadingTree(true)
@@ -154,7 +201,7 @@ export default function Home() {
   // ---------- Meta Prompts -----------
   const fetchMetaPromptList = async () => {
     try {
-      // We do ?action=list as used in the new python route
+      // We do ?action=list as used in the python route
       const response = await fetch(`${BACKEND_URL}/api/metaprompts?action=list`)
       const data = await response.json()
       if (data.success) {
@@ -199,6 +246,7 @@ export default function Home() {
       console.error('Error saving meta prompt:', error)
     }
   }
+
   // --------------------------------------------------------------------- //
 
   const handleSelectFiles = (paths: string[]) => {
@@ -225,9 +273,27 @@ export default function Home() {
     setFilterExtensions([])
   }
 
+  /**
+   * Select all **visible** files/folders, EXCEPT any that are in our localExcludedPaths
+   * (plus their sub-items if they’re directories).
+   */
   const handleSelectAll = () => {
+    // Flatten the *filtered* tree so we only gather what’s displayed
     const allPaths = flattenTree(filteredTree)
-    setSelectedFiles(allPaths)
+
+    // Build a set of everything we must exclude
+    let allExcluded = new Set<string>()
+    for (const ex of localExcludedPaths) {
+      // gather that path + all its descendants
+      const desc = getAllDescendantsOfPath(filteredTree, ex)
+      for (const d of desc) {
+        allExcluded.add(d)
+      }
+    }
+
+    // Filter them out
+    const finalPaths = allPaths.filter(p => !allExcluded.has(p))
+    setSelectedFiles(finalPaths)
   }
 
   const handleDeselectAll = () => {
@@ -271,7 +337,7 @@ export default function Home() {
     <div className={darkMode ? 'dark' : ''}>
       <div className="min-h-screen bg-gray-100 dark:bg-gradient-to-br dark:from-[#141527] dark:to-[#0B0C1B]">
         <Head>
-          <title>CodeToPromptGenerator</title>
+          <title>Code to Prompt Generator</title>
           <meta name="description" content="Generate LLM prompts from your code" />
           <link rel="icon" href="/favicon.ico" />
         </Head>
@@ -286,13 +352,14 @@ export default function Home() {
         >
           <div className="container mx-auto flex justify-between items-center">
             <div className="flex items-center space-x-2">
+              <FileCode size={28} className="text-[#bd93f9]" />
               <h1
                 className="
                   text-2xl font-bold bg-gradient-to-r from-[#8be9fd] to-[#50fa7b]
                   text-transparent bg-clip-text
                 "
               >
-                Code to LLM Prompt Generator by Aytzey
+                Code to Prompt Generator
               </h1>
             </div>
 
@@ -312,7 +379,7 @@ export default function Home() {
                 )}
               </button>
               <button
-                onClick={() => window.open('https://github.com/aytzey/CodetoPromptGenerator', '_blank')}
+                onClick={() => window.open('https://github.com', '_blank')}
                 className={`
                   flex items-center space-x-2 px-3 py-1.5 rounded-md text-sm font-medium shadow-md
                   transition-all duration-300
@@ -496,11 +563,19 @@ export default function Home() {
 
                 {activeTab === 'options' && (
                   <div className="space-y-4">
+                    {/* Exclusions from ignoreDirs.txt */}
                     <ExclusionsManagerView
                       excludedPaths={excludedPaths}
                       onUpdateExclusions={updateExclusions}
                     />
 
+                    {/* Our new local-exclusion manager */}
+                    <LocalExclusionsManagerView
+                      excludedPaths={localExcludedPaths}
+                      onUpdateExclusions={handleUpdateLocalExclusions}
+                    />
+
+                    {/* Extension filters */}
                     <div
                       className={`
                         p-3 rounded border space-y-2

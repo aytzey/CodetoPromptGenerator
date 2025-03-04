@@ -5,7 +5,7 @@
 export interface FileNode {
     name: string
     relativePath: string
-    absolutePath?: string
+    absolutePath: string
     type: 'file' | 'directory'
     children?: FileNode[]
   }
