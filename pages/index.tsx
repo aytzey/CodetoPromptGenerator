@@ -447,7 +447,7 @@ export default function Home() {
                 </h1>
                 <div className="flex items-center mt-0.5">
                   <Badge variant="outline" className="text-xs font-normal text-gray-500 dark:text-gray-400">
-                    v1.0
+                    v0.2
                   </Badge>
                   <span className="mx-2 text-gray-400 dark:text-gray-600">•</span>
                   <span className="text-xs text-gray-500 dark:text-gray-400">by Aytzey</span>
