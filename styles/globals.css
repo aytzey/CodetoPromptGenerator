@@ -9,38 +9,131 @@
     margin: 0;
     padding: 0;
     font-family: 'Inter', sans-serif;
-    background-color: #12131C;
+    background-color: #141527;
     color: #E0E2F0;
+    scrollbar-width: thin;
+    scrollbar-color: #3C3F57 #1A1B2E;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    line-height: 1.2;
+  }
+  
+  * {
+    @apply transition-colors duration-200;
   }
 }
 
-/* Add some custom transitions and subtle animations */
+/* Custom components */
 @layer components {
-  .transition-colors,
-  .transition-all {
-    transition: all 0.3s ease-in-out;
+  .card {
+    @apply bg-[#1A1B2E] rounded-xl border border-[#2A2C42] p-5 shadow-lg;
+  }
+  
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-300 transform hover:translate-y-[-2px] focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-[#141527];
+  }
+  
+  .btn-primary {
+    @apply btn bg-[#50fa7b] hover:bg-[#7b93fd] text-[#141527] shadow-md;
+  }
+  
+  .btn-secondary {
+    @apply btn bg-[#bd93f9] hover:bg-[#ff79c6] text-[#141527] shadow-md;
+  }
+  
+  .btn-outline {
+    @apply btn bg-transparent border border-[#3f4257] text-gray-100 hover:bg-[#3C3F57] hover:border-[#50fa7b];
+  }
+  
+  .input-field {
+    @apply bg-[#141527] border border-[#3f4257] rounded-lg px-3 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-[#bd93f9] transition-all;
+  }
+  
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r;
+  }
+  
+  .gradient-primary {
+    @apply from-[#8be9fd] to-[#50fa7b];
+  }
+  
+  .gradient-secondary {
+    @apply from-[#ff79c6] to-[#bd93f9];
   }
 }
 
-/* Global classes to unify the UI design */
+/* Custom utility classes */
 @layer utilities {
-  .bg-panel {
-    background-color: #1C1D26;
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
   }
-  .border-panel {
-    border-color: #3C3F57;
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #141527;
+    border-radius: 4px;
   }
-  .hover-panel:hover {
-    background-color: #2E3140;
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #3C3F57;
+    border-radius: 4px;
   }
-  .shadow-panel {
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #50fa7b;
   }
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
+  
+  .custom-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%238be9fd'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    background-size: 1.5em 1.5em;
   }
-  .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: #3C3F57;
-    border-radius: 3px;
+  
+  /* Animation utilities */
+  .animate-fadeIn {
+    animation: fadeIn 0.5s ease-in-out;
   }
+  
+  .animate-slideUp {
+    animation: slideUp 0.3s ease-out;
+  }
+  
+  .animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  
+  /* Glass morphism effect */
+  .glass {
+    background: rgba(26, 27, 46, 0.7);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  
+  /* Hover card effect */
+  .hover-card {
+    @apply transition-all duration-300;
+  }
+  
+  .hover-card:hover {
+    @apply transform -translate-y-1 shadow-xl border-[#50fa7b];
+  }
+}
+
+/* Keyframes */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }

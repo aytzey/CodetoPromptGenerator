@@ -17,6 +17,8 @@ interface InstructionsInputProps {
   onRefreshMetaList: () => void
 }
 
+const MAX_CHARS = 1000
+
 const InstructionsInputView: React.FC<InstructionsInputProps> = ({
   metaPrompt,
   setMetaPrompt,
@@ -31,21 +33,28 @@ const InstructionsInputView: React.FC<InstructionsInputProps> = ({
   setNewMetaFileName,
   onRefreshMetaList
 }) => {
+  const metaCount = metaPrompt.length
+  const mainCount = mainInstructions.length
+
+  const metaColor = metaCount > MAX_CHARS ? 'text-red-400' : 'text-gray-400'
+  const mainColor = mainCount > MAX_CHARS ? 'text-red-400' : 'text-gray-400'
+
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-[#50fa7b] border-b border-panel pb-1">
+      <h3 className="text-lg font-bold bg-gradient-to-r from-[#ff79c6] to-[#bd93f9] text-transparent bg-clip-text mb-4">
         Prompts
       </h3>
 
-      <div className="bg-[#1e1f29] p-3 rounded border border-[#3f4257] space-y-2">
-        <label className="block text-sm text-gray-300 font-medium">
-          Select Meta Prompt File:
-        </label>
-        <div className="flex items-center gap-2">
+      {/* Meta Prompt Selector */}
+      <div className="space-y-3">
+        <label className="block text-sm text-gray-300 font-medium">Select Meta Prompt File</label>
+        <div className="flex gap-2">
           <select
             value={selectedMetaFile}
             onChange={e => setSelectedMetaFile(e.target.value)}
-            className="bg-[#1e1f29] text-gray-100 border border-[#3f4257] rounded px-2 py-1 text-sm focus:outline-none focus:border-[#7b93fd]"
+            className="flex-grow bg-[#141527] border border-[#3f4257] rounded-lg px-3 py-2 text-gray-100 
+                       focus:outline-none focus:ring-2 focus:ring-[#bd93f9] transition-all 
+                       appearance-none custom-select"
           >
             <option value="">--None--</option>
             {metaPromptFiles.map(file => (
@@ -55,56 +64,69 @@ const InstructionsInputView: React.FC<InstructionsInputProps> = ({
             ))}
           </select>
           <button
+            className="px-3 py-2 bg-[#7b93fd] hover:bg-[#50fa7b] rounded-lg text-sm font-medium text-[#141527]"
             onClick={onLoadMetaPrompt}
-            className="px-3 py-1 bg-[#7b93fd] hover:bg-[#50fa7b] rounded text-sm font-medium text-[#1e1f29]"
           >
             Load
           </button>
           <button
+            className="px-3 py-2 bg-[#bd93f9] hover:bg-[#ff79c6] rounded-lg text-sm font-medium text-[#141527]"
             onClick={onRefreshMetaList}
-            className="px-3 py-1 bg-[#bd93f9] hover:bg-[#ff79c6] rounded text-sm font-medium text-[#1e1f29]"
           >
             Refresh
           </button>
         </div>
+      </div>
 
-        <div className="flex items-center gap-2">
+      {/* Save meta prompt */}
+      <div className="space-y-3">
+        <label className="block text-sm text-gray-300 font-medium">
+          New File Name (optional):
+        </label>
+        <div className="flex gap-2">
           <input
             type="text"
             value={newMetaFileName}
             onChange={e => setNewMetaFileName(e.target.value)}
-            placeholder="NewFileName.txt (optional)"
-            className="bg-[#1e1f29] text-gray-100 border border-[#3f4257] rounded px-2 py-1 text-sm focus:outline-none focus:border-[#7b93fd]"
+            placeholder="NewFileName.txt"
+            className="flex-grow bg-[#141527] border border-[#3f4257] rounded-lg px-3 py-2 text-gray-100 
+                       focus:outline-none focus:ring-2 focus:ring-[#7b93fd]"
           />
           <button
             onClick={onSaveMetaPrompt}
-            className="px-3 py-1 bg-[#50fa7b] hover:bg-[#7b93fd] text-sm rounded font-medium text-[#1e1f29]"
+            className="px-3 py-2 bg-[#50fa7b] hover:bg-[#7b93fd] text-sm rounded font-medium text-[#141527]"
           >
             Save Prompt
           </button>
         </div>
       </div>
 
+      {/* Meta Prompt Input */}
       <div className="space-y-1">
-        <label className="block text-sm font-medium text-gray-300">
-          Meta Prompt:
-        </label>
+        <label className="block text-sm font-medium text-gray-300">Meta Prompt:</label>
         <textarea
           value={metaPrompt}
           onChange={e => setMetaPrompt(e.target.value)}
-          className="w-full h-20 p-2 bg-[#1e1f29] border border-[#3f4257] rounded text-gray-100 text-sm focus:outline-none focus:border-[#7b93fd]"
+          className="w-full h-20 p-2 bg-[#141527] border border-[#3f4257] rounded text-gray-100 text-sm 
+                     focus:outline-none focus:border-[#7b93fd]"
         />
+        <div className={`text-right text-xs ${metaColor}`}>
+          {metaCount} / {MAX_CHARS} chars
+        </div>
       </div>
 
+      {/* Main Instructions */}
       <div className="space-y-1">
-        <label className="block text-sm font-medium text-gray-300">
-          Main Instructions:
-        </label>
+        <label className="block text-sm font-medium text-gray-300">Main Instructions:</label>
         <textarea
           value={mainInstructions}
           onChange={e => setMainInstructions(e.target.value)}
-          className="w-full h-32 p-2 bg-[#1e1f29] border border-[#3f4257] rounded text-gray-100 text-sm focus:outline-none focus:border-[#7b93fd]"
+          className="w-full h-32 p-2 bg-[#141527] border border-[#3f4257] rounded text-gray-100 text-sm 
+                     focus:outline-none focus:border-[#7b93fd]"
         />
+        <div className={`text-right text-xs ${mainColor}`}>
+          {mainCount} / {MAX_CHARS} chars
+        </div>
       </div>
     </div>
   )

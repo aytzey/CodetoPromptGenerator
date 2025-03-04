@@ -1,7 +1,7 @@
 // views/CopyButtonView.tsx
 
-import React, { useRef } from 'react'
-
+import React, { useRef, useState } from 'react'
+import { Copy } from 'lucide-react'  // <-- Make sure this is added
 interface FileNode {
   name: string
   relativePath: string
@@ -23,10 +23,6 @@ interface CopyButtonProps {
   tree: FileNode[]
   excludedPaths: string[]
   filterExtensions: string[]
-  /**
-   * NEW: Callback to re-fetch the latest file content from the backend
-   * so we have fresh data each time we copy.
-   */
   onFetchLatestFileData: () => Promise<FileData[]>
 }
 
@@ -38,37 +34,31 @@ const CopyButtonView: React.FC<CopyButtonProps> = ({
   tree,
   excludedPaths,
   filterExtensions,
-  onFetchLatestFileData, // <-- NEW
+  onFetchLatestFileData
 }) => {
   const hiddenTextAreaRef = useRef<HTMLTextAreaElement | null>(null)
+  const [copySuccess, setCopySuccess] = useState<boolean>(false)
 
-  /**
-   * CHANGED: make handleCopy async, call onFetchLatestFileData() to refresh contents
-   */
   const handleCopy = async () => {
-    // 1) Re-fetch from the backend to ensure we have the latest
+    // Re-fetch fresh file contents
     const freshFilesData = await onFetchLatestFileData()
 
-    // 2) Build the combined text from the newly fetched data
+    // Build combined text
     let combined = ''
-
-    // Write meta prompt
     if (metaPrompt.trim()) {
       combined += `# Meta Prompt:\n${metaPrompt}\n\n`
     }
-
-    // Write main instructions
     if (mainInstructions.trim()) {
       combined += `# Main Instructions:\n${mainInstructions}\n\n`
     }
 
-    // Write textual project tree
+    // Tree
     const treeText = generateTextualTree(tree, excludedPaths, filterExtensions)
     if (treeText.trim()) {
       combined += `# Project Tree:\n${treeText}\n\n`
     }
 
-    // Write file contents from *freshly fetched* data
+    // Files
     if (freshFilesData.length > 0) {
       combined += `# Selected Files:\n`
       for (const f of freshFilesData) {
@@ -76,68 +66,61 @@ const CopyButtonView: React.FC<CopyButtonProps> = ({
       }
     }
 
-    // Try using the Clipboard API
-    if (navigator?.clipboard?.writeText) {
-      navigator.clipboard
-        .writeText(combined)
-        .then(() => {
-          alert('Copied to clipboard!')
-        })
-        .catch(err => {
-          console.warn('Clipboard API failed, switching to fallback:', err)
-          fallbackCopyMethod(combined)
-        })
-    } else {
+    // Attempt to copy
+    try {
+      await navigator.clipboard.writeText(combined)
+      setCopySuccess(true)
+      setTimeout(() => setCopySuccess(false), 2000)
+    } catch {
+      // Fallback
       fallbackCopyMethod(combined)
     }
   }
 
-  const fallbackCopyMethod = (textToCopy: string) => {
-    if (hiddenTextAreaRef.current) {
-      hiddenTextAreaRef.current.value = textToCopy
-      hiddenTextAreaRef.current.select()
-
-      try {
-        document.execCommand('copy')
-        alert('Copied to clipboard (fallback method)!')
-      } catch (err2) {
-        console.error('Clipboard copy failed:', err2)
-        alert('Failed to copy!')
-      }
+  const fallbackCopyMethod = (text: string) => {
+    if (!hiddenTextAreaRef.current) return
+    hiddenTextAreaRef.current.value = text
+    hiddenTextAreaRef.current.select()
+    try {
+      document.execCommand('copy')
+      setCopySuccess(true)
+      setTimeout(() => setCopySuccess(false), 2000)
+    } catch (err) {
+      alert('Failed to copy to clipboard!')
     }
   }
 
   return (
-    <>
-      {/* Hidden TextArea for fallback copying */}
+    <div className="relative w-full">
       <textarea
         ref={hiddenTextAreaRef}
-        style={{
-          position: 'fixed',
-          top: '-1000px',
-          left: '-1000px',
-          opacity: 0,
-        }}
+        className="fixed -top-96 left-0 opacity-0"
         readOnly
         aria-hidden="true"
       />
 
       <button
         onClick={handleCopy}
-        className="mt-4 px-4 py-2 bg-green-600 hover:bg-green-700 rounded font-medium"
+        className="w-full px-5 py-3 bg-gradient-to-r from-[#50fa7b] to-[#8be9fd] hover:from-[#8be9fd] hover:to-[#50fa7b] text-[#141527] font-bold rounded-lg flex items-center justify-center gap-2 transition-all transform hover:scale-105 shadow-lg"
       >
-        Copy All to Clipboard
+        <Copy size={20} />
+        <span>Copy All to Clipboard</span>
       </button>
-    </>
+
+      {copySuccess && (
+        <div className="absolute top-0 left-0 right-0 text-center mt-2 animate-fadeIn">
+          <span className="inline-block bg-[#50fa7b] text-[#141527] px-3 py-1 rounded shadow">
+            Copied!
+          </span>
+        </div>
+      )}
+    </div>
   )
 }
 
 export default CopyButtonView
 
-/**
- * Produce a textual tree of your project,
- * respecting excluded paths and extension filters
- */
+/** Helper that generates textual project tree. Reuse your existing logic. */
 function generateTextualTree(
   tree: FileNode[],
   excludedPaths: string[],
@@ -146,26 +129,22 @@ function generateTextualTree(
 ): string {
   let result = ''
   const indent = '  '.repeat(depth)
-
-  const filteredNodes = tree.filter(node => {
-    // If node's relativePath is in excludedPaths, skip it
+  const filtered = tree.filter(node => {
+    // exclude
     if (
       excludedPaths.some(
-        ignored =>
-          node.relativePath === ignored ||
-          node.relativePath.startsWith(ignored + '/')
+        ignored => node.relativePath === ignored || node.relativePath.startsWith(ignored + '/')
       )
     ) {
       return false
     }
-    // If it's a directory or file that doesn't match the extension filter, skip
     return nodeMatchesExtensions(node, filterExtensions)
   })
 
-  for (const node of filteredNodes) {
+  for (const node of filtered) {
     const icon = node.type === 'directory' ? '📁' : '📄'
     result += `${indent}${icon} ${node.name}\n`
-    if (node.children && node.children.length > 0) {
+    if (node.type === 'directory' && node.children) {
       result += generateTextualTree(node.children, excludedPaths, filterExtensions, depth + 1)
     }
   }
@@ -175,17 +154,10 @@ function generateTextualTree(
 function nodeMatchesExtensions(node: FileNode, extensions: string[]): boolean {
   if (extensions.length === 0) return true
   if (node.type === 'directory') {
-    // Keep directories if they have any child that matches
     return node.children
       ? node.children.some(child => nodeMatchesExtensions(child, extensions))
       : false
   } else {
-    return matchesAnyExtension(node.name, extensions)
+    return extensions.some(ext => node.name.toLowerCase().endsWith(ext.toLowerCase()))
   }
-}
-
-function matchesAnyExtension(fileNameOrPath: string, extensions: string[]): boolean {
-  if (extensions.length === 0) return true
-  const lowerName = fileNameOrPath.toLowerCase()
-  return extensions.some(ext => lowerName.endsWith(ext.toLowerCase()))
 }
