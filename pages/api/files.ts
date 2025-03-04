@@ -1,44 +1,57 @@
 // pages/api/files.ts
 
-import path from 'path';
-import fs from 'fs';
-import { NextApiRequest, NextApiResponse } from 'next';
-import { getProjectTree } from '../../lib/getProjectTree';
+import type { NextApiRequest, NextApiResponse } from 'next'
+import { getProjectTree, FileNode } from '../../lib/getProjectTree'
+import fs from 'fs'
+import path from 'path'
 
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  const { action, filePath, projectDir } = req.query;
+type ResponseData = {
+  success: boolean
+  tree?: FileNode[]
+  error?: string
+}
 
-  // Determine base directory
-  let baseDir: string;
-  if (typeof projectDir === 'string' && projectDir.trim()) {
-    baseDir = path.resolve(projectDir.trim());
-    if (!fs.existsSync(baseDir)) {
-      return res.status(400).json({ error: 'Specified directory does not exist' });
-    }
-  } else {
-    baseDir = process.env.PROJECT_DIR
-      ? path.resolve(process.env.PROJECT_DIR)
-      : path.join(process.cwd(), 'sample_project');
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse<ResponseData>
+) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({
+      success: false,
+      error: 'Method not allowed'
+    })
   }
 
-  if (action === 'tree') {
-    const tree = getProjectTree(baseDir);
-    return res.status(200).json({ tree });
-  }
+  try {
+    const { path: projectPath } = req.body
 
-  if (action === 'content' && typeof filePath === 'string') {
-    const absolutePath = path.join(baseDir, filePath);
-    if (!absolutePath.startsWith(baseDir)) {
-      return res.status(400).json({ error: 'Invalid file path' });
+    if (!projectPath) {
+      return res.status(400).json({
+        success: false,
+        error: 'Path is required'
+      })
     }
 
-    try {
-      const content = fs.readFileSync(absolutePath, 'utf-8');
-      return res.status(200).json({ content });
-    } catch (error: any) {
-      return res.status(404).json({ error: 'File not found' });
+    // Check if the path exists and is a directory
+    if (!fs.existsSync(projectPath) || !fs.statSync(projectPath).isDirectory()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid path or not a directory'
+      })
     }
-  }
 
-  return res.status(400).json({ error: 'Invalid action' });
+    // Get the project tree
+    const tree = getProjectTree(projectPath)
+
+    return res.status(200).json({
+      success: true,
+      tree
+    })
+  } catch (error) {
+    console.error('Error getting project tree:', error)
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to get project tree'
+    })
+  }
 }

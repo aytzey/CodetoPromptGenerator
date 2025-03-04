@@ -4,7 +4,7 @@ Code to Prompt Generator Tool is an environment for composing, refining, and gen
 
 ## Key Features
 
-- **Project Tree Navigation:** Easily browse and select files or directories from a chosen folder. The tool recursively generates a structured tree of your project’s files.
+- **Project Tree Navigation:** Easily browse and select files or directories from a chosen folder. The tool recursively generates a structured tree of your project's files.
 - **File Selection Management:** Pick which files or folders should be included as context in your prompt. Selected files are tracked and their token counts are displayed, giving you insight into prompt size.
 - **Meta Prompt Directory Configuration:** Dynamically set and remember a directory for storing meta prompt files. Load existing prompts or create new ones directly through the UI.
 - **Prompt Composition:** Combine a meta prompt and main instructions. Leverage saved templates, refresh the prompt list as you modify the directory, and load prompts on demand.
@@ -17,11 +17,13 @@ Code to Prompt Generator Tool is an environment for composing, refining, and gen
 - **Tailwind CSS:** For styling and consistent UI across all components.
 - **Local Storage:** Persists user preferences, such as the last chosen meta prompts directory, between sessions.
 - **Node.js & File System API:** Server-side file system operations are handled via Node.js, ensuring offline usability.
+- **Python Flask Backend:** Handles specific backend operations like ToDo list management.
 
 ## Installation & Setup
 
 ### Prerequisites
 - **Node.js & npm:** Make sure you have Node.js (v14 or higher recommended) and npm installed.
+- **Python:** You need Python 3.7+ installed for the backend server.
 - **Git (optional):** If you are cloning from a repository, ensure Git is installed.
 
 ### Steps
@@ -34,20 +36,38 @@ Code to Prompt Generator Tool is an environment for composing, refining, and gen
 
 2. **Navigate into the Project Directory:**
    ```bash
-   cd my-offline-llm-tool
+   cd code_to_prompt_generator
    ```
 
 3. **Install Dependencies:**
    ```bash
    npm install
    ```
-   This will install all required dependencies including Next.js, React, and other necessary packages.
+   This will install all required frontend dependencies including Next.js, React, and other necessary packages.
 
-4. **Start the Development Server:**
+4. **Install Python Backend Dependencies:**
    ```bash
-   npm run dev
+   cd python_backend
+   pip install -r requirements.txt
+   cd ..
    ```
-   After running this command, the application will start on `http://localhost:3000`. Open this URL in your web browser to access the UI.
+
+5. **Start the Application (New One-Step Process):**
+   
+   **Using npm:**
+   ```bash
+   npm run start:all
+   ```
+   
+   **Using the provided scripts:**
+   - On Windows: Double-click `start.bat` or run it from the command line
+   - On Mac/Linux: Make the script executable with `chmod +x start.sh` then run `./start.sh`
+
+   This will start both the Python Flask backend and the Next.js frontend in a single command. The application will be available at:
+   - Frontend: http://localhost:3000
+   - Backend: http://localhost:5000
+
+   You can stop both servers by pressing Ctrl+C in the terminal where you started them.
 
 ### Production Build (Optional)
 1. **Build the Application:**
@@ -89,6 +109,11 @@ Code to Prompt Generator Tool is an environment for composing, refining, and gen
 - **Directory Not Found:** Ensure that the directory path specified under "Settings" for your meta prompts is correct and that it exists.
 - **Refresh Lists:** Use the "Refresh" buttons if you add new files or meta prompts outside of the tool. This ensures the UI is always up-to-date.
 - **Token Counts:** The tool provides a rough word-based count of tokens. For more accurate token measurements specific to a particular model, additional integration would be needed.
+- **Starting Issues:** If you encounter any issues when starting the application:
+  - Make sure both Node.js and Python are installed and in your PATH
+  - Check that all dependencies have been installed correctly
+  - Look for any error messages in the console/terminal output
+  - Ensure ports 3000 and 5000 are not already in use by other applications
 
 ## Testing
 
@@ -110,12 +135,12 @@ We have a `scripts/autotest.js` file that runs a series of automated tests again
 To run these tests:
 
 1. **Install** dependencies (`npm install node-fetch`) if needed.  
-2. **Start** the Flask backend (`python app.py`) at `http://localhost:5000`.  
-3. **Start** the Next.js frontend (`npm run dev`) at `http://localhost:3000`.  
-4. **Execute** the test script:
+2. **Start** the application using `npm run start:all` (both services will start automatically)
+3. **Execute** the test script in a separate terminal:
    ```bash
    node scripts/autotest.js
    ```
+
 A summary of passed/failed tests will be displayed, and the script will exit with status code `0` on success or `1` on any failure.
 
 ---

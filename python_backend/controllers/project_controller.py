@@ -1,84 +1,119 @@
-# controllers/project_controller.py
+# python_backend/controllers/project_controller.py
 
-from flask import Blueprint, request, jsonify
 import os
-from services.project_service import get_project_tree
+import json
+from flask import Blueprint, request, jsonify, current_app
 
+# Changed the blueprint name to match what app.py expects
 project_blueprint = Blueprint('project_blueprint', __name__)
 
-@project_blueprint.route('/api/projects/tree', methods=['GET'])
-def get_tree():
-    """
-    GET /api/projects/tree?rootDir=/absolute/path
-    """
-    root_dir = request.args.get('rootDir', None)
-    if not root_dir or not os.path.isdir(root_dir):
-        return jsonify(success=False, message="rootDir not provided or invalid."), 400
-
+@project_blueprint.route('/api/browse_folders', methods=['GET'])
+def browse_folders():
+    """Get available folders at a given path"""
     try:
-        tree = get_project_tree(root_dir)
-        return jsonify(success=True, data=tree), 200
-    except Exception as e:
-        return jsonify(success=False, message=str(e)), 500
-
-
-@project_blueprint.route('/api/projects/files', methods=['POST'])
-def get_file_contents():
-    """
-    Expects JSON with a 'baseDir' for the project root,
-    plus a list of file paths in 'paths'.
-
-    Example POST body:
-    {
-      "baseDir": "/home/user/path/to/my-project",
-      "paths": [
-        "sample_project/prettier.config.cjs",
-        "scripts/autotest.js"
-      ]
-    }
-
-    We'll construct the absolute path for each file, check if it exists,
-    and read its contents if found.
-    """
-    payload = request.get_json() or {}
-    base_dir = payload.get('baseDir', '').strip()
-    file_paths = payload.get('paths', [])
-
-    if not base_dir or not os.path.isdir(base_dir):
-        return jsonify(success=False, message="baseDir not provided or invalid."), 400
-    if not isinstance(file_paths, list):
-        return jsonify(success=False, message="paths must be a list"), 400
-
-    results = []
-    for relative_path in file_paths:
-        # Build an absolute path from base_dir + relative_path
-        abs_path = os.path.join(base_dir, relative_path)
-
-        if not os.path.isfile(abs_path):
-            results.append({
-                "path": relative_path,
-                "content": f"File not found on server: {relative_path}",
-                "tokenCount": 0
-            })
-            continue
-
+        # Get the path from query parameters, default to current directory
+        current_path = request.args.get('path', os.getcwd())
+        
+        # Ensure the path exists
+        if not os.path.exists(current_path):
+            return jsonify({
+                'success': False,
+                'error': f"Path does not exist: {current_path}"
+            }), 400
+        
+        # Get folders and parent directory
+        parent_dir = os.path.dirname(current_path) if current_path != os.path.dirname(current_path) else None
+        folders = []
+        
         try:
-            with open(abs_path, 'r', encoding='utf-8', errors='replace') as f:
-                content = f.read()
+            # List all items in the directory
+            for item in os.listdir(current_path):
+                full_path = os.path.join(current_path, item)
+                if os.path.isdir(full_path):
+                    folders.append({
+                        'name': item,
+                        'path': full_path
+                    })
+                    
+            # Sort folders by name
+            folders.sort(key=lambda x: x['name'].lower())
+                
+        except PermissionError:
+            return jsonify({
+                'success': False,
+                'error': f"Permission denied to access: {current_path}"
+            }), 403
+                
+        return jsonify({
+            'success': True,
+            'current_path': current_path,
+            'parent_path': parent_dir,
+            'folders': folders
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Error browsing folders: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
-            # approximate token count
-            token_count = len(content.strip().split())
-
-            results.append({
-                "path": relative_path,         # original path for front-end reference
-                "content": content,
-                "tokenCount": token_count
+@project_blueprint.route('/api/select_drives', methods=['GET'])
+def select_drives():
+    """Get available drives (for Windows) or root directories (for Unix/Linux/Mac)"""
+    try:
+        drives = []
+        
+        # For Windows: Get available drives
+        if os.name == 'nt':
+            import string
+            from ctypes import windll
+            
+            # Get the bitmask of available drives
+            bitmask = windll.kernel32.GetLogicalDrives()
+            
+            # Check each possible drive letter
+            for letter in string.ascii_uppercase:
+                # Test if the corresponding bit is set
+                if bitmask & (1 << (ord(letter) - ord('A'))):
+                    drive_path = f"{letter}:\\"
+                    drives.append({
+                        'name': drive_path,
+                        'path': drive_path
+                    })
+        
+        # For Unix/Linux/Mac: Add root directory and common locations
+        else:
+            # Add root directory
+            drives.append({
+                'name': '/ (Root)',
+                'path': '/'
             })
-        except Exception as e:
-            results.append({
-                "path": relative_path,
-                "content": f"Error reading file: {str(e)}",
-                "tokenCount": 0
+            
+            # Add home directory
+            home_dir = os.path.expanduser('~')
+            drives.append({
+                'name': f"~ (Home: {home_dir})",
+                'path': home_dir
             })
-
-    return jsonify(success=True, data=results), 200
+            
+            # Add Desktop, Documents, Downloads if they exist
+            for folder in ['Desktop', 'Documents', 'Downloads']:
+                path = os.path.join(home_dir, folder)
+                if os.path.exists(path) and os.path.isdir(path):
+                    drives.append({
+                        'name': folder,
+                        'path': path
+                    })
+        
+        return jsonify({
+            'success': True,
+            'drives': drives
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Error getting drives: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
