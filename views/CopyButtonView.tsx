@@ -1,4 +1,5 @@
-import React, { useRef, useState } from 'react'
+// views/CopyButtonView.tsx
+import React, { useRef, useState, useEffect } from 'react'
 import { Copy, CheckCircle, ClipboardCopy, FileCode } from 'lucide-react'
 
 // shadcn/ui
@@ -31,6 +32,68 @@ interface CopyButtonProps {
   onFetchLatestFileData: () => Promise<FileData[]>
 }
 
+/**
+ * A simple token estimator that splits the text on whitespace and common punctuation.
+ * This mimics our backend's approach for a naive token count.
+ * @param text The input string to count tokens for.
+ * @returns The estimated token count.
+ */
+function estimateTokenCount(text: string): number {
+  const tokens = text.trim().split(/\s+|[,.;:!?()\[\]{}'"<>]/).filter(token => token.length > 0)
+  const specialChars = (text.match(/[,.;:!?()\[\]{}'"<>]/g) || []).length
+  return tokens.length + specialChars
+}
+
+/**
+ * Generates a textual representation of a file tree.
+ */
+function generateTextualTree(
+  tree: FileNode[],
+  excludedPaths: string[],
+  filterExtensions: string[],
+  depth: number = 0
+): string {
+  let result = ''
+  const indent = '  '.repeat(depth)
+
+  const filtered = tree.filter(node => {
+    if (
+      excludedPaths.some(
+        ignored => node.relativePath === ignored || node.relativePath.startsWith(ignored + '/')
+      )
+    ) {
+      return false
+    }
+    return nodeMatchesExtensions(node, filterExtensions)
+  })
+
+  for (const node of filtered) {
+    const icon = node.type === 'directory' ? '📁' : '📄'
+    result += `${indent}${icon} ${node.name}\n`
+    if (node.type === 'directory' && node.children) {
+      result += generateTextualTree(
+        node.children,
+        excludedPaths,
+        filterExtensions,
+        depth + 1
+      )
+    }
+  }
+  return result
+}
+
+function nodeMatchesExtensions(node: FileNode, extensions: string[]): boolean {
+  if (extensions.length === 0) return true
+  if (node.type === 'directory') {
+    if (!node.children) return false
+    return node.children.some(child => nodeMatchesExtensions(child, extensions))
+  } else {
+    return extensions.some(ext =>
+      node.name.toLowerCase().endsWith(ext.toLowerCase())
+    )
+  }
+}
+
 const CopyButtonView: React.FC<CopyButtonProps> = ({
   metaPrompt,
   mainInstructions,
@@ -44,16 +107,30 @@ const CopyButtonView: React.FC<CopyButtonProps> = ({
   const hiddenTextAreaRef = useRef<HTMLTextAreaElement | null>(null)
   const [copySuccess, setCopySuccess] = useState<boolean>(false)
   const [isLoading, setIsLoading] = useState<boolean>(false)
+  // Local state to hold the latest file data, so token counts update immediately when refreshed.
+  const [localFilesData, setLocalFilesData] = useState<FileData[]>(filesData)
 
-  // Calculate total tokens/chars
-  const totalTokens = filesData.reduce((acc, file) => acc + (file.tokenCount || 0), 0)
-  const totalChars = filesData.reduce((acc, file) => acc + file.content.length, 0)
+  // Update local state if props.filesData changes
+  useEffect(() => {
+    setLocalFilesData(filesData)
+  }, [filesData])
+
+  // Calculate file tokens and add tokens from meta prompt and main instructions.
+  const fileTokens = localFilesData.reduce((acc, file) => acc + (file.tokenCount || 0), 0)
+  const metaTokens = estimateTokenCount(metaPrompt)
+  const mainTokens = estimateTokenCount(mainInstructions)
+  const totalTokens = fileTokens + metaTokens + mainTokens
+
+  const totalChars = localFilesData.reduce((acc, file) => acc + file.content.length, 0)
   const selectedFileCount = selectedFiles.filter(f => !f.endsWith('/')).length
 
   const handleCopy = async () => {
     setIsLoading(true)
     try {
       const freshFilesData = await onFetchLatestFileData()
+      // Update local file data so that token counts refresh immediately.
+      setLocalFilesData(freshFilesData)
+      
       let combined = ''
 
       if (metaPrompt.trim()) {
@@ -181,50 +258,3 @@ const CopyButtonView: React.FC<CopyButtonProps> = ({
 }
 
 export default CopyButtonView
-
-function generateTextualTree(
-  tree: FileNode[],
-  excludedPaths: string[],
-  filterExtensions: string[],
-  depth: number = 0
-): string {
-  let result = ''
-  const indent = '  '.repeat(depth)
-
-  const filtered = tree.filter(node => {
-    if (
-      excludedPaths.some(
-        ignored => node.relativePath === ignored || node.relativePath.startsWith(ignored + '/')
-      )
-    ) {
-      return false
-    }
-    return nodeMatchesExtensions(node, filterExtensions)
-  })
-
-  for (const node of filtered) {
-    const icon = node.type === 'directory' ? '📁' : '📄'
-    result += `${indent}${icon} ${node.name}\n`
-    if (node.type === 'directory' && node.children) {
-      result += generateTextualTree(
-        node.children,
-        excludedPaths,
-        filterExtensions,
-        depth + 1
-      )
-    }
-  }
-  return result
-}
-
-function nodeMatchesExtensions(node: FileNode, extensions: string[]): boolean {
-  if (extensions.length === 0) return true
-  if (node.type === 'directory') {
-    if (!node.children) return false
-    return node.children.some(child => nodeMatchesExtensions(child, extensions))
-  } else {
-    return extensions.some(ext =>
-      node.name.toLowerCase().endsWith(ext.toLowerCase())
-    )
-  }
-}

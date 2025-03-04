@@ -1,3 +1,4 @@
+// pages/index.tsx
 import React, { useState, useEffect, useMemo } from 'react'
 import Head from 'next/head'
 import {
@@ -347,6 +348,19 @@ export default function Home() {
     setSelectedFiles([])
   }
 
+  // ------------------------------
+  //  Refresh: Update tree and selected file contents
+  // ------------------------------
+  async function refreshAll() {
+    await loadProjectTree()
+    if (selectedFiles.length > 0) {
+      await loadSelectedFileContents()
+    }
+  }
+
+  // ------------------------------
+  //  Fetch latest file data and update global state
+  // ------------------------------
   async function fetchLatestFileData(): Promise<FileData[]> {
     try {
       const response = await fetch(`${BACKEND_URL}/api/files/contents`, {
@@ -359,6 +373,7 @@ export default function Home() {
       })
       const data = await response.json()
       if (data.success) {
+        setFilesData(data.filesData || [])
         return data.filesData || []
       }
       return []
@@ -369,7 +384,9 @@ export default function Home() {
     }
   }
 
-  // Filtered tree
+  // ------------------------------
+  //  Filtered tree computation
+  // ------------------------------
   const filteredTree = useMemo(() => {
     const afterExtFilter = filterExtensions.length
       ? applyExtensionFilter(fileTree, filterExtensions)
@@ -387,7 +404,7 @@ export default function Home() {
 
   // Some summary stats
   const fileCount = selectedFiles.filter((f) => !f.endsWith('/')).length
-  const totalTokens = filesData.reduce((acc, file) => acc + (file.tokenCount || 0), 0)
+  const totalTokens = filesData.reduce((acc, file) => acc + file.tokenCount, 0)
   const hasContent = metaPrompt.trim() || mainInstructions.trim() || fileCount > 0
 
   // Dismiss the welcome screen permanently
@@ -466,7 +483,7 @@ export default function Home() {
                   <TooltipTrigger asChild>
                     <Button
                       variant="outline"
-                      className="rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-950 border-indigo-200 dark:border-indigo-800 transition-colors"
+                      className="rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-950 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 dark:hover:bg-indigo-950 transition-colors"
                       onClick={() => window.open('https://github.com/aytzey/CodetoPromptGenerator', '_blank')}
                     >
                       <Github size={16} className="mr-2 text-indigo-600 dark:text-indigo-400" />
@@ -678,7 +695,7 @@ export default function Home() {
                                 <Button
                                   size="sm"
                                   className="bg-indigo-500 hover:bg-indigo-600 text-white transition-colors"
-                                  onClick={loadProjectTree}
+                                  onClick={refreshAll}
                                   disabled={isLoadingTree || !projectPath}
                                 >
                                   <RefreshCw
@@ -689,7 +706,7 @@ export default function Home() {
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent side="top">
-                                <p>Refresh the file tree</p>
+                                <p>Refresh the file tree and selected file contents</p>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
