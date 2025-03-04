@@ -1,5 +1,3 @@
-// pages/index.tsx
-
 import React, { useState, useEffect, useMemo } from 'react'
 import Head from 'next/head'
 import {
@@ -14,7 +12,6 @@ import {
   CheckSquare,
   XSquare,
   Code,
-  Layout,
   LayoutGrid,
   Zap,
   Flame,
@@ -44,7 +41,7 @@ import {
   flattenTree
 } from '../lib/fileFilters'
 
-// --- shadcn/ui imports. Make sure these match your local exports! ---
+// shadcn/ui
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -55,25 +52,20 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 
-// ------------------------------------------
-// Types & Interfaces
-// ------------------------------------------
 interface FileData {
   path: string
   content: string
   tokenCount: number
 }
 
-// Change the base URL to match your Flask backend:
+// Adjust to your actual backend URL
 const BACKEND_URL = 'http://localhost:5000'
 
 /**
  * Helper to get all descendant paths (files & subfolders) under a given node path.
  */
 function getAllDescendantsOfPath(tree: FileNode[], targetPath: string): string[] {
-  // Convert backslashes to forward slashes for consistency
   const normTarget = targetPath.replace(/\\/g, '/')
-  // Flatten entire tree
   const allNodes = flattenTree(tree) // each entry is a relative path
 
   const results: string[] = []
@@ -87,59 +79,77 @@ function getAllDescendantsOfPath(tree: FileNode[], targetPath: string): string[]
 
 export default function Home() {
   const [projectPath, setProjectPath] = useState<string>('')
-
-  // Project-wide file tree + selected files
   const [fileTree, setFileTree] = useState<FileNode[]>([])
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [filesData, setFilesData] = useState<FileData[]>([])
   const [isLoadingTree, setIsLoadingTree] = useState<boolean>(false)
 
-  // Global exclusions from ignoreDirs.txt
+  // Global (ignoreDirs.txt) + local project exclusions
   const [excludedPaths, setExcludedPaths] = useState<string[]>([])
-
-  // Project-specific localExclusions
   const [localExcludedPaths, setLocalExcludedPaths] = useState<string[]>([])
 
-  // Meta-prompt fields
+  // Meta prompt
   const [metaPrompt, setMetaPrompt] = useState<string>('')
   const [mainInstructions, setMainInstructions] = useState<string>('')
   const [metaPromptFiles, setMetaPromptFiles] = useState<string[]>([])
   const [selectedMetaFile, setSelectedMetaFile] = useState<string>('')
   const [newMetaFileName, setNewMetaFileName] = useState<string>('')
 
-  // Extension-based filtering
+  // Extension filters
   const [filterExtensions, setFilterExtensions] = useState<string[]>([])
   const [extensionInput, setExtensionInput] = useState<string>('')
 
-  // UI state
+  // UI states
   const [activeTab, setActiveTab] = useState<'files' | 'options' | 'tasks'>('files')
   const [darkMode, setDarkMode] = useState<boolean>(true)
   const [fileSearchTerm, setFileSearchTerm] = useState<string>('')
+
+  // Show welcome only if user hasn't hidden it
   const [showWelcome, setShowWelcome] = useState<boolean>(true)
+
+  // Global error
   const [error, setError] = useState<string | null>(null)
 
-  // ------------------------------------------
-  //  1) On mount, fetch global + meta prompt
-  // ------------------------------------------
+  // ---------------------------
+  //  Load from localStorage
+  // ---------------------------
+  useEffect(() => {
+    // Retrieve last project path
+    const storedPath = localStorage.getItem('lastProjectPath') || ''
+    if (storedPath) {
+      setProjectPath(storedPath)
+    }
+
+    // Retrieve welcome screen preference
+    const welcomeHidden = localStorage.getItem('hideWelcomeScreen')
+    if (welcomeHidden === 'true') {
+      setShowWelcome(false)
+    }
+  }, [])
+
+  // -------------------------------------------
+  //  Fetch global exclusions & metaPrompt list
+  // -------------------------------------------
   useEffect(() => {
     fetchExclusions()
     fetchMetaPromptList()
   }, [])
 
-  // ------------------------------------------
-  //  2) Load file tree when projectPath changes
-  // ------------------------------------------
+  // -------------------------------------------
+  //  Load project tree whenever projectPath changes
+  // -------------------------------------------
   useEffect(() => {
     if (projectPath) {
       loadProjectTree()
       setShowWelcome(false)
+      localStorage.setItem('lastProjectPath', projectPath) // store path
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectPath, excludedPaths])
 
-  // ------------------------------------------
-  //  3) Whenever selection changes, load contents
-  // ------------------------------------------
+  // -------------------------------------------
+  //  Re-fetch file contents when selection changes
+  // -------------------------------------------
   useEffect(() => {
     if (selectedFiles.length > 0) {
       loadSelectedFileContents()
@@ -149,9 +159,9 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFiles])
 
-  // ------------------------------------------
-  //     Global Exclusions from ignoreDirs.txt
-  // ------------------------------------------
+  // ------------------------------
+  //  Global Exclusions
+  // ------------------------------
   async function fetchExclusions() {
     try {
       const response = await fetch(`${BACKEND_URL}/api/exclusions`)
@@ -159,9 +169,11 @@ export default function Home() {
       if (data.success) {
         setExcludedPaths(data.exclusions || [])
       }
-    } catch (error) {
-      console.error('Error fetching exclusions:', error)
-      setError('Failed to connect to the backend server. Please make sure it is running at ' + BACKEND_URL)
+    } catch (err) {
+      console.error('Error fetching exclusions:', err)
+      setError(
+        'Failed to connect to backend. Ensure Flask server is running at ' + BACKEND_URL
+      )
     }
   }
 
@@ -179,16 +191,16 @@ export default function Home() {
           loadProjectTree()
         }
       }
-    } catch (error) {
-      console.error('Error updating exclusions:', error)
-      setError('Failed to update exclusions. Check your connection to the backend server.')
-      throw error
+    } catch (err) {
+      console.error('Error updating exclusions:', err)
+      setError('Failed to update global exclusions. Check backend connection.')
+      throw err
     }
   }
 
-  // ------------------------------------------
-  //            Load Project Tree
-  // ------------------------------------------
+  // ------------------------------
+  //  Load project tree
+  // ------------------------------
   async function loadProjectTree() {
     if (!projectPath) return
     setIsLoadingTree(true)
@@ -203,20 +215,20 @@ export default function Home() {
       if (data.success) {
         setFileTree(data.tree || [])
       } else {
-        console.error('Error loading project tree:', data.error)
-        setError('Failed to load project tree: ' + data.error)
+        console.error('loadProjectTree:', data.error)
+        setError('Could not load project tree: ' + data.error)
       }
-    } catch (error) {
-      console.error('Error loading project tree:', error)
-      setError('Network error while loading project tree. Check your connection to the backend server.')
+    } catch (err) {
+      console.error('loadProjectTree: network error', err)
+      setError('Network error loading project tree. Check your backend server.')
     } finally {
       setIsLoadingTree(false)
     }
   }
 
-  // ------------------------------------------
-  //         Load Selected File Contents
-  // ------------------------------------------
+  // ------------------------------
+  //  Load selected files’ contents
+  // ------------------------------
   async function loadSelectedFileContents() {
     try {
       const response = await fetch(`${BACKEND_URL}/api/files/contents`, {
@@ -224,22 +236,22 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           path: projectPath,
-          files: selectedFiles.filter((p) => !p.endsWith('/')) // skip directories
+          files: selectedFiles.filter((p) => !p.endsWith('/'))
         })
       })
       const data = await response.json()
       if (data.success) {
         setFilesData(data.filesData || [])
       }
-    } catch (error) {
-      console.error('Error loading file contents:', error)
-      setError('Failed to load file contents. Please try again.')
+    } catch (err) {
+      console.error('loadSelectedFileContents error:', err)
+      setError('Failed to load file contents.')
     }
   }
 
-  // ------------------------------------------
-  //            Meta Prompt Management
-  // ------------------------------------------
+  // ------------------------------
+  //  Meta Prompt Management
+  // ------------------------------
   async function fetchMetaPromptList() {
     try {
       const response = await fetch(`${BACKEND_URL}/api/metaprompts?action=list`)
@@ -247,8 +259,8 @@ export default function Home() {
       if (data.success) {
         setMetaPromptFiles(data.files || [])
       }
-    } catch (error) {
-      console.error('Error fetching meta prompts:', error)
+    } catch (err) {
+      console.error('fetchMetaPromptList error:', err)
     }
   }
 
@@ -262,8 +274,8 @@ export default function Home() {
       if (data.success) {
         setMetaPrompt(data.content || '')
       }
-    } catch (error) {
-      console.error('Error loading meta prompt:', error)
+    } catch (err) {
+      console.error('loadMetaPrompt error:', err)
       setError('Failed to load meta prompt file.')
     }
   }
@@ -283,15 +295,15 @@ export default function Home() {
         setNewMetaFileName('')
         fetchMetaPromptList()
       }
-    } catch (error) {
-      console.error('Error saving meta prompt:', error)
+    } catch (err) {
+      console.error('saveMetaPrompt error:', err)
       setError('Failed to save meta prompt.')
     }
   }
 
-  // ------------------------------------------
-  //       File Selection & Filter Logic
-  // ------------------------------------------
+  // ------------------------------
+  //  File selection & filters
+  // ------------------------------
   function handleSelectFiles(paths: string[]) {
     setSelectedFiles(paths)
   }
@@ -317,9 +329,6 @@ export default function Home() {
     setFilterExtensions([])
   }
 
-  /**
-   * Select all *visible* files/folders, except any in localExcludedPaths
-   */
   function handleSelectAll() {
     const allPaths = flattenTree(filteredTree)
     const allExcluded = new Set<string>()
@@ -330,7 +339,6 @@ export default function Home() {
         allExcluded.add(d)
       }
     }
-
     const finalPaths = allPaths.filter((p) => !allExcluded.has(p))
     setSelectedFiles(finalPaths)
   }
@@ -354,16 +362,14 @@ export default function Home() {
         return data.filesData || []
       }
       return []
-    } catch (error) {
-      console.error('Error fetching latest file data:', error)
+    } catch (err) {
+      console.error('fetchLatestFileData error:', err)
       setError('Failed to fetch latest file data.')
       return []
     }
   }
 
-  /**
-   * A memoized version of the file tree, filtered by extension + search term.
-   */
+  // Filtered tree
   const filteredTree = useMemo(() => {
     const afterExtFilter = filterExtensions.length
       ? applyExtensionFilter(fileTree, filterExtensions)
@@ -375,19 +381,21 @@ export default function Home() {
     return applySearchFilter(afterExtFilter, fileSearchTerm.toLowerCase())
   }, [fileTree, filterExtensions, fileSearchTerm])
 
-  // Local exclusions callback
   function handleLocalExclusionsChange(newList: string[]) {
     setLocalExcludedPaths(newList)
   }
 
-  // Get stats for the welcome screen
+  // Some summary stats
   const fileCount = selectedFiles.filter((f) => !f.endsWith('/')).length
   const totalTokens = filesData.reduce((acc, file) => acc + (file.tokenCount || 0), 0)
   const hasContent = metaPrompt.trim() || mainInstructions.trim() || fileCount > 0
 
-  // -------------------------------------------------------------------------
-  //                               RENDER
-  // -------------------------------------------------------------------------
+  // Dismiss the welcome screen permanently
+  function dismissWelcomeScreen() {
+    setShowWelcome(false)
+    localStorage.setItem('hideWelcomeScreen', 'true')
+  }
+
   return (
     <div className={darkMode ? 'dark' : ''}>
       <div className="min-h-screen bg-gray-50 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-950 transition-colors duration-200">
@@ -422,7 +430,7 @@ export default function Home() {
                 </h1>
                 <div className="flex items-center mt-0.5">
                   <Badge variant="outline" className="text-xs font-normal text-gray-500 dark:text-gray-400">
-                    v0.2
+                    v1.0
                   </Badge>
                   <span className="mx-2 text-gray-400 dark:text-gray-600">•</span>
                   <span className="text-xs text-gray-500 dark:text-gray-400">by Aytzey</span>
@@ -476,7 +484,6 @@ export default function Home() {
 
         {/* Main */}
         <main className="container mx-auto px-6 pt-6 pb-10">
-          {/* Global Error Alert */}
           {error && (
             <Alert
               variant="destructive"
@@ -579,13 +586,20 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div className="text-center">
+                <div className="flex flex-col md:flex-row gap-4 justify-center items-center">
                   <Button
                     className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-lg px-8 py-6 h-auto text-lg"
                     onClick={() => document.querySelector('input')?.focus()}
                   >
                     <Folder size={20} className="mr-2" />
                     Select a Project Folder to Begin
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={dismissWelcomeScreen}
+                    className="border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                  >
+                    Don’t Show Again
                   </Button>
                 </div>
               </CardContent>
@@ -750,11 +764,11 @@ export default function Home() {
                             bg-gray-50 dark:bg-gray-800 shadow-inner
                           "
                         >
-                        <SelectedFilesListView
-                          selectedFiles={selectedFiles}
-                          filterExtensions={filterExtensions}
-                          filesData={filesData} // <-- Make sure to add this!
-                        />
+                          <SelectedFilesListView
+                            selectedFiles={selectedFiles}
+                            filterExtensions={filterExtensions}
+                            filesData={filesData}
+                          />
                         </div>
                       </div>
                     </div>
@@ -1017,7 +1031,6 @@ export default function Home() {
             </div>
           )}
 
-          {/* Footer */}
           <footer className="mt-12 border-t border-gray-200 dark:border-gray-800 pt-6 pb-4 text-center text-gray-500 dark:text-gray-400 text-sm">
             <p>Code to Prompt Generator &copy; {new Date().getFullYear()} Aytzey</p>
             <p className="mt-1 text-xs">

@@ -1,6 +1,5 @@
-// views/InstructionsInputView.tsx
 import React from 'react'
-import { Save, RefreshCw, FileText, Download, Upload, Edit3 } from 'lucide-react'
+import { Save, RefreshCw, FileText, Download, Upload, Edit3, XCircle } from 'lucide-react'
 
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -27,11 +26,7 @@ interface InstructionsInputProps {
 
 const MAX_CHARS = 1000
 
-/**
- * UI for editing meta-prompt instructions and main instructions,
- * plus selecting or saving them to a .txt file on disk.
- */
-const InstructionsInputView: React.FC<InstructionsInputProps> = ({
+function InstructionsInputView({
   metaPrompt,
   setMetaPrompt,
   mainInstructions,
@@ -44,7 +39,7 @@ const InstructionsInputView: React.FC<InstructionsInputProps> = ({
   newMetaFileName,
   setNewMetaFileName,
   onRefreshMetaList
-}) => {
+}: InstructionsInputProps) {
   const metaCount = metaPrompt.length
   const mainCount = mainInstructions.length
 
@@ -61,6 +56,15 @@ const InstructionsInputView: React.FC<InstructionsInputProps> = ({
     if (count > MAX_CHARS) return "text-rose-500 dark:text-rose-400"
     if (count > MAX_CHARS * 0.9) return "text-amber-500 dark:text-amber-400"
     return "text-gray-500 dark:text-gray-400"
+  }
+
+  // NEW: Helper to clear meta or main instructions
+  function clearMetaPrompt() {
+    setMetaPrompt('')
+  }
+
+  function clearMainInstructions() {
+    setMainInstructions('')
   }
 
   return (
@@ -186,6 +190,21 @@ const InstructionsInputView: React.FC<InstructionsInputProps> = ({
           value={metaPercentage} 
           className={`h-1 ${getProgressColor(metaCount)}`} 
         />
+
+        {/* NEW: Clear meta prompt button */}
+        {metaPrompt && (
+          <div className="flex justify-end mt-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-200"
+              onClick={clearMetaPrompt}
+            >
+              <XCircle className="mr-1 h-4 w-4" />
+              Clear Prompt
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Main Instructions */}
@@ -208,6 +227,21 @@ const InstructionsInputView: React.FC<InstructionsInputProps> = ({
           value={mainPercentage} 
           className={`h-1 ${getProgressColor(mainCount)}`} 
         />
+
+        {/* NEW: Clear main instructions button */}
+        {mainInstructions && (
+          <div className="flex justify-end mt-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-200"
+              onClick={clearMainInstructions}
+            >
+              <XCircle className="mr-1 h-4 w-4" />
+              Clear Instructions
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   )
