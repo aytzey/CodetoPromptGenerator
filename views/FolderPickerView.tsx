@@ -1,6 +1,15 @@
 // views/FolderPickerView.tsx
 import React, { useState, useEffect } from 'react'
+import { Folder, FolderSearch, History, ArrowRight, RefreshCw } from 'lucide-react'
 import FolderBrowserView from './FolderBrowserView'
+
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Badge } from '@/components/ui/badge'
 
 interface FolderPickerProps {
   currentPath: string
@@ -49,8 +58,8 @@ const FolderPickerView: React.FC<FolderPickerProps> = ({
   const updateRecentFolders = (path: string) => {
     setRecentFolders(prev => {
       const newList = [path, ...prev.filter(p => p !== path)]
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newList.slice(0, 6))) // keep up to 6
-      return newList.slice(0, 6)
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newList.slice(0, 3))) // keep up to 3
+      return newList.slice(0, 3)
     })
   }
 
@@ -64,88 +73,100 @@ const FolderPickerView: React.FC<FolderPickerProps> = ({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {/* Manual entry */}
       <form
         onSubmit={handleManualSubmit}
         className="flex flex-col md:flex-row items-stretch md:items-center gap-2"
       >
         <div className="flex-1 relative">
-          <input
+          <Folder className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+          <Input
             type="text"
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
             placeholder="Enter or paste a folder path"
-            className={`
-              w-full rounded px-3 py-2 text-sm
-              bg-gray-50 dark:bg-[#141527]
-              border border-gray-300 dark:border-[#3f4257]
-              text-gray-800 dark:text-gray-100
-              focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-[#7b93fd]
-            `}
+            className="w-full pl-9 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           />
         </div>
-        <button
+        <Button
           type="submit"
-          disabled={isLoading}
-          className={`
-            px-4 py-2 rounded text-sm font-medium
-            bg-green-400 hover:bg-green-500 text-gray-800
-            dark:bg-[#50fa7b] dark:hover:bg-[#7b93fd] dark:text-[#141527]
-            disabled:opacity-50 disabled:cursor-not-allowed
-          `}
+          disabled={isLoading || !inputValue.trim()}
+          className="bg-indigo-500 hover:bg-indigo-600 text-white transition-colors"
         >
+          <ArrowRight className="mr-2 h-4 w-4" />
           Set
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           onClick={openBrowser}
           disabled={isLoading}
-          className={`
-            px-4 py-2 rounded text-sm font-medium
-            bg-purple-400 hover:bg-purple-500 text-white
-            dark:bg-[#bd93f9] dark:hover:bg-[#ff79c6] dark:text-[#141527]
-            disabled:opacity-50 disabled:cursor-not-allowed
-          `}
+          variant="outline"
+          className="border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950 transition-colors"
         >
+          {isLoading ? (
+            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <FolderSearch className="mr-2 h-4 w-4" />
+          )}
           {isLoading ? 'Loading...' : 'Browse...'}
-        </button>
+        </Button>
       </form>
 
-      {/* Recent Folders */}
-      {recentFolders.length > 0 && (
-        <div
-          className={`
-            p-3 rounded space-y-2
-            bg-gray-50 dark:bg-[#141527]
-            border border-gray-300 dark:border-[#2A2C42]
-          `}
-        >
-          <h4 className="text-sm font-medium text-gray-800 dark:text-gray-300">Recent Folders:</h4>
-          <ul className="space-y-1 text-xs">
-            {recentFolders.map((pathStr, idx) => (
-              <li key={`${pathStr}-${idx}`}>
-                <button
-                  type="button"
-                  onClick={() => selectNewPath(pathStr)}
-                  className="text-blue-600 dark:text-blue-400 hover:underline"
-                  title={pathStr}
-                >
-                  {pathStr}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <div className="grid grid-cols-3 gap-4">
+        {/* Recent Folders */}
+        {recentFolders.length > 0 && (
+          <Card className="border-dashed border-gray-200 dark:border-gray-800 col-span-1">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center">
+                  <History className="mr-2 h-4 w-4 text-indigo-500 dark:text-indigo-400" />
+                  <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Recent</h4>
+                </div>
+                <Badge variant="outline" className="text-xs font-normal text-gray-500 dark:text-gray-400">
+                  {recentFolders.length}
+                </Badge>
+              </div>
+              <Separator className="my-2 bg-gray-200 dark:bg-gray-700" />
+              <ScrollArea className="h-[90px] w-full">
+                <ul className="space-y-1">
+                  {recentFolders.map((pathStr, idx) => (
+                    <li key={`${pathStr}-${idx}`} className="group">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              className="w-full justify-start px-2 text-xs h-7 font-normal truncate hover:bg-gray-100 dark:hover:bg-gray-800"
+                              onClick={() => selectNewPath(pathStr)}
+                            >
+                              <Folder className="h-3.5 w-3.5 mr-2 text-gray-400 group-hover:text-indigo-500 dark:group-hover:text-indigo-400" />
+                              <span className="truncate">{pathStr}</span>
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="bg-gray-800 text-white dark:bg-gray-700">
+                            <p className="font-mono text-xs">{pathStr}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </li>
+                  ))}
+                </ul>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        )}
 
-      {/* Current Path Info */}
-      {currentPath && (
-        <div className="text-xs text-gray-600 dark:text-gray-400 truncate">
-          <span className="font-semibold text-gray-700 dark:text-gray-300">Current Path: </span>
-          {currentPath}
-        </div>
-      )}
+        {/* Current Path Info */}
+        {currentPath && (
+          <div className="col-span-3 md:col-span-2 flex items-center bg-gray-50 dark:bg-gray-800 px-3 py-2 rounded-md border border-gray-200 dark:border-gray-700">
+            <span className="font-medium text-xs text-gray-600 dark:text-gray-300 mr-2">Current Path:</span>
+            <div className="text-xs text-gray-500 dark:text-gray-400 truncate font-mono">
+              {currentPath}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* FolderBrowser Modal */}
       {showBrowser && (

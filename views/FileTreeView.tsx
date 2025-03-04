@@ -1,5 +1,12 @@
 // views/FileTreeView.tsx
 import React, { useState } from 'react'
+import { ChevronRight, ChevronDown, File, Folder, MinusSquare, PlusSquare } from 'lucide-react'
+
+import { Checkbox } from "@/components/ui/checkbox"
+import { Button } from "@/components/ui/button"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Badge } from "@/components/ui/badge"
 
 /**
  * A node in the file tree: can be file or directory. 
@@ -68,7 +75,6 @@ const FileTreeView: React.FC<FileTreeProps> = ({ tree, selectedFiles, onSelectFi
    * Expand all directories in the current tree.
    */
   const expandAll = () => {
-    const allDirs = getAllDirectories(tree)
     // No collapsed directories
     setCollapsedDirs([])
   }
@@ -81,64 +87,108 @@ const FileTreeView: React.FC<FileTreeProps> = ({ tree, selectedFiles, onSelectFi
     setCollapsedDirs(allDirs)
   }
 
+  // Count total files and directories
+  const { fileCount, dirCount } = countFilesAndDirs(tree)
+
   /**
    * Render nodes recursively.
    */
   const renderNodes = (nodes: FileNode[], depth = 0) => {
     return (
-      <ul className="list-none">
+      <ul className="space-y-1 list-none">
         {nodes.map(node => {
           const allDescendants = getAllDescendantPaths(node)
           const isSelected = allDescendants.every(path => selectedFiles.includes(path))
+          const isPartiallySelected = !isSelected && allDescendants.some(path => selectedFiles.includes(path))
           const isCollapsed =
             node.type === 'directory' && collapsedDirs.includes(node.absolutePath)
+
+          // Count children if it's a directory
+          let childCount = 0
+          if (node.type === 'directory' && node.children) {
+            childCount = node.children.length
+          }
 
           return (
             <li key={node.absolutePath} className="mb-1">
               <div
-                className="flex items-center hover:bg-[#2c2f3f] px-1 py-0.5 rounded cursor-pointer"
+                className={`
+                  flex items-center px-1 py-1 rounded transition-colors
+                  ${isSelected ? 'bg-indigo-50 dark:bg-indigo-950/30' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}
+                `}
                 style={{ paddingLeft: `${depth * 1.2}rem` }}
               >
                 {node.type === 'directory' ? (
-                  <span
-                    className="mr-2 text-gray-300 hover:text-gray-100"
+                  <button
+                    className="mr-1 p-0.5 text-gray-400 hover:text-indigo-500 dark:hover:text-indigo-400 rounded-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     onClick={e => {
                       e.stopPropagation()
                       handleCollapseToggle(node)
                     }}
                   >
-                    {isCollapsed ? '▶' : '▼'}
-                  </span>
+                    {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+                  </button>
                 ) : (
-                  <span className="mr-2 inline-block w-3" />
+                  <span className="mr-2 inline-block w-6" />
                 )}
 
-                <label
-                  className="flex items-center gap-2"
+                <div
+                  className="flex items-center gap-2 flex-1 cursor-pointer"
                   onClick={e => {
                     e.stopPropagation()
                     handleToggleSelection(node)
                   }}
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox 
+                    id={`checkbox-${node.absolutePath}`}
                     checked={isSelected}
-                    readOnly
-                    className="accent-[#50fa7b]"
+                    data-state={isPartiallySelected ? "indeterminate" : isSelected ? "checked" : "unchecked"}
+                    onCheckedChange={() => handleToggleSelection(node)}
+                    className={`
+                      data-[state=checked]:bg-indigo-500 
+                      data-[state=checked]:text-white 
+                      data-[state=indeterminate]:bg-indigo-300
+                      data-[state=indeterminate]:text-white
+                      dark:data-[state=indeterminate]:bg-indigo-700
+                    `}
                   />
                   <span
-                    className={
-                      node.type === 'directory'
-                        ? 'text-yellow-400 font-semibold'
-                        : 'text-green-400'
-                    }
+                    className={`
+                      flex items-center gap-1.5 transition-colors
+                      ${isSelected ? 'font-medium' : ''}
+                      ${node.type === 'directory' 
+                        ? 'text-amber-600 dark:text-amber-500' 
+                        : 'text-teal-600 dark:text-teal-500'}
+                    `}
                   >
-                    {node.type === 'directory' ? '📁' : '📄'} {node.name}
+                    {node.type === 'directory' ? (
+                      <Folder size={16} className="text-amber-500 dark:text-amber-400 opacity-80" />
+                    ) : (
+                      <File size={16} className="text-teal-500 dark:text-teal-400 opacity-80" />
+                    )}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="truncate max-w-xs text-gray-900 dark:text-gray-200">
+                            {node.name}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="bg-gray-800 text-white dark:bg-gray-700 max-w-sm">
+                          <p className="font-mono text-xs">{node.name}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    
+                    {node.type === 'directory' && childCount > 0 && (
+                      <Badge variant="outline" className="ml-1 text-xs py-0 px-1.5 h-4 font-normal text-gray-500 dark:text-gray-400 bg-transparent">
+                        {childCount}
+                      </Badge>
+                    )}
                   </span>
-                </label>
+                </div>
               </div>
               {node.type === 'directory' && node.children && !isCollapsed && (
-                <div className="ml-3 border-l border-gray-700">
+                <div className="ml-3 border-l border-gray-200 dark:border-gray-700">
                   {renderNodes(node.children, depth + 1)}
                 </div>
               )}
@@ -150,24 +200,50 @@ const FileTreeView: React.FC<FileTreeProps> = ({ tree, selectedFiles, onSelectFi
   }
 
   return (
-    <div className="text-sm text-gray-100 space-y-3">
+    <div className="text-sm space-y-3">
       {/* Expand/Collapse controls */}
-      <div className="flex items-center gap-2 mb-2">
-        <button
-          onClick={expandAll}
-          className="px-2 py-1 bg-[#50fa7b] hover:bg-[#7b93fd] rounded text-xs text-[#12131C]"
-        >
-          Expand All
-        </button>
-        <button
-          onClick={collapseAll}
-          className="px-2 py-1 bg-[#bd93f9] hover:bg-[#ff79c6] rounded text-xs text-[#12131C]"
-        >
-          Collapse All
-        </button>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={expandAll}
+            variant="outline"
+            size="sm"
+            className="text-xs h-8 border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950"
+          >
+            <PlusSquare className="mr-1 h-3.5 w-3.5" />
+            Expand All
+          </Button>
+          <Button
+            onClick={collapseAll}
+            variant="outline"
+            size="sm"
+            className="text-xs h-8 border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950"
+          >
+            <MinusSquare className="mr-1 h-3.5 w-3.5" />
+            Collapse All
+          </Button>
+        </div>
+        
+        <div className="flex gap-2">
+          <Badge variant="outline" className="bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 border-teal-200 dark:border-teal-800">
+            {fileCount} files
+          </Badge>
+          <Badge variant="outline" className="bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800">
+            {dirCount} folders
+          </Badge>
+        </div>
       </div>
 
-      {renderNodes(tree)}
+      <ScrollArea className="h-[350px] pr-4">
+        {tree.length > 0 ? (
+          renderNodes(tree)
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full py-8 text-gray-400">
+            <Folder size={40} className="mb-2 opacity-50" />
+            <p>No files to display</p>
+          </div>
+        )}
+      </ScrollArea>
     </div>
   )
 }
@@ -210,4 +286,28 @@ function getAllDescendantPaths(node: FileNode): string[] {
     }
   }
   return paths
+}
+
+/**
+ * Count total files and directories in the tree
+ */
+function countFilesAndDirs(nodes: FileNode[]): { fileCount: number, dirCount: number } {
+  let fileCount = 0
+  let dirCount = 0
+  
+  function count(nodeList: FileNode[]) {
+    for (const node of nodeList) {
+      if (node.type === 'file') {
+        fileCount++
+      } else {
+        dirCount++
+        if (node.children) {
+          count(node.children)
+        }
+      }
+    }
+  }
+  
+  count(nodes)
+  return { fileCount, dirCount }
 }
