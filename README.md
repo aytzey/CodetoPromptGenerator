@@ -43,6 +43,7 @@ A tool for quickly assembling Large Language Model (LLM) prompts from a local fi
   - [Next.js](https://nextjs.org/) & [React](https://reactjs.org/)  
   - [TypeScript](https://www.typescriptlang.org/)  
   - [Tailwind CSS](https://tailwindcss.com/)  
+  - [shadcn/ui Components](https://ui.shadcn.com)
 
 - **Backend**  
   - [Python 3.7+](https://www.python.org/)  
