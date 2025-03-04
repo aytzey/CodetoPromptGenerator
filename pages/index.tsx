@@ -407,6 +407,7 @@ export default function Home() {
                         Project Files
                       </h3>
                       <div className="flex items-center space-x-2">
+                        {/* SEARCH FIELD */}
                         <div className="relative">
                           <Search
                             size={16}
@@ -426,6 +427,16 @@ export default function Home() {
                             `}
                           />
                         </div>
+
+                        {/* REFRESH BUTTON: triggers re-fetch of file tree */}
+                        <button
+                          onClick={() => loadProjectTree()}
+                          disabled={isLoadingTree || !projectPath}
+                          className="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 rounded text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isLoadingTree ? 'Refreshing...' : 'Refresh'}
+                        </button>
+
                         <button
                           onClick={handleSelectAll}
                           className="px-2 py-1 text-xs bg-green-600 hover:bg-green-700 rounded text-white"
@@ -449,7 +460,9 @@ export default function Home() {
                       `}
                     >
                       {fileTree.length === 0 && !isLoadingTree && projectPath ? (
-                        <p className="text-gray-400">No files found in this directory.</p>
+                        <p className="text-gray-400">
+                          No files found in this directory.
+                        </p>
                       ) : isLoadingTree ? (
                         <p className="text-gray-400 animate-pulse">Loading tree...</p>
                       ) : (

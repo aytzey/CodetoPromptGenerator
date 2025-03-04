@@ -2,3 +2,4 @@
 node_modules/*
 *.pyc
 python_backend/venv/
+sample_project/meta_prompts/
