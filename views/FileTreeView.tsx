@@ -1,7 +1,10 @@
 // views/FileTreeView.tsx
+import React, { useState } from 'react'
 
-import React, { useState, useMemo, useCallback } from 'react'
-
+/**
+ * A node in the file tree: can be file or directory. 
+ * Typically provided by the parent after server-side scanning.
+ */
 export interface FileNode {
   name: string
   relativePath: string
@@ -11,45 +14,25 @@ export interface FileNode {
 }
 
 interface FileTreeProps {
+  /** Already-filtered file tree from the parent. */
   tree: FileNode[]
+  /** The parent's array of selected file paths. */
+  selectedFiles: string[]
+  /** Callback to update the parent's selectedFiles list. */
   onSelectFiles: (paths: string[]) => void
-  filterExtensions?: string[]
 }
 
-const FileTreeView: React.FC<FileTreeProps> = ({
-  tree,
-  onSelectFiles,
-  filterExtensions = []
-}) => {
-  const [selectedPaths, setSelectedPaths] = useState<string[]>([])
+/**
+ * A collapsible file tree with checkboxes. Searching & extension filtering happen upstream;
+ * we only handle collapsible directories and toggling selection here.
+ */
+const FileTreeView: React.FC<FileTreeProps> = ({ tree, selectedFiles, onSelectFiles }) => {
+  // Tracks which directories are collapsed
   const [collapsedDirs, setCollapsedDirs] = useState<string[]>([])
-  const [searchTerm, setSearchTerm] = useState('')
 
-  const filteredTree = useMemo(() => {
-    const baseFiltered = filterTree(tree, filterExtensions)
-    if (!searchTerm.trim()) return baseFiltered
-
-    // If searching, only keep nodes that match the name or have descendants that match
-    return filterBySearch(baseFiltered, searchTerm.toLowerCase())
-  }, [tree, filterExtensions, searchTerm])
-
-  const handleToggleSelection = (node: FileNode) => {
-    const newSelected = new Set(selectedPaths)
-    const allPaths = getAllDescendantPaths(node)
-
-    // Check if all are selected
-    const isSelected = allPaths.every(path => newSelected.has(path))
-    if (isSelected) {
-      allPaths.forEach(p => newSelected.delete(p))
-    } else {
-      allPaths.forEach(p => newSelected.add(p))
-    }
-
-    const updatedPaths = Array.from(newSelected)
-    setSelectedPaths(updatedPaths)
-    onSelectFiles(updatedPaths)
-  }
-
+  /**
+   * Expand or collapse a directory's children.
+   */
   const handleCollapseToggle = (node: FileNode) => {
     if (node.type !== 'directory') return
     const dirKey = node.absolutePath
@@ -58,24 +41,55 @@ const FileTreeView: React.FC<FileTreeProps> = ({
     )
   }
 
-  // Expand All or Collapse All
-  const expandAll = useCallback(() => {
-    // find all directories
-    const allDirs = getAllDirectories(filteredTree)
-    setCollapsedDirs([]) // no collapsed
-  }, [filteredTree])
+  /**
+   * When the user clicks the checkbox for a node, we either:
+   * - Add all descendant files to the selection, or
+   * - Remove them if they're already all selected.
+   */
+  const handleToggleSelection = (node: FileNode) => {
+    const allPaths = getAllDescendantPaths(node)
+    const newSet = new Set(selectedFiles)
 
-  const collapseAll = useCallback(() => {
-    const allDirs = getAllDirectories(filteredTree)
-    setCollapsedDirs(allDirs) // collapse every directory
-  }, [filteredTree])
+    // Are all of this node's descendant paths *already* in selectedFiles?
+    const isFullySelected = allPaths.every(p => newSet.has(p))
 
+    if (isFullySelected) {
+      // Unselect all paths under this node
+      allPaths.forEach(p => newSet.delete(p))
+    } else {
+      // Select all
+      allPaths.forEach(p => newSet.add(p))
+    }
+
+    onSelectFiles(Array.from(newSet))
+  }
+
+  /**
+   * Expand all directories in the current tree.
+   */
+  const expandAll = () => {
+    const allDirs = getAllDirectories(tree)
+    // No collapsed directories
+    setCollapsedDirs([])
+  }
+
+  /**
+   * Collapse all directories in the current tree.
+   */
+  const collapseAll = () => {
+    const allDirs = getAllDirectories(tree)
+    setCollapsedDirs(allDirs)
+  }
+
+  /**
+   * Render nodes recursively.
+   */
   const renderNodes = (nodes: FileNode[], depth = 0) => {
     return (
       <ul className="list-none">
         {nodes.map(node => {
           const allDescendants = getAllDescendantPaths(node)
-          const isSelected = allDescendants.every(path => selectedPaths.includes(path))
+          const isSelected = allDescendants.every(path => selectedFiles.includes(path))
           const isCollapsed =
             node.type === 'directory' && collapsedDirs.includes(node.absolutePath)
 
@@ -106,7 +120,12 @@ const FileTreeView: React.FC<FileTreeProps> = ({
                     handleToggleSelection(node)
                   }}
                 >
-                  <input type="checkbox" checked={isSelected} readOnly className="accent-[#50fa7b]" />
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    readOnly
+                    className="accent-[#50fa7b]"
+                  />
                   <span
                     className={
                       node.type === 'directory'
@@ -132,15 +151,8 @@ const FileTreeView: React.FC<FileTreeProps> = ({
 
   return (
     <div className="text-sm text-gray-100 space-y-3">
-      {/* Search + Expand/Collapse Controls */}
+      {/* Expand/Collapse controls */}
       <div className="flex items-center gap-2 mb-2">
-        <input
-          type="text"
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-          placeholder="Search files..."
-          className="flex-1 bg-[#12131C] text-gray-100 border border-[#3f4257] rounded px-2 py-1 focus:outline-none focus:border-[#7b93fd]"
-        />
         <button
           onClick={expandAll}
           className="px-2 py-1 bg-[#50fa7b] hover:bg-[#7b93fd] rounded text-xs text-[#12131C]"
@@ -155,8 +167,7 @@ const FileTreeView: React.FC<FileTreeProps> = ({
         </button>
       </div>
 
-      {/* Render Tree */}
-      {renderNodes(filteredTree)}
+      {renderNodes(tree)}
     </div>
   )
 }
@@ -166,58 +177,10 @@ export default React.memo(FileTreeView)
 /** ----------------
  * Utility Functions
  * ---------------- */
-function filterTree(nodes: FileNode[], exts: string[]): FileNode[] {
-  if (exts.length === 0) return nodes
-  const result: FileNode[] = []
-  for (const node of nodes) {
-    if (node.type === 'directory') {
-      const filteredChildren = node.children ? filterTree(node.children, exts) : []
-      if (filteredChildren.length > 0) {
-        result.push({ ...node, children: filteredChildren })
-      }
-    } else {
-      if (matchesExtension(node.name, exts)) {
-        result.push(node)
-      }
-    }
-  }
-  return result
-}
 
-function matchesExtension(name: string, exts: string[]): boolean {
-  const lower = name.toLowerCase()
-  return exts.some(ext => lower.endsWith(ext.toLowerCase()))
-}
-
-function filterBySearch(nodes: FileNode[], term: string): FileNode[] {
-  const results: FileNode[] = []
-  for (const node of nodes) {
-    const match = node.name.toLowerCase().includes(term)
-    if (node.type === 'directory' && node.children) {
-      const filteredChildren = filterBySearch(node.children, term)
-      if (match || filteredChildren.length > 0) {
-        results.push({ ...node, children: filteredChildren })
-      }
-    } else if (match) {
-      results.push({ ...node })
-    }
-  }
-  return results
-}
-
-function getAllDescendantPaths(node: FileNode): string[] {
-  const paths: string[] = []
-  const stack: FileNode[] = [node]
-  while (stack.length > 0) {
-    const current = stack.pop()!
-    paths.push(current.relativePath)
-    if (current.type === 'directory' && current.children) {
-      stack.push(...current.children)
-    }
-  }
-  return paths
-}
-
+/**
+ * Collects the absolutePath of all directories in the subtree.
+ */
 function getAllDirectories(nodes: FileNode[]): string[] {
   const dirs: string[] = []
   for (const node of nodes) {
@@ -229,4 +192,22 @@ function getAllDirectories(nodes: FileNode[]): string[] {
     }
   }
   return dirs
+}
+
+/**
+ * Return a list of all descendant paths under the given node (including the node itself).
+ */
+function getAllDescendantPaths(node: FileNode): string[] {
+  const stack: FileNode[] = [node]
+  const paths: string[] = []
+
+  while (stack.length > 0) {
+    const current = stack.pop()!
+    paths.push(current.relativePath)
+
+    if (current.type === 'directory' && current.children) {
+      stack.push(...current.children)
+    }
+  }
+  return paths
 }

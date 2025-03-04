@@ -1,5 +1,4 @@
 // views/ExclusionsManagerView.tsx
-
 import React, { useState, useEffect } from 'react'
 
 interface ExclusionsManagerProps {
@@ -7,6 +6,10 @@ interface ExclusionsManagerProps {
   onUpdateExclusions: (paths: string[]) => Promise<void>
 }
 
+/**
+ * A simple UI to view or edit excluded paths (stored in ignoreDirs.txt).
+ * Provides an "Edit" mode to add/remove items.
+ */
 const ExclusionsManagerView: React.FC<ExclusionsManagerProps> = ({
   excludedPaths,
   onUpdateExclusions
@@ -16,21 +19,22 @@ const ExclusionsManagerView: React.FC<ExclusionsManagerProps> = ({
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
-  // Initialize with props
+  // Initialize local state from the parent prop
   useEffect(() => {
     setLocalExclusions(excludedPaths)
   }, [excludedPaths])
 
   const handleAdd = () => {
     if (!newExclusion.trim()) return
+    const trimmedExclusion = newExclusion.trim()
 
     // Don't add duplicates
-    if (localExclusions.includes(newExclusion.trim())) {
+    if (localExclusions.includes(trimmedExclusion)) {
       setNewExclusion('')
       return
     }
 
-    setLocalExclusions(prev => [...prev, newExclusion.trim()])
+    setLocalExclusions(prev => [...prev, trimmedExclusion])
     setNewExclusion('')
   }
 
@@ -54,16 +58,14 @@ const ExclusionsManagerView: React.FC<ExclusionsManagerProps> = ({
   return (
     <div className="bg-[#1e1f29] p-3 rounded border border-[#3f4257] space-y-2">
       <div className="flex items-center justify-between">
-        <label className="text-sm text-gray-300 font-medium">
-          Excluded Paths:
-        </label>
-        
+        <label className="text-sm text-gray-300 font-medium">Excluded Paths:</label>
+
         <button
-          onClick={() => isEditing ? handleSave() : setIsEditing(true)}
+          onClick={() => (isEditing ? handleSave() : setIsEditing(true))}
           disabled={isSaving}
           className={`px-3 py-1 rounded text-sm font-medium text-[#1e1f29] transition-colors ${
-            isEditing 
-              ? 'bg-[#50fa7b] hover:bg-[#7b93fd]' 
+            isEditing
+              ? 'bg-[#50fa7b] hover:bg-[#7b93fd]'
               : 'bg-[#7b93fd] hover:bg-[#50fa7b]'
           } disabled:opacity-50 disabled:cursor-not-allowed`}
         >
@@ -77,7 +79,7 @@ const ExclusionsManagerView: React.FC<ExclusionsManagerProps> = ({
             <input
               type="text"
               value={newExclusion}
-              onChange={(e) => setNewExclusion(e.target.value)}
+              onChange={e => setNewExclusion(e.target.value)}
               placeholder="e.g. node_modules, .git, etc."
               className="flex-1 bg-[#12131C] text-gray-100 border border-[#3f4257] rounded px-2 py-1 text-sm focus:outline-none focus:border-[#7b93fd]"
             />
@@ -91,11 +93,16 @@ const ExclusionsManagerView: React.FC<ExclusionsManagerProps> = ({
 
           <div className="max-h-32 overflow-y-auto pr-1 scrollbar-thin">
             {localExclusions.length === 0 ? (
-              <p className="text-gray-400 text-xs italic">No exclusions defined. Common exclusions: node_modules, .git, .next, dist</p>
+              <p className="text-gray-400 text-xs italic">
+                No exclusions defined. Common ones: node_modules, .git, .next, dist
+              </p>
             ) : (
               <ul className="space-y-1">
-                {localExclusions.map((exclusion) => (
-                  <li key={exclusion} className="flex justify-between items-center bg-[#12131C] rounded p-1 px-2 text-sm">
+                {localExclusions.map(exclusion => (
+                  <li
+                    key={exclusion}
+                    className="flex justify-between items-center bg-[#12131C] rounded p-1 px-2 text-sm"
+                  >
                     <span className="text-gray-200">{exclusion}</span>
                     <button
                       onClick={() => handleRemove(exclusion)}
@@ -116,8 +123,11 @@ const ExclusionsManagerView: React.FC<ExclusionsManagerProps> = ({
             <p className="text-gray-400 text-xs italic">No exclusions defined</p>
           ) : (
             <ul className="space-y-1">
-              {localExclusions.map((exclusion) => (
-                <li key={exclusion} className="bg-[#12131C] rounded p-1 px-2 text-sm text-gray-200">
+              {localExclusions.map(exclusion => (
+                <li
+                  key={exclusion}
+                  className="bg-[#12131C] rounded p-1 px-2 text-sm text-gray-200"
+                >
                   {exclusion}
                 </li>
               ))}

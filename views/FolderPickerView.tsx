@@ -1,5 +1,4 @@
 // views/FolderPickerView.tsx
-
 import React, { useState, useEffect } from 'react'
 import FolderBrowserView from './FolderBrowserView'
 
@@ -11,6 +10,10 @@ interface FolderPickerProps {
 
 const LOCAL_STORAGE_KEY = 'recentFolders'
 
+/**
+ * Allows users to type in a folder path or open a "folder browser" (mocked).
+ * Also manages and shows recent folder selections.
+ */
 const FolderPickerView: React.FC<FolderPickerProps> = ({
   currentPath,
   onPathSelected,
@@ -73,16 +76,24 @@ const FolderPickerView: React.FC<FolderPickerProps> = ({
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
             placeholder="Enter or paste a folder path"
-            className="w-full bg-[#141527] text-gray-100 border border-[#3f4257] 
-                       rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 
-                       focus:ring-[#7b93fd] transition-colors"
+            className={`
+              w-full rounded px-3 py-2 text-sm
+              bg-gray-50 dark:bg-[#141527]
+              border border-gray-300 dark:border-[#3f4257]
+              text-gray-800 dark:text-gray-100
+              focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-[#7b93fd]
+            `}
           />
         </div>
         <button
           type="submit"
           disabled={isLoading}
-          className="px-4 py-2 bg-[#50fa7b] hover:bg-[#7b93fd] rounded text-[#141527] 
-                     text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          className={`
+            px-4 py-2 rounded text-sm font-medium
+            bg-green-400 hover:bg-green-500 text-gray-800
+            dark:bg-[#50fa7b] dark:hover:bg-[#7b93fd] dark:text-[#141527]
+            disabled:opacity-50 disabled:cursor-not-allowed
+          `}
         >
           Set
         </button>
@@ -90,8 +101,12 @@ const FolderPickerView: React.FC<FolderPickerProps> = ({
           type="button"
           onClick={openBrowser}
           disabled={isLoading}
-          className="px-4 py-2 bg-[#bd93f9] hover:bg-[#ff79c6] rounded text-[#141527] 
-                     text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          className={`
+            px-4 py-2 rounded text-sm font-medium
+            bg-purple-400 hover:bg-purple-500 text-white
+            dark:bg-[#bd93f9] dark:hover:bg-[#ff79c6] dark:text-[#141527]
+            disabled:opacity-50 disabled:cursor-not-allowed
+          `}
         >
           {isLoading ? 'Loading...' : 'Browse...'}
         </button>
@@ -99,15 +114,21 @@ const FolderPickerView: React.FC<FolderPickerProps> = ({
 
       {/* Recent Folders */}
       {recentFolders.length > 0 && (
-        <div className="bg-[#141527] p-3 rounded border border-[#2A2C42] space-y-2">
-          <h4 className="text-sm text-gray-300 font-medium">Recent Folders:</h4>
+        <div
+          className={`
+            p-3 rounded space-y-2
+            bg-gray-50 dark:bg-[#141527]
+            border border-gray-300 dark:border-[#2A2C42]
+          `}
+        >
+          <h4 className="text-sm font-medium text-gray-800 dark:text-gray-300">Recent Folders:</h4>
           <ul className="space-y-1 text-xs">
             {recentFolders.map((pathStr, idx) => (
               <li key={`${pathStr}-${idx}`}>
                 <button
                   type="button"
                   onClick={() => selectNewPath(pathStr)}
-                  className="text-blue-400 hover:text-blue-300 underline"
+                  className="text-blue-600 dark:text-blue-400 hover:underline"
                   title={pathStr}
                 >
                   {pathStr}
@@ -120,8 +141,8 @@ const FolderPickerView: React.FC<FolderPickerProps> = ({
 
       {/* Current Path Info */}
       {currentPath && (
-        <div className="text-xs text-gray-400 truncate">
-          <span className="font-semibold text-gray-300">Current Path: </span>
+        <div className="text-xs text-gray-600 dark:text-gray-400 truncate">
+          <span className="font-semibold text-gray-700 dark:text-gray-300">Current Path: </span>
           {currentPath}
         </div>
       )}

@@ -1,194 +1,187 @@
-import React, { useEffect, useState, useRef } from 'react';
-import {
-  ChevronLeft,
-  Folder,
-  HardDrive,
-  X,
-  ChevronRight,
-  Search,
-  Home,
-  Clock
-} from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react'
+import { ChevronLeft, Folder, HardDrive, X, ChevronRight, Search, Home, Clock } from 'lucide-react'
 
 interface FolderItem {
-  name: string;
-  path: string;
+  name: string
+  path: string
 }
 
 interface FolderBrowserProps {
   /** Whether the modal is open */
-  isOpen: boolean;
+  isOpen: boolean
   /** Called when the user closes the modal (e.g., clicking the overlay or pressing Cancel) */
-  onClose: () => void;
+  onClose: () => void
   /** Called when the user selects a folder */
-  onSelect: (path: string) => void;
+  onSelect: (path: string) => void
   /** The path initially displayed; if none, the user starts at e.g. drives. */
-  currentPath: string;
+  currentPath: string
 }
 
-const BACKEND_URL = 'http://localhost:5000';
+const BACKEND_URL = 'http://localhost:5000'
 
+/**
+ * A modal "folder browser" that tries to list drives and subfolders from a (mock) Python API.
+ * This code is for demonstration and not a secure production solution.
+ */
 const FolderBrowserView: React.FC<FolderBrowserProps> = ({
   isOpen,
   onClose,
   onSelect,
   currentPath
 }) => {
-  const [drives, setDrives] = useState<FolderItem[]>([]);
-  const [folders, setFolders] = useState<FolderItem[]>([]);
-  const [path, setPath] = useState<string>(currentPath || '');
-  const [parentPath, setParentPath] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [selectedDrive, setSelectedDrive] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [recentFolders, setRecentFolders] = useState<FolderItem[]>([]);
-  
-  // We'll attach a ref to the outer modal container to run exit animations
-  const modalRef = useRef<HTMLDivElement>(null);
-  // A ref to the scrollable subfolder area so we can reset scroll on navigation
-  const folderGridRef = useRef<HTMLDivElement>(null);
+  const [drives, setDrives] = useState<FolderItem[]>([])
+  const [folders, setFolders] = useState<FolderItem[]>([])
+  const [path, setPath] = useState<string>(currentPath || '')
+  const [parentPath, setParentPath] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState<boolean>(false)
+  const [selectedDrive, setSelectedDrive] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState<string>('')
+  const [recentFolders, setRecentFolders] = useState<FolderItem[]>([])
 
-  // Load drives and current folder on open
+  const modalRef = useRef<HTMLDivElement>(null)
+  const folderGridRef = useRef<HTMLDivElement>(null)
+
+  // On open, load drives + the current folder contents (if any)
   useEffect(() => {
     if (isOpen) {
-      loadDrives();
-      loadRecentFolders();
+      loadDrives()
+      loadRecentFolders()
       if (currentPath) {
-        browseFolder(currentPath);
+        browseFolder(currentPath)
       }
     }
-  }, [isOpen, currentPath]);
+  }, [isOpen, currentPath])
 
   // Close on ESC
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && isOpen) {
-        handleClose();
+        handleClose()
       }
-    };
-    window.addEventListener('keydown', handleEsc);
+    }
+    window.addEventListener('keydown', handleEsc)
     return () => {
-      window.removeEventListener('keydown', handleEsc);
-    };
-  }, [isOpen]);
+      window.removeEventListener('keydown', handleEsc)
+    }
+  }, [isOpen])
 
-  // Run “enter” animation when open
+  // Animate the modal in when open
   useEffect(() => {
     if (isOpen && modalRef.current) {
-      // Start with hidden classes removed
-      modalRef.current.classList.add('opacity-100', 'scale-100');
-      modalRef.current.classList.remove('opacity-0', 'scale-95');
+      modalRef.current.classList.add('opacity-100', 'scale-100')
+      modalRef.current.classList.remove('opacity-0', 'scale-95')
     }
-  }, [isOpen]);
+  }, [isOpen])
 
-  /** Mock: load recently used folders (could come from localStorage or an API) */
+  /** Mock: load some recently used folders (placeholder) */
   const loadRecentFolders = () => {
+    // In a real app, you might store/retrieve from localStorage or an API
     setRecentFolders([
       { name: 'Documents', path: 'C:\\Users\\User\\Documents' },
       { name: 'Downloads', path: 'C:\\Users\\User\\Downloads' },
       { name: 'Projects', path: 'C:\\Users\\User\\Projects' }
-    ]);
-  };
+    ])
+  }
 
-  /** Fetch available drives */
+  /** Fetch available drives from the Python backend. */
   const loadDrives = async () => {
     try {
-      setIsLoading(true);
-      setError(null);
-      const resp = await fetch(`${BACKEND_URL}/api/select_drives`);
-      const data = await resp.json();
+      setIsLoading(true)
+      setError(null)
+      const resp = await fetch(`${BACKEND_URL}/api/select_drives`)
+      const data = await resp.json()
       if (data.success) {
-        setDrives(data.drives || []);
+        setDrives(data.drives || [])
       } else {
-        setError(data.error || 'Failed to load drives');
+        setError(data.error || 'Failed to load drives')
       }
     } catch (err) {
-      setError('Failed to connect to the server');
+      setError('Failed to connect to the server')
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  };
+  }
 
-  /** Browse a folder, load subfolders. */
+  /** Browse a folder (subfolders) from the Python backend. */
   const browseFolder = async (folderPath: string) => {
     try {
-      setIsLoading(true);
-      setError(null);
+      setIsLoading(true)
+      setError(null)
 
       const resp = await fetch(
         `${BACKEND_URL}/api/browse_folders?path=${encodeURIComponent(folderPath)}`
-      );
-      const data = await resp.json();
+      )
+      const data = await resp.json()
 
       if (data.success) {
-        setPath(data.current_path);
-        setParentPath(data.parent_path);
-        setFolders(data.folders || []);
-        setSearchQuery(''); // Clear search on navigation
+        setPath(data.current_path)
+        setParentPath(data.parent_path)
+        setFolders(data.folders || [])
+        setSearchQuery('') // Clear any search on navigation
 
         // Mark the drive as selected if path matches
         const matchedDrive = drives.find((drive) =>
           data.current_path.startsWith(drive.path)
-        );
-        setSelectedDrive(matchedDrive ? matchedDrive.path : null);
+        )
+        setSelectedDrive(matchedDrive ? matchedDrive.path : null)
 
         // Reset scroll to top in the folder area
         if (folderGridRef.current) {
-          folderGridRef.current.scrollTop = 0;
+          folderGridRef.current.scrollTop = 0
         }
       } else {
-        setError(data.error || 'Failed to browse folder');
+        setError(data.error || 'Failed to browse folder')
       }
     } catch (err) {
-      setError('Failed to browse folder');
+      setError('Failed to browse folder')
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  };
+  }
 
-  /** Up one directory */
+  /** Navigate up one directory level. */
   const goToParent = () => {
     if (parentPath) {
-      browseFolder(parentPath);
+      browseFolder(parentPath)
     }
-  };
+  }
 
-  /** When a user clicks a drive in the sidebar */
+  /** When a user clicks a drive in the sidebar. */
   const handleSelectDrive = (drivePath: string) => {
-    setSelectedDrive(drivePath);
-    browseFolder(drivePath);
-  };
+    setSelectedDrive(drivePath)
+    browseFolder(drivePath)
+  }
 
-  /** Confirm: pass path back to the parent. Also append to "recent" list. */
+  /** Confirm selection. */
   const handleSelectFolder = () => {
     if (path) {
-      const newRecentFolder = { name: path.split(/[/\\]/).pop() || path, path };
+      const newRecentFolder = { name: path.split(/[/\\]/).pop() || path, path }
       if (!recentFolders.some((f) => f.path === path)) {
-        setRecentFolders([newRecentFolder, ...recentFolders.slice(0, 4)]);
+        setRecentFolders([newRecentFolder, ...recentFolders.slice(0, 4)])
       }
     }
-    onSelect(path);
-  };
+    onSelect(path)
+  }
 
-  /** Filter subfolders by search query */
+  /** Filter subfolders by search query. */
   const filteredFolders = folders.filter((f) =>
     f.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  )
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-  };
+    setSearchQuery(e.target.value)
+  }
 
-  /** Basic breadcrumb nav */
+  /** Display a basic breadcrumb navigation. */
   const renderBreadcrumbs = () => {
-    if (!path) return <span className="text-gray-400 italic">No folder selected</span>;
-    const parts = path.split(/[/\\]/).filter(Boolean);
-    const isWindows = path.includes('\\');
-    const separator = isWindows ? '\\' : '/';
+    if (!path) return <span className="text-gray-400 italic">No folder selected</span>
+    const parts = path.split(/[/\\]/).filter(Boolean)
+    const isWindows = path.includes('\\')
+    const separator = isWindows ? '\\' : '/'
 
     // Root part
-    const rootPart = isWindows ? path.substring(0, 3) : '/';
+    const rootPart = isWindows ? path.substring(0, 3) : '/'
 
     return (
       <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap pb-1 scrollbar-thin">
@@ -202,10 +195,9 @@ const FolderBrowserView: React.FC<FolderBrowserProps> = ({
         </button>
 
         {parts.slice(isWindows ? 1 : 0).map((part, idx) => {
-          // Build path up to this part
           const currentPath = isWindows
             ? rootPart + parts.slice(1, idx + 1).join(separator)
-            : separator + parts.slice(0, idx + 1).join(separator);
+            : separator + parts.slice(0, idx + 1).join(separator)
 
           return (
             <React.Fragment key={idx}>
@@ -218,24 +210,24 @@ const FolderBrowserView: React.FC<FolderBrowserProps> = ({
                 {part}
               </button>
             </React.Fragment>
-          );
+          )
         })}
       </div>
-    );
-  };
+    )
+  }
 
-  /** Animate close */
+  /** Animate close. */
   const handleClose = () => {
     if (modalRef.current) {
-      modalRef.current.classList.add('opacity-0', 'scale-95');
-      modalRef.current.classList.remove('opacity-100', 'scale-100');
-      setTimeout(onClose, 200); // Wait for transition then fully close
+      modalRef.current.classList.add('opacity-0', 'scale-95')
+      modalRef.current.classList.remove('opacity-100', 'scale-100')
+      setTimeout(onClose, 200) // Wait for transition then fully close
     } else {
-      onClose();
+      onClose()
     }
-  };
+  }
 
-  if (!isOpen) return null;
+  if (!isOpen) return null
 
   return (
     // Overlay
@@ -250,57 +242,10 @@ const FolderBrowserView: React.FC<FolderBrowserProps> = ({
                    h-[80vh] overflow-hidden transition-all duration-300 ease-out
                    opacity-0 scale-95 transform"
       >
-        {/* Header */}
-        {/* <div className="bg-gradient-to-r from-[#282a36] to-[#2c2e3f] text-white p-4 border-b border-[#3f4257]
-                        flex justify-between items-center">
-          <h3 className="text-xl font-bold text-[#50fa7b] flex items-center gap-2">
-            <Folder size={22} className="text-[#50fa7b]" />
-            Select Project Folder
-          </h3>
-          <button
-            onClick={handleClose}
-            className="p-1.5 rounded-full hover:bg-[#44475a] transition-colors duration-200
-                       focus:outline-none focus:ring-2 focus:ring-[#50fa7b]"
-            aria-label="Close"
-          >
-            <X size={20} className="text-gray-400 hover:text-white" />
-          </button>
+        {/* Secondary header: (search + breadcrumbs) hidden in this example, but you can re-enable if desired. */}
+        {/* <div className="px-4 py-3 bg-[#282a36] border-b border-[#3f4257] flex flex-col gap-2 text-sm text-gray-200">
+          // Search bar, Breadcrumb nav
         </div> */}
-
-        {/* Secondary header: search + breadcrumbs */}
-        <div className="px-4 py-3 bg-[#282a36] border-b border-[#3f4257] flex flex-col gap-2 text-sm text-gray-200">
-          {/* Search bar */}
-          {/* <div className="flex w-full relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search size={16} className="text-gray-400" />
-            </div>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={handleSearchChange}
-              placeholder="Search within current folder..."
-              className="w-full bg-[#1e1f29] border border-[#3f4257] rounded-md py-2 pl-10 pr-4
-                         focus:outline-none focus:ring-1 focus:ring-[#bd93f9] focus:border-[#bd93f9]
-                         placeholder-gray-500 text-sm"
-            />
-          </div> */}
-
-          {/* Path breadcrumbs */}
-          {/* <div className="flex items-center">
-            <span className="text-gray-400 mr-2">Path:</span>
-            <div className="overflow-x-auto flex-1 scrollbar-thin">{renderBreadcrumbs()}</div>
-            {parentPath && (
-              <button
-                onClick={goToParent}
-                className="ml-2 p-1.5 rounded-full hover:bg-[#44475a] text-gray-300 hover:text-white
-                          transition-colors focus:outline-none focus:ring-1 focus:ring-[#50fa7b]"
-                title="Go to parent folder"
-              >
-                <ChevronLeft size={18} />
-              </button>
-            )}
-          </div> */}
-        </div>
 
         {/* Error message */}
         {error && (
@@ -456,10 +401,10 @@ const FolderBrowserView: React.FC<FolderBrowserProps> = ({
         </div>
       </div>
     </div>
-  );
-};
+  )
+}
 
-/** Small component for the loading dots (drives area) */
+/** Loading dots for the drives area. */
 function LoadingDots() {
   return (
     <div className="flex items-center justify-center p-4 space-x-2">
@@ -473,10 +418,10 @@ function LoadingDots() {
         style={{ animationDelay: '0.4s' }}
       ></div>
     </div>
-  );
+  )
 }
 
-/** Skeleton loading table for the subfolder area */
+/** Skeleton loading table for subfolder area. */
 function SkeletonLoadingTable() {
   return (
     <div className="p-4">
@@ -493,9 +438,7 @@ function SkeletonLoadingTable() {
           {[...Array(8)].map((_, i) => (
             <tr
               key={i}
-              className={`${
-                i % 2 === 0 ? 'bg-[#282a36]' : 'bg-[#20212b]'
-              } animate-pulse`}
+              className={`${i % 2 === 0 ? 'bg-[#282a36]' : 'bg-[#20212b]'} animate-pulse`}
               style={{ animationDelay: `${i * 0.05}s` }}
             >
               <td className="p-2 pl-4 border-b border-[#3f4257]">
@@ -512,16 +455,16 @@ function SkeletonLoadingTable() {
         </tbody>
       </table>
     </div>
-  );
+  )
 }
 
-/** Empty state if no folders are found (or the search returned nothing) */
+/** Empty state if no folders match the search or none exist. */
 function NoFoldersEmptyState({
   searchQuery,
   clearSearch
 }: {
-  searchQuery: string;
-  clearSearch: () => void;
+  searchQuery: string
+  clearSearch: () => void
 }) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-gray-400 p-8">
@@ -543,20 +486,20 @@ function NoFoldersEmptyState({
         </>
       )}
     </div>
-  );
+  )
 }
 
-/** Renders the subfolder table when data is loaded and not empty */
+/** Renders the subfolder table when data is loaded and not empty. */
 function FolderTable({
   folders,
   onFolderClick,
   parentBg,
   altBg
 }: {
-  folders: FolderItem[];
-  onFolderClick: (path: string) => void;
-  parentBg: string;
-  altBg: string;
+  folders: FolderItem[]
+  onFolderClick: (path: string) => void
+  parentBg: string
+  altBg: string
 }) {
   return (
     <div className="overflow-auto custom-scrollbar">
@@ -593,45 +536,7 @@ function FolderTable({
         </tbody>
       </table>
     </div>
-  );
+  )
 }
 
-/** 
- * Optionally, add these scrollbar/animation styles in a global stylesheet 
- * (globals.css) or your own <style jsx global> if you prefer:
- *
- *  .custom-scrollbar::-webkit-scrollbar {
- *    width: 8px;
- *    height: 8px;
- *  }
- *  .custom-scrollbar::-webkit-scrollbar-track {
- *    background: #282a36;
- *    border-radius: 4px;
- *  }
- *  .custom-scrollbar::-webkit-scrollbar-thumb {
- *    background: #44475a;
- *    border-radius: 4px;
- *  }
- *  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
- *    background: #6272a4;
- *  }
- *
- *  .custom-scrollbar {
- *    scrollbar-width: thin;
- *    scrollbar-color: #44475a #282a36;
- *  }
- *
- *  .scrollbar-thin::-webkit-scrollbar {
- *    height: 4px;
- *  }
- *  .scrollbar-thin {
- *    scrollbar-width: thin;
- *    scrollbar-color: #44475a #282a36;
- *  }
- *
- *  .animate-pulse {
- *    @apply animate-pulse; // if you have the tailwind directive or simply .animate-pulse class
- *  }
- */
-
-export default FolderBrowserView;
+export default FolderBrowserView

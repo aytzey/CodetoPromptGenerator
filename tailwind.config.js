@@ -9,7 +9,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // your dracula-like palette here
+        // your dracula-like palette or custom colors
         draculaBg: '#282a36',
         draculaCurrent: '#44475a',
         draculaCyan: '#8be9fd',
@@ -19,7 +19,6 @@ module.exports = {
         draculaPurple: '#bd93f9',
         draculaYellow: '#f1fa8c',
       },
-      // more extension as needed
     },
   },
   plugins: [],

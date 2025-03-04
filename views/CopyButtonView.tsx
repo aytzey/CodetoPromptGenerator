@@ -1,7 +1,8 @@
 // views/CopyButtonView.tsx
 
 import React, { useRef, useState } from 'react'
-import { Copy } from 'lucide-react'  // <-- Make sure this is added
+import { Copy } from 'lucide-react'
+
 interface FileNode {
   name: string
   relativePath: string
@@ -26,6 +27,10 @@ interface CopyButtonProps {
   onFetchLatestFileData: () => Promise<FileData[]>
 }
 
+/**
+ * Gathers all relevant data (meta prompt, instructions, project tree, file contents)
+ * and copies them to the clipboard in a single text block.
+ */
 const CopyButtonView: React.FC<CopyButtonProps> = ({
   metaPrompt,
   mainInstructions,
@@ -40,7 +45,7 @@ const CopyButtonView: React.FC<CopyButtonProps> = ({
   const [copySuccess, setCopySuccess] = useState<boolean>(false)
 
   const handleCopy = async () => {
-    // Re-fetch fresh file contents
+    // Re-fetch fresh file contents, ensuring the user gets the latest data
     const freshFilesData = await onFetchLatestFileData()
 
     // Build combined text
@@ -52,7 +57,7 @@ const CopyButtonView: React.FC<CopyButtonProps> = ({
       combined += `# Main Instructions:\n${mainInstructions}\n\n`
     }
 
-    // Tree
+    // Generate textual project tree
     const treeText = generateTextualTree(tree, excludedPaths, filterExtensions)
     if (treeText.trim()) {
       combined += `# Project Tree:\n${treeText}\n\n`
@@ -77,10 +82,15 @@ const CopyButtonView: React.FC<CopyButtonProps> = ({
     }
   }
 
+  /**
+   * Some browsers or older setups might not support navigator.clipboard.
+   * Fallback to using a hidden textarea + document.execCommand('copy').
+   */
   const fallbackCopyMethod = (text: string) => {
     if (!hiddenTextAreaRef.current) return
     hiddenTextAreaRef.current.value = text
     hiddenTextAreaRef.current.select()
+
     try {
       document.execCommand('copy')
       setCopySuccess(true)
@@ -120,7 +130,10 @@ const CopyButtonView: React.FC<CopyButtonProps> = ({
 
 export default CopyButtonView
 
-/** Helper that generates textual project tree. Reuse your existing logic. */
+/**
+ * Recursively generate a textual version of the project tree,
+ * respecting excluded paths and extension filters.
+ */
 function generateTextualTree(
   tree: FileNode[],
   excludedPaths: string[],
@@ -129,13 +142,15 @@ function generateTextualTree(
 ): string {
   let result = ''
   const indent = '  '.repeat(depth)
+
+  // Filter out nodes that are in excluded paths or don't match the extension filter
   const filtered = tree.filter(node => {
-    // exclude
     if (
       excludedPaths.some(
         ignored => node.relativePath === ignored || node.relativePath.startsWith(ignored + '/')
       )
     ) {
+      // Exclude anything under an ignored directory
       return false
     }
     return nodeMatchesExtensions(node, filterExtensions)
@@ -145,7 +160,12 @@ function generateTextualTree(
     const icon = node.type === 'directory' ? '📁' : '📄'
     result += `${indent}${icon} ${node.name}\n`
     if (node.type === 'directory' && node.children) {
-      result += generateTextualTree(node.children, excludedPaths, filterExtensions, depth + 1)
+      result += generateTextualTree(
+        node.children,
+        excludedPaths,
+        filterExtensions,
+        depth + 1
+      )
     }
   }
   return result
@@ -154,9 +174,9 @@ function generateTextualTree(
 function nodeMatchesExtensions(node: FileNode, extensions: string[]): boolean {
   if (extensions.length === 0) return true
   if (node.type === 'directory') {
-    return node.children
-      ? node.children.some(child => nodeMatchesExtensions(child, extensions))
-      : false
+    if (!node.children) return false
+    // Keep the directory if any child matches
+    return node.children.some(child => nodeMatchesExtensions(child, extensions))
   } else {
     return extensions.some(ext => node.name.toLowerCase().endsWith(ext.toLowerCase()))
   }

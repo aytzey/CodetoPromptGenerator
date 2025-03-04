@@ -5,6 +5,7 @@ import path from 'path'
 
 /**
  * An interface representing a file or directory node in the project's tree.
+ * The same definition is used in pages/api/files.ts for returned data.
  */
 export interface FileNode {
   name: string
@@ -16,17 +17,17 @@ export interface FileNode {
 
 /**
  * Recursively scan the given rootDir and construct a tree of files and directories,
- * ignoring any folders listed in 'ignoreDirs.txt' (which we read from the project root).
- * 
- * Note: We now read 'ignoreDirs.txt' with a fixed path at process.cwd(), so it is
- * always found in your main project root (instead of the user-supplied rootDir).
+ * ignoring any folders listed in 'ignoreDirs.txt' (read from the project root).
+ *
+ * @param rootDir The absolute or relative path the user wants to scan.
+ * @param baseDir Only used internally for recursion to track relative paths.
  */
 export function getProjectTree(rootDir: string, baseDir: string = rootDir): FileNode[] {
-  // Convert rootDir to an absolute path to avoid "File not found on server" issues
+  // Convert rootDir to an absolute path to avoid "File not found" issues
   const resolvedRootDir = path.resolve(rootDir)
   console.log('getProjectTree called with resolvedRootDir:', resolvedRootDir)
 
-  // IMPORTANT: Read ignoreDirs.txt from the project root
+  // IMPORTANT: Read ignoreDirs.txt from the project root, not from rootDir.
   const ignoreFilePath = path.join(process.cwd(), 'ignoreDirs.txt')
   let ignoredDirs: string[] = []
   if (fs.existsSync(ignoreFilePath)) {
@@ -43,18 +44,11 @@ export function getProjectTree(rootDir: string, baseDir: string = rootDir): File
 }
 
 /**
- * Build the file tree for a single directory (currentDir).
- * Return an array of FileNode objects.
+ * Build the file tree for the given currentDir. Return an array of FileNode objects.
+ * This function recurses into subdirectories (except those excluded).
  */
 function buildTree(currentDir: string, baseDir: string, ignoredDirs: string[]): FileNode[] {
   const entries = fs.readdirSync(currentDir, { withFileTypes: true })
-
-  console.log(
-    'Scanning directory:',
-    currentDir,
-    'found entries:',
-    entries.map(e => e.name)
-  )
 
   return entries
     .map(entry => {
@@ -62,41 +56,37 @@ function buildTree(currentDir: string, baseDir: string, ignoredDirs: string[]): 
       const relRaw = path.relative(baseDir, fullPath)
       const relativePath = unifySlashes(relRaw)
 
-      // Skip if excluded by ignoreDirs
+      // Skip if excluded
       if (isExcluded(relativePath, ignoredDirs)) {
-        console.log('Excluding:', relativePath, 'based on ignoreDirs settings')
         return null
       }
 
-      // Directory
       if (entry.isDirectory()) {
         return {
           name: entry.name,
           relativePath,
           absolutePath: unifySlashes(fullPath),
           type: 'directory',
-          children: buildTree(fullPath, baseDir, ignoredDirs),
+          children: buildTree(fullPath, baseDir, ignoredDirs)
         }
-      }
-
-      // File
-      return {
-        name: entry.name,
-        relativePath,
-        absolutePath: unifySlashes(fullPath),
-        type: 'file',
+      } else {
+        return {
+          name: entry.name,
+          relativePath,
+          absolutePath: unifySlashes(fullPath),
+          type: 'file'
+        }
       }
     })
     .filter(Boolean) as FileNode[]
 }
 
 /**
- * Return true if `relativePath` contains any ignored directory name
- * in its path segments. For example, if we want to ignore `.git`,
- * then anything with a path segment `.git` is excluded (including subfolders).
+ * Returns true if `relativePath` includes any ignored directory name 
+ * in its path segments. (E.g., ignoring "node_modules" excludes 
+ * everything with that segment in the relative path.)
  */
 function isExcluded(relativePath: string, ignoredDirs: string[]): boolean {
-  // Split the relative path by '/' to check each segment
   const pathSegments = relativePath.split('/')
   for (const ignorePath of ignoredDirs) {
     if (pathSegments.includes(ignorePath)) {
@@ -107,7 +97,7 @@ function isExcluded(relativePath: string, ignoredDirs: string[]): boolean {
 }
 
 /**
- * Normalize an ignore path by replacing backslashes and trimming leading/trailing slashes.
+ * Normalize an ignore path by removing leading/trailing slashes and converting backslashes to slashes.
  */
 function normalizeIgnorePath(ignoreStr: string): string {
   return ignoreStr
@@ -117,7 +107,7 @@ function normalizeIgnorePath(ignoreStr: string): string {
 }
 
 /**
- * Replace all backslashes with forward slashes.
+ * Replace all backslashes in a string with forward slashes.
  */
 function unifySlashes(s: string): string {
   return s.replace(/\\/g, '/')
