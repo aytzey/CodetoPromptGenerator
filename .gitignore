@@ -1,3 +1,4 @@
 .next/*
 node_modules/*
 *.pyc
+python_backend/venv/
