@@ -4,7 +4,6 @@ import os
 import json
 from flask import Blueprint, request, jsonify, current_app
 
-# Changed the blueprint name to match what app.py expects
 project_blueprint = Blueprint('project_blueprint', __name__)
 
 @project_blueprint.route('/api/browse_folders', methods=['GET'])
@@ -117,3 +116,80 @@ def select_drives():
             'success': False,
             'error': str(e)
         }), 500
+
+
+from .files_controller import build_file_tree, estimate_token_count
+
+
+@project_blueprint.route('/api/projects/tree', methods=['GET'])
+def get_projects_tree():
+    """
+    GET /api/projects/tree?rootDir=...
+    - If missing or invalid, return 400
+    - Else, return a file/directory tree
+    """
+    root_dir = request.args.get('rootDir', '').strip()
+    if not root_dir:
+        return jsonify(success=False, error="Missing 'rootDir'"), 400
+
+    if not os.path.isdir(root_dir):
+        return jsonify(success=False, error="Invalid or non-existent directory"), 400
+
+    # Build the tree (reusing logic from files_controller)
+    try:
+        # Re-use the same ignoring logic as files_controller if desired;
+        # otherwise, pass an empty ignore list:
+        tree = build_file_tree(root_dir, root_dir, ignored_dirs=[])
+        return jsonify(success=True, data=tree), 200
+    except Exception as e:
+        current_app.logger.error(f"Error building tree for {root_dir}: {str(e)}")
+        return jsonify(success=False, error=str(e)), 500
+
+
+@project_blueprint.route('/api/projects/files', methods=['POST'])
+def fetch_file_contents():
+    """
+    POST /api/projects/files
+    Body: {
+      "baseDir": "<absolute-path>",
+      "paths": ["relative/path1", "relative/path2", ...]
+    }
+    Returns: { "success": true, "data": [ { "path", "content", "tokenCount" }, ... ] }
+    - If a file is not found, returns content: "File not found on server: <relativePath>"
+    """
+    data = request.get_json() or {}
+    base_dir = data.get('baseDir', '')
+    paths = data.get('paths', [])
+
+    if not base_dir or not isinstance(paths, list):
+        return jsonify(success=False, error="Invalid request body"), 400
+
+    results = []
+    for rel_path in paths:
+        full_path = os.path.join(base_dir, rel_path)
+        if not os.path.isfile(full_path):
+            results.append({
+                'path': rel_path,
+                'content': f"File not found on server: {rel_path}",
+                'tokenCount': 0
+            })
+            continue
+
+        try:
+            with open(full_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            t_count = estimate_token_count(content)
+            results.append({
+                'path': rel_path,
+                'content': content,
+                'tokenCount': t_count
+            })
+        except Exception as e:
+            current_app.logger.error(f"Error reading file {full_path}: {str(e)}")
+            results.append({
+                'path': rel_path,
+                'content': f"File not found on server: {rel_path}",
+                'tokenCount': 0
+            })
+
+    return jsonify(success=True, data=results), 200
