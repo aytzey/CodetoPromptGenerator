@@ -7,13 +7,19 @@ interface TodoItem {
   completed: boolean
 }
 
-// Adjust if needed for your Python backend
+interface TodoListViewProps {
+  /** The absolute path to the opened project so we store todos in .codetoprompt. */
+  projectPath: string
+}
+
+// We assume your Flask server is typically at:
 const BACKEND_URL = 'http://localhost:5000'
 
 /**
- * A simple to-do list that fetches data from a separate Python backend.
+ * A simple to-do list, now project-specific. 
+ * If projectPath is given, we store data under .codetoprompt/todos.json.
  */
-const TodoListView: React.FC = () => {
+const TodoListView: React.FC<TodoListViewProps> = ({ projectPath }) => {
   const [todos, setTodos] = useState<TodoItem[]>([])
   const [inputValue, setInputValue] = useState('')
   const [filter, setFilter] = useState<'all' | 'incomplete'>('all')
@@ -22,22 +28,27 @@ const TodoListView: React.FC = () => {
 
   useEffect(() => {
     loadTodos()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectPath])
 
   async function loadTodos() {
     setLoading(true)
     setError(null)
     try {
-      const resp = await fetch(`${BACKEND_URL}/api/todos`)
+      const resp = await fetch(
+        `${BACKEND_URL}/api/todos?projectPath=${encodeURIComponent(projectPath)}`
+      )
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`)
+      }
       const data = await resp.json()
       if (data.success) {
         setTodos(data.data)
       } else {
         setError(data.error || 'Failed to load todos')
       }
-    } catch (err) {
-      console.error('Error fetching todos:', err)
-      setError('Error fetching todos')
+    } catch (err: any) {
+      setError('Error fetching todos: ' + err.message)
     } finally {
       setLoading(false)
     }
@@ -48,11 +59,21 @@ const TodoListView: React.FC = () => {
     if (!trimmed) return
     setError(null)
     try {
-      const resp = await fetch(`${BACKEND_URL}/api/todos`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: trimmed })
-      })
+      const resp = await fetch(
+        `${BACKEND_URL}/api/todos?projectPath=${encodeURIComponent(projectPath)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: trimmed })
+        }
+      )
+      if (!resp.ok) {
+        if (resp.status === 400) {
+          setError('Todo text is required.')
+          return
+        }
+        throw new Error(`HTTP ${resp.status}`)
+      }
       const data = await resp.json()
       if (data.success) {
         setTodos(prev => [...prev, data.data])
@@ -60,19 +81,24 @@ const TodoListView: React.FC = () => {
       } else {
         setError(data.error || 'Failed to add todo')
       }
-    } catch (err) {
-      console.error('Error adding todo:', err)
-      setError('Error adding todo')
+    } catch (err: any) {
+      setError('Error adding todo: ' + err.message)
     }
   }
 
   async function toggleComplete(id: number, currentStatus: boolean) {
     try {
-      const resp = await fetch(`${BACKEND_URL}/api/todos/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ completed: !currentStatus })
-      })
+      const resp = await fetch(
+        `${BACKEND_URL}/api/todos/${id}?projectPath=${encodeURIComponent(projectPath)}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ completed: !currentStatus })
+        }
+      )
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`)
+      }
       const data = await resp.json()
       if (data.success) {
         setTodos(prev =>
@@ -81,26 +107,28 @@ const TodoListView: React.FC = () => {
       } else {
         setError(data.error || 'Failed to update task status')
       }
-    } catch (err) {
-      console.error('Error toggling todo:', err)
-      setError('Failed to update task status')
+    } catch (err: any) {
+      setError('Error toggling todo: ' + err.message)
     }
   }
 
   async function deleteTodo(id: number) {
     try {
-      const resp = await fetch(`${BACKEND_URL}/api/todos/${id}`, {
-        method: 'DELETE'
-      })
+      const resp = await fetch(
+        `${BACKEND_URL}/api/todos/${id}?projectPath=${encodeURIComponent(projectPath)}`,
+        { method: 'DELETE' }
+      )
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`)
+      }
       const data = await resp.json()
       if (data.success) {
         setTodos(prev => prev.filter(t => t.id !== id))
       } else {
         setError(data.error || 'Failed to delete todo')
       }
-    } catch (err) {
-      console.error('Error deleting todo:', err)
-      setError('Error deleting todo')
+    } catch (err: any) {
+      setError('Error deleting todo: ' + err.message)
     }
   }
 
@@ -136,10 +164,12 @@ const TodoListView: React.FC = () => {
         />
         <button
           onClick={addTodo}
+          disabled={loading}
           className={`
             px-3 py-1 rounded font-medium
             bg-green-400 hover:bg-green-500 text-gray-800
             dark:bg-[#50fa7b] dark:hover:bg-[#7b93fd] dark:text-[#1e1f29]
+            disabled:opacity-50 disabled:cursor-not-allowed
           `}
         >
           Add

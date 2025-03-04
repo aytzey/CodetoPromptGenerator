@@ -5,3 +5,4 @@ node_modules
 venv
 __pycache__
 build
+.codetoprompt

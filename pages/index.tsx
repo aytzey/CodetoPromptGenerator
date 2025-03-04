@@ -37,17 +37,15 @@ interface FileData {
 // Change the base URL to match your Flask backend:
 const BACKEND_URL = 'http://localhost:5000'
 
-// Utility: get all descendant paths from a folder path if needed
+/**
+ * Helper to get all descendant paths (files & subfolders) under a given node path.
+ */
 function getAllDescendantsOfPath(tree: FileNode[], targetPath: string): string[] {
-  // For convenience, unify slashes
+  // Convert backslashes to forward slashes for consistency
   const normTarget = targetPath.replace(/\\/g, '/')
-
   // Flatten entire tree
   const allNodes = flattenTree(tree) // each entry is a relative path
 
-  // For each node, we check if it starts with `targetPath + '/'`
-  // If the targetPath is a file, it won't have children, so it won't match
-  // But if it's a directory, all children will match
   const results: string[] = []
   for (const p of allNodes) {
     if (p === normTarget || p.startsWith(normTarget + '/')) {
@@ -60,66 +58,68 @@ function getAllDescendantsOfPath(tree: FileNode[], targetPath: string): string[]
 export default function Home() {
   const [projectPath, setProjectPath] = useState<string>('')
 
+  // Project-wide file tree + selected files
   const [fileTree, setFileTree] = useState<FileNode[]>([])
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [filesData, setFilesData] = useState<FileData[]>([])
   const [isLoadingTree, setIsLoadingTree] = useState<boolean>(false)
 
-  // ----------- ignoreDirs.txt Exclusions -----------
+  // Global exclusions from ignoreDirs.txt
   const [excludedPaths, setExcludedPaths] = useState<string[]>([])
 
-  // ----- NEW: local (project-specific) exclusions that do NOT hide files -----
+  // Project-specific localExclusions (not hidden, but excluded from "Select All")
   const [localExcludedPaths, setLocalExcludedPaths] = useState<string[]>([])
 
+  // Meta-prompt fields
   const [metaPrompt, setMetaPrompt] = useState<string>('')
   const [mainInstructions, setMainInstructions] = useState<string>('')
   const [metaPromptFiles, setMetaPromptFiles] = useState<string[]>([])
   const [selectedMetaFile, setSelectedMetaFile] = useState<string>('')
   const [newMetaFileName, setNewMetaFileName] = useState<string>('')
 
+  // Extension-based filtering
   const [filterExtensions, setFilterExtensions] = useState<string[]>([])
   const [extensionInput, setExtensionInput] = useState<string>('')
 
+  // UI state
   const [activeTab, setActiveTab] = useState<'files' | 'options' | 'tasks'>('files')
   const [darkMode, setDarkMode] = useState<boolean>(true)
   const [fileSearchTerm, setFileSearchTerm] = useState<string>('')
 
-  // ---------- On mount, fetch ignoreDirs exclusions + meta prompts, and load localExcludedPaths from localStorage ----------
+  // ------------------------------------------
+  //  1) On mount, fetch global + meta prompt
+  // ------------------------------------------
   useEffect(() => {
     fetchExclusions()
     fetchMetaPromptList()
-
-    // Load local-excluded paths from localStorage
-    const stored = window.localStorage.getItem('localExcludedPaths')
-    if (stored) {
-      try {
-        const arr = JSON.parse(stored)
-        if (Array.isArray(arr)) {
-          setLocalExcludedPaths(arr)
-        }
-      } catch (err) {
-        console.warn('Failed to parse localExcludedPaths from localStorage.')
-      }
-    }
   }, [])
 
+  // ------------------------------------------
+  //  2) Load file tree when projectPath changes
+  // ------------------------------------------
   useEffect(() => {
     if (projectPath) {
       loadProjectTree()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectPath, excludedPaths])
 
+  // ------------------------------------------
+  //  3) Whenever selection changes, load contents
+  // ------------------------------------------
   useEffect(() => {
     if (selectedFiles.length > 0) {
       loadSelectedFileContents()
     } else {
       setFilesData([])
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFiles])
 
-  // --------------------  Fetch from Python backend  -------------------- //
-
-  const fetchExclusions = async () => {
+  // ------------------------------------------
+  //     Global Exclusions from ignoreDirs.txt
+  // ------------------------------------------
+  async function fetchExclusions() {
     try {
       const response = await fetch(`${BACKEND_URL}/api/exclusions`)
       const data = await response.json()
@@ -131,7 +131,7 @@ export default function Home() {
     }
   }
 
-  const updateExclusions = async (paths: string[]) => {
+  async function updateExclusions(paths: string[]) {
     try {
       const response = await fetch(`${BACKEND_URL}/api/exclusions`, {
         method: 'POST',
@@ -151,13 +151,10 @@ export default function Home() {
     }
   }
 
-  // ---------- Manage local-excluded paths in localStorage ----------
-  function handleUpdateLocalExclusions(newPaths: string[]) {
-    setLocalExcludedPaths(newPaths)
-    window.localStorage.setItem('localExcludedPaths', JSON.stringify(newPaths))
-  }
-
-  const loadProjectTree = async () => {
+  // ------------------------------------------
+  //            Load Project Tree
+  // ------------------------------------------
+  async function loadProjectTree() {
     if (!projectPath) return
     setIsLoadingTree(true)
     try {
@@ -179,14 +176,17 @@ export default function Home() {
     }
   }
 
-  const loadSelectedFileContents = async () => {
+  // ------------------------------------------
+  //         Load Selected File Contents
+  // ------------------------------------------
+  async function loadSelectedFileContents() {
     try {
       const response = await fetch(`${BACKEND_URL}/api/files/contents`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           path: projectPath,
-          files: selectedFiles.filter(p => !p.endsWith('/'))
+          files: selectedFiles.filter(p => !p.endsWith('/')) // skip directories
         })
       })
       const data = await response.json()
@@ -198,10 +198,11 @@ export default function Home() {
     }
   }
 
-  // ---------- Meta Prompts -----------
-  const fetchMetaPromptList = async () => {
+  // ------------------------------------------
+  //            Meta Prompt Management
+  // ------------------------------------------
+  async function fetchMetaPromptList() {
     try {
-      // We do ?action=list as used in the python route
       const response = await fetch(`${BACKEND_URL}/api/metaprompts?action=list`)
       const data = await response.json()
       if (data.success) {
@@ -212,7 +213,7 @@ export default function Home() {
     }
   }
 
-  const loadMetaPrompt = async () => {
+  async function loadMetaPrompt() {
     if (!selectedMetaFile) return
     try {
       const response = await fetch(
@@ -227,7 +228,7 @@ export default function Home() {
     }
   }
 
-  const saveMetaPrompt = async () => {
+  async function saveMetaPrompt() {
     if (!metaPrompt.trim()) return
     const fileName = newMetaFileName.trim() || selectedMetaFile || `meta_${Date.now()}.txt`
     try {
@@ -247,15 +248,17 @@ export default function Home() {
     }
   }
 
-  // --------------------------------------------------------------------- //
-
-  const handleSelectFiles = (paths: string[]) => {
+  // ------------------------------------------
+  //       File Selection & Filter Logic
+  // ------------------------------------------
+  function handleSelectFiles(paths: string[]) {
     setSelectedFiles(paths)
   }
 
-  const handleAddExtension = () => {
-    if (!extensionInput.trim()) return
-    let ext = extensionInput.trim()
+  function handleAddExtension() {
+    const trimmed = extensionInput.trim()
+    if (!trimmed) return
+    let ext = trimmed
     if (!ext.startsWith('.')) {
       ext = `.${ext}`
     }
@@ -265,42 +268,37 @@ export default function Home() {
     setExtensionInput('')
   }
 
-  const handleRemoveExtension = (ext: string) => {
+  function handleRemoveExtension(ext: string) {
     setFilterExtensions(prev => prev.filter(e => e !== ext))
   }
 
-  const handleClearExtensions = () => {
+  function handleClearExtensions() {
     setFilterExtensions([])
   }
 
   /**
-   * Select all **visible** files/folders, EXCEPT any that are in our localExcludedPaths
-   * (plus their sub-items if they’re directories).
+   * Select all *visible* files/folders, except any in localExcludedPaths (and their descendants).
    */
-  const handleSelectAll = () => {
-    // Flatten the *filtered* tree so we only gather what’s displayed
+  function handleSelectAll() {
     const allPaths = flattenTree(filteredTree)
+    const allExcluded = new Set<string>()
 
-    // Build a set of everything we must exclude
-    let allExcluded = new Set<string>()
     for (const ex of localExcludedPaths) {
-      // gather that path + all its descendants
       const desc = getAllDescendantsOfPath(filteredTree, ex)
       for (const d of desc) {
         allExcluded.add(d)
       }
     }
 
-    // Filter them out
     const finalPaths = allPaths.filter(p => !allExcluded.has(p))
     setSelectedFiles(finalPaths)
   }
 
-  const handleDeselectAll = () => {
+  function handleDeselectAll() {
     setSelectedFiles([])
   }
 
-  const fetchLatestFileData = async (): Promise<FileData[]> => {
+  async function fetchLatestFileData(): Promise<FileData[]> {
     try {
       const response = await fetch(`${BACKEND_URL}/api/files/contents`, {
         method: 'POST',
@@ -321,7 +319,9 @@ export default function Home() {
     }
   }
 
-  // Filter the file tree locally
+  /**
+   * A memoized version of the file tree, filtered by extension + search term.
+   */
   const filteredTree = useMemo(() => {
     const afterExtFilter = filterExtensions.length
       ? applyExtensionFilter(fileTree, filterExtensions)
@@ -333,6 +333,22 @@ export default function Home() {
     return applySearchFilter(afterExtFilter, fileSearchTerm.toLowerCase())
   }, [fileTree, filterExtensions, fileSearchTerm])
 
+  // ------------------------------------------
+  //   Callback from LocalExclusionsManagerView
+  // ------------------------------------------
+  function onLocalExclusionsChange(newList: string[]) {
+    // The child component will do server calls. Once done, it calls us with the updated list.
+    setLocalExcludedPaths(newList)
+  }
+
+  function handleLocalExclusionsChange(newList: string[]) {
+    setLocalExcludedPaths(newList)
+  }
+  
+
+  // -------------------------------------------------------------------------
+  //                               RENDER
+  // -------------------------------------------------------------------------
   return (
     <div className={darkMode ? 'dark' : ''}>
       <div className="min-h-screen bg-gray-100 dark:bg-gradient-to-br dark:from-[#141527] dark:to-[#0B0C1B]">
@@ -396,6 +412,7 @@ export default function Home() {
 
         {/* Main */}
         <main className="container mx-auto px-6 pt-6 pb-10">
+          {/* Folder Picker */}
           <div
             className={`
               rounded-xl border p-4 shadow-lg
@@ -494,9 +511,9 @@ export default function Home() {
                           />
                         </div>
 
-                        {/* REFRESH BUTTON: triggers re-fetch of file tree */}
+                        {/* REFRESH BUTTON */}
                         <button
-                          onClick={() => loadProjectTree()}
+                          onClick={loadProjectTree}
                           disabled={isLoadingTree || !projectPath}
                           className="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 rounded text-white disabled:opacity-50 disabled:cursor-not-allowed"
                         >
@@ -563,19 +580,26 @@ export default function Home() {
 
                 {activeTab === 'options' && (
                   <div className="space-y-4">
-                    {/* Exclusions from ignoreDirs.txt */}
+                    {/* 1) Global ignoreDirs */}
                     <ExclusionsManagerView
                       excludedPaths={excludedPaths}
                       onUpdateExclusions={updateExclusions}
                     />
 
-                    {/* Our new local-exclusion manager */}
-                    <LocalExclusionsManagerView
-                      excludedPaths={localExcludedPaths}
-                      onUpdateExclusions={handleUpdateLocalExclusions}
-                    />
+                    {/* 2) Project-specific localExclusions in .codetoprompt */}
+                    {projectPath ? (
+                      <LocalExclusionsManagerView
+                        projectPath={projectPath}
+                        onChange={handleLocalExclusionsChange}
+                      />
 
-                    {/* Extension filters */}
+                    ) : (
+                      <p className="text-gray-400 text-xs">
+                        Select a project folder first to manage local exclusions.
+                      </p>
+                    )}
+
+                    {/* 3) Extension filters */}
                     <div
                       className={`
                         p-3 rounded border space-y-2
@@ -654,7 +678,13 @@ export default function Home() {
                     <h3 className="text-lg font-semibold text-pink-600 dark:text-[#ff79c6]">
                       Todo List
                     </h3>
-                    <TodoListView />
+                    {projectPath ? (
+                      <TodoListView projectPath={projectPath} />
+                    ) : (
+                      <p className="text-gray-400 text-xs">
+                        Select a project folder to see project-specific tasks.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
