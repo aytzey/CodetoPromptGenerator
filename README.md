@@ -1,4 +1,4 @@
-# Code to Prompt Generator Tool by Aytzey
+# Code to Prompt Generator Tool
 
 A tool for quickly assembling Large Language Model (LLM) prompts from a local file tree. You can select or exclude specific files/folders, compose meta and main instructions, and instantly copy everything (including file contents) to your clipboard for LLM usage.
 
