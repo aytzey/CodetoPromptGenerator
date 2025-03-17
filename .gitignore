@@ -4,3 +4,7 @@ node_modules/*
 python_backend/venv/
 sample_project/meta_prompts/
 .codetoprompt/*
+.DS_Store
+.gitignore
+my-offline-llm-tool@1.0.0
+next
