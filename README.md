@@ -60,14 +60,13 @@ A tool for quickly assembling Large Language Model (LLM) prompts from a local fi
 
 ---
 
+
 ## Prerequisites
 
-1. **Node.js & npm**  
-   - Install from [https://nodejs.org](https://nodejs.org) if not already on your system.
-2. **Python 3.7+**  
-   - Install from [https://www.python.org](https://www.python.org).
-
-*(Optional)* You may want [Git](https://git-scm.com/) if you plan to clone the repository instead of downloading.
+1.  **Node.js & npm**
+    *   Install from [https://nodejs.org](https://nodejs.org) if not already on your system.
+2.  **Python 3.7+**
+    *   Install from [https://www.python.org](https://www.python.org).
 
 ---
 
@@ -102,31 +101,56 @@ pip install -r requirements.txt
 cd ..
 ```
 
-### 3. Start the Tool
+### 3. Configure Ports (Optional)
+By default, the frontend runs on port `3000` and the backend on port `5000`. You can customize this by editing the `ports.ini` file in the project root.
+
+### 4. Start the Tool
 There are multiple ways to start both the frontend (Next.js) and backend (Flask):
 
 #### (A) Single Command via npm
+This script reads `ports.ini` and starts both servers correctly configured.
 ```bash
 npm run start:all
+# OR directly:
+node start.js
 ```
-This launches both servers together:
-- Frontend on [http://localhost:3000](http://localhost:3000)
-- Backend on [http://localhost:5000](http://localhost:5000)
+This launches both servers:
+- Frontend on port specified in `ports.ini` (default: `http://localhost:3000`)
+- Backend on port specified in `ports.ini` (default: `http://localhost:5000`)
 
 Press `Ctrl + C` to stop both.
 
-#### (B) Using Provided Scripts
+#### (B) Using Provided Batch/Shell Scripts
 - **Windows**: Double-click `start.bat` or run it from the command line.
 - **Mac/Linux**: Make it executable (`chmod +x start.sh`) then run `./start.sh`.
 
-Both scripts call the same Node script under the hood (`start.js`), which starts the Python backend and the Next.js frontend together.
+These scripts also execute `node start.js`.
+
+#### (C) Manual Start (Separate Terminals)
+If you prefer to run them separately (e.g., for debugging), ensure ports match `ports.ini` or defaults:
+*   **Backend:**
+    ```bash
+    cd python_backend
+    # Set port manually if not using default 5000 and not using start.js
+    # export FLASK_PORT=5001 (Linux/Mac) or set FLASK_PORT=5001 (Windows)
+    python app.py
+    ```
+*   **Frontend:**
+    ```bash
+    # Set API URL and Port manually if not using default and not using start.js
+    # export PORT=3001
+    # export NEXT_PUBLIC_API_URL=http://127.0.0.1:5001
+    npm run dev
+    ```
+> **Note:** Running manually requires setting the `NEXT_PUBLIC_API_URL` environment variable for the frontend if the backend is not on the default `http://127.0.0.1:5000`. Using `npm run start:all` handles this automatically via `ports.ini`.
+
 
 ---
 
 ## Usage
 
 1. **Open the UI**  
-   - Navigate to [http://localhost:3000](http://localhost:3000).
+    *   Navigate to the frontend URL (default: `http://localhost:3000`, or as specified in `ports.ini`).
 
 2. **Choose Your Folder**  
    - Use the folder picker to select the root directory containing your project or files you want to scan.
@@ -194,15 +218,13 @@ We include an **autotest** script in `scripts/autotest.js`. It checks:
 
 **How to run tests**:
 
-1. **Start** the whole app (both frontend & backend) via:
-   ```bash
-   npm run start:all
-   ```
-2. **In a separate terminal**, run:
-   ```bash
-   node scripts/autotest.js
-   ```
-3. A short summary is printed. Success returns exit code `0`; any failures return `1`.
+1.  **Ensure `ports.ini` exists** with the correct ports for your running application (or use defaults).
+2.  **Start** the whole app (both frontend & backend) using the **recommended** `npm run start:all` command.
+3.  **In a separate terminal**, run:
+    ```bash
+    node scripts/autotest.js
+    ```
+4. A summary is printed. Success returns exit code `0`; any failures return `1`. The test script will read `ports.ini` to connect to the correct endpoints.
 
 ---
 
@@ -221,34 +243,6 @@ We include an **autotest** script in `scripts/autotest.js`. It checks:
   On some systems, you may need `chmod +x start.sh` or run commands with `sudo`.  
 - **General Debug**  
   Check your terminal outputs. The Node script (`start.js`) logs success/failure, and the Flask console prints any errors for the backend.
-
----
-
-## Project Structure
-
-Below is a high-level overview:
-
-```
-.
-├── pages/                 # Next.js pages (including index.tsx - the main UI)
-├── views/                 # Reusable React components (file tree, prompts, etc.)
-├── lib/                   # Utility functions for filters/transformations
-├── styles/                # Tailwind global stylesheet
-├── python_backend/        # Flask-based backend
-│   ├── app.py             # Main Flask entry
-│   ├── controllers/       # Endpoints: files, metaprompts, todo, etc.
-│   ├── services/          # Services for scanning directories, etc.
-│   ├── models/            # Data models (in-memory or DB-based)
-│   └── requirements.txt   # Python dependencies
-├── scripts/
-│   ├── postinstall.js     # Auto-setup script for Python venv & pip install
-│   └── autotest.js        # Basic test script 
-├── start.js               # Launches both servers (Node & Python)
-├── start.bat              # Windows launcher
-├── start.sh               # Linux/Mac launcher
-├── package.json
-└── README.md              # This file
-```
 
 ---
 **Enjoy using the Code to Prompt Generator Tool!** If you encounter any issues, open an issue or reach out for support. Happy coding!

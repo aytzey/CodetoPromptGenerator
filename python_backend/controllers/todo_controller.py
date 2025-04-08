@@ -1,124 +1,91 @@
-# python_backend/controllers/todo_controller.py
+# File: python_backend/controllers/todo_controller.py
+# REFACTOR / OVERWRITE
 import os
-import json
-from flask import Blueprint, request, jsonify, current_app
-from models.todo_model import InMemoryTodoDB
+import logging
+from flask import Blueprint, request, current_app
+from services.todo_service import TodoService
+from repositories.file_storage import FileStorageRepository # Need repo instance
+from utils.response_utils import success_response, error_response
 
-todo_db = InMemoryTodoDB()
+logger = logging.getLogger(__name__)
 todo_blueprint = Blueprint('todo_blueprint', __name__)
 
-def _project_todo_file(project_path: str) -> str:
-    """
-    Return the .codetoprompt/todos.json path for the given project.
-    """
-    codetoprompt_dir = os.path.join(project_path, '.codetoprompt')
-    os.makedirs(codetoprompt_dir, exist_ok=True)
-    return os.path.join(codetoprompt_dir, 'todos.json')
-
-def _load_project_todos(project_path: str):
-    """
-    Load todos from <projectPath>/.codetoprompt/todos.json
-    Returns a list of { id, text, completed? }
-    """
-    todo_file = _project_todo_file(project_path)
-    if not os.path.exists(todo_file):
-        return []
-    try:
-        with open(todo_file, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception as e:
-        current_app.logger.error(f"Error reading {todo_file}: {str(e)}")
-        return []
-
-def _save_project_todos(project_path: str, todos: list):
-    """
-    Save todos to <projectPath>/.codetoprompt/todos.json
-    """
-    todo_file = _project_todo_file(project_path)
-    try:
-        with open(todo_file, 'w', encoding='utf-8') as f:
-            json.dump(todos, f, indent=2)
-    except Exception as e:
-        current_app.logger.error(f"Error writing {todo_file}: {str(e)}")
+# --- Dependency Setup ---
+storage_repo = FileStorageRepository()
+todo_service = TodoService(storage_repo=storage_repo)
+# --- End Dependency Setup ---
 
 @todo_blueprint.route('/api/todos', methods=['GET'])
-def list_todos():
-    project_path = request.args.get('projectPath', '').strip()
-    if project_path:
-        # Use per-project file
-        items = _load_project_todos(project_path)
-        return jsonify(success=True, data=items)
-    else:
-        # Fallback to in-memory
-        items = todo_db.list_todos()
-        return jsonify(success=True, data=items)
+def list_todos_endpoint():
+    """Lists todos, using projectPath query param if provided."""
+    project_path = request.args.get('projectPath') # Returns None if not present
+    try:
+        items = todo_service.list_todos(project_path)
+        return success_response(data=items)
+    except Exception as e:
+        logger.exception(f"Error listing todos for project: {project_path}")
+        return error_response(str(e), "Failed to list todos", 500)
 
 @todo_blueprint.route('/api/todos', methods=['POST'])
-def add_todo():
-    payload = request.get_json() or {}
+def add_todo_endpoint():
+    """Adds a new todo, using projectPath query param if provided."""
+    project_path = request.args.get('projectPath')
+    payload = request.get_json()
+    if payload is None or 'text' not in payload:
+        return error_response("Missing 'text' in request body.", status_code=400)
+
     text = payload.get('text', '').strip()
-    if not text:
-        return jsonify(success=False, message="Todo text is required."), 400
-    
-    project_path = request.args.get('projectPath', '').strip()
-    if project_path:
-        # handle in file
-        todos = _load_project_todos(project_path)
-        import time
-        new_id = int(time.time() * 1000)
-        new_item = {'id': new_id, 'text': text, 'completed': False}
-        todos.append(new_item)
-        _save_project_todos(project_path, todos)
-        return jsonify(success=True, data=new_item)
-    else:
-        # fallback to in-memory
-        new_item = todo_db.add_todo(text)
-        return jsonify(success=True, data=new_item)
+    created_at = payload.get('createdAt') # Optional
+
+    try:
+        new_item = todo_service.add_todo(text, project_path, created_at)
+        return success_response(data=new_item, status_code=201) # 201 Created
+    except ValueError as e: # Catches empty text error
+        return error_response(str(e), status_code=400)
+    except IOError as e:
+        logger.error(f"IOError adding todo for project {project_path}: {e}")
+        return error_response(str(e), "Failed to save todo", 500)
+    except Exception as e:
+        logger.exception(f"Error adding todo for project: {project_path}")
+        return error_response(str(e), "Failed to add todo", 500)
+
 
 @todo_blueprint.route('/api/todos/<int:todo_id>', methods=['PUT'])
-def update_todo(todo_id):
-    """
-    Allows toggling completion (or potentially editing) a todo
-    {
-      "completed": bool
-    }
-    """
-    payload = request.get_json() or {}
-    completed = payload.get('completed', None)
-    if completed is None:
-        return jsonify(success=False, error="Missing 'completed' boolean"), 400
+def update_todo_endpoint(todo_id):
+    """Updates a todo's completion status."""
+    project_path = request.args.get('projectPath')
+    payload = request.get_json()
+    if payload is None or 'completed' not in payload or not isinstance(payload['completed'], bool):
+        return error_response("Invalid request body. Boolean 'completed' field required.", status_code=400)
 
-    project_path = request.args.get('projectPath', '').strip()
-    if project_path:
-        todos = _load_project_todos(project_path)
-        updated_item = None
-        for t in todos:
-            if t.get('id') == todo_id:
-                t['completed'] = bool(completed)
-                updated_item = t
-                break
+    completed = payload['completed']
+
+    try:
+        updated_item = todo_service.update_todo(todo_id, completed, project_path)
         if updated_item is None:
-            return jsonify(success=False, error="Todo not found"), 404
-        _save_project_todos(project_path, todos)
-        return jsonify(success=True, data=updated_item), 200
-    else:
-        # in-memory fallback
-        # (For brevity, the inMemory DB only toggles in one go)
-        existing = todo_db.update_todo(todo_id, completed)
-        if not existing:
-            return jsonify(success=False, error="Todo not found"), 404
-        return jsonify(success=True, data=existing), 200
+            return error_response("Todo not found.", status_code=404)
+        return success_response(data=updated_item)
+    except IOError as e:
+        logger.error(f"IOError updating todo {todo_id} for project {project_path}: {e}")
+        return error_response(str(e), "Failed to save todo update", 500)
+    except Exception as e:
+        logger.exception(f"Error updating todo {todo_id} for project: {project_path}")
+        return error_response(str(e), "Failed to update todo", 500)
 
 @todo_blueprint.route('/api/todos/<int:todo_id>', methods=['DELETE'])
-def delete_todo(todo_id):
-    project_path = request.args.get('projectPath', '').strip()
-    if project_path:
-        todos = _load_project_todos(project_path)
-        filtered = [t for t in todos if t.get('id') != todo_id]
-        if len(filtered) == len(todos):
-            return jsonify(success=False, error="Todo not found"), 404
-        _save_project_todos(project_path, filtered)
-        return jsonify(success=True)
-    else:
-        todo_db.delete_todo(todo_id)
-        return jsonify(success=True)
+def delete_todo_endpoint(todo_id):
+    """Deletes a todo."""
+    project_path = request.args.get('projectPath')
+    try:
+        deleted = todo_service.delete_todo(todo_id, project_path)
+        if not deleted:
+            return error_response("Todo not found.", status_code=404)
+        # Return 204 No Content on successful deletion is common practice
+        return "", 204
+        # Or return success_response(message="Todo deleted.")
+    except IOError as e:
+         logger.error(f"IOError deleting todo {todo_id} for project {project_path}: {e}")
+         return error_response(str(e), "Failed to save after deletion", 500)
+    except Exception as e:
+        logger.exception(f"Error deleting todo {todo_id} for project: {project_path}")
+        return error_response(str(e), "Failed to delete todo", 500)

@@ -1,88 +1,88 @@
-# python_backend/controllers/metaprompts_controller.py
-
+# File: python_backend/controllers/metaprompts_controller.py
+# REFACTOR / OVERWRITE
 import os
-from flask import Blueprint, request, jsonify, current_app
+import logging
+from flask import Blueprint, request, current_app
+from services.metaprompt_service import MetapromptService
+from repositories.file_storage import FileStorageRepository # Need repo instance
+from utils.response_utils import success_response, error_response
 
+logger = logging.getLogger(__name__)
 metaprompts_blueprint = Blueprint('metaprompts_blueprint', __name__)
 
+# --- Dependency Setup ---
+storage_repo = FileStorageRepository()
+metaprompt_service = MetapromptService(storage_repo=storage_repo)
+# --- End Dependency Setup ---
+
 @metaprompts_blueprint.route('/api/metaprompts', methods=['GET'])
-def list_or_load():
+def list_or_load_metaprompt():
     """
-    GET endpoint:
-      - action=list => returns list of .txt files
-      - action=load&file=<filename> => loads a specific .txt file
-      - dir=<directory> => optional, defaults to sample_project/meta_prompts
+    Handles listing or loading meta prompts based on 'action' query param.
+    Optional 'dir' query param specifies the directory.
+    Optional 'file' query param specifies the file to load.
     """
-    action = request.args.get('action', '').strip()
-    filename = request.args.get('file', '').strip()
-    dir_param = request.args.get('dir', '').strip()
-
-    if dir_param:
-        base_dir = os.path.abspath(dir_param)
-    else:
-        # default to sample_project/meta_prompts relative to project root
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'sample_project', 'meta_prompts'))
-
-    # Ensure base_dir exists
-    if not os.path.exists(base_dir):
-        try:
-            os.makedirs(base_dir, exist_ok=True)
-        except Exception as e:
-            return jsonify(error=f"Failed to create meta prompts directory: {str(e)}"), 400
+    action = request.args.get('action', '').strip().lower()
+    dir_param = request.args.get('dir') # None if not present
 
     if action == 'list':
-        # Return list of .txt files
-        files = [f for f in os.listdir(base_dir) if f.endswith('.txt')]
-        return jsonify(success=True, files=files), 200
+        try:
+            files = metaprompt_service.list_metaprompts(dir_param)
+            return success_response(data=files)
+        except IOError as e: # Catch directory access issues
+            return error_response(str(e), "Cannot access meta prompts directory", 500)
+        except Exception as e:
+            logger.exception("Error listing meta prompts")
+            return error_response(str(e), "Failed to list meta prompts", 500)
 
-    elif action == 'load' and filename:
-        filepath = os.path.join(base_dir, filename)
-        if not filename.endswith('.txt') or not os.path.exists(filepath):
-            return jsonify(success=False, error='File not found'), 404
-        with open(filepath, 'r', encoding='utf-8') as f:
-            content = f.read()
-        return jsonify(success=True, content=content), 200
+    elif action == 'load':
+        filename = request.args.get('file', '').strip()
+        if not filename:
+            return error_response("Missing 'file' query parameter for load action.", status_code=400)
 
-    return jsonify(error='Invalid action'), 400
+        try:
+            content = metaprompt_service.load_metaprompt(filename, dir_param)
+            if content is None:
+                return error_response(f"Meta prompt file '{filename}' not found.", status_code=404)
+            # Return content directly in data field for consistency maybe?
+            # Or specific field like 'content'
+            return success_response(data={'content': content}) # Changed to return dict
+        except IOError as e:
+            return error_response(str(e), "Cannot access meta prompts directory", 500)
+        except Exception as e:
+            logger.exception(f"Error loading meta prompt: {filename}")
+            return error_response(str(e), f"Failed to load meta prompt: {filename}", 500)
+
+    else:
+        return error_response(f"Invalid action '{action}'. Use 'list' or 'load'.", status_code=400)
 
 
 @metaprompts_blueprint.route('/api/metaprompts', methods=['POST'])
-def save_metaprompt():
+def save_metaprompt_endpoint():
     """
-    POST => save or update a meta prompt file
-    Body: { filename, content }
-    dir=<optional directory> in query string
+    Saves content to a meta prompt file.
+    Requires JSON body: { "filename": "...", "content": "..." }
+    Optional 'dir' query param specifies the directory.
     """
-    dir_param = request.args.get('dir', '').strip()
-    if dir_param:
-        base_dir = os.path.abspath(dir_param)
-    else:
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'sample_project', 'meta_prompts'))
+    dir_param = request.args.get('dir')
+    data = request.get_json()
 
-    data = request.get_json() or {}
-    filename = data.get('fileName') or data.get('filename')
-    content = data.get('content', '')
+    if data is None or 'filename' not in data or 'content' not in data:
+        return error_response("Invalid request body. Requires 'filename' and 'content'.", status_code=400)
 
-    if not filename:
-        return jsonify(error='Missing filename'), 400
-    if not isinstance(content, str):
-        return jsonify(error='Missing content'), 400
+    filename = data.get('filename', '').strip()
+    content = data.get('content', '') # Allow empty content if needed
 
-    if not filename.endswith('.txt'):
-        filename += '.txt'
-
-    # Ensure directory
-    if not os.path.exists(base_dir):
-        try:
-            os.makedirs(base_dir, exist_ok=True)
-        except Exception as e:
-            return jsonify(error=f"Failed to create meta prompts directory: {str(e)}"), 400
-
-    filepath = os.path.join(base_dir, filename)
     try:
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(content)
-        return jsonify(success=True), 200
+        metaprompt_service.save_metaprompt(filename, content, dir_param)
+        # Ensure filename has .txt extension if it was added
+        saved_filename = filename if filename.lower().endswith('.txt') else filename + '.txt'
+        return success_response(message=f"Meta prompt '{saved_filename}' saved successfully.")
+    except ValueError as e:
+        return error_response(str(e), status_code=400)
+    except IOError as e:
+        logger.error(f"IOError saving meta prompt {filename}: {e}")
+        return error_response(str(e), "Failed to save meta prompt file", 500)
     except Exception as e:
-        current_app.logger.error(f"Error saving meta prompt: {str(e)}")
-        return jsonify(error='Internal server error'), 500
+        logger.exception(f"Error saving meta prompt: {filename}")
+        return error_response(str(e), "Failed to save meta prompt", 500)

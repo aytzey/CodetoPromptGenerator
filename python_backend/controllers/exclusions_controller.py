@@ -1,98 +1,92 @@
-# python_backend/controllers/exclusions_controller.py
-
+# File: python_backend/controllers/exclusions_controller.py
+# REFACTOR / OVERWRITE
 import os
-import json
-from flask import Blueprint, request, jsonify, current_app
+import logging
+from flask import Blueprint, request, current_app
+from services.exclusion_service import ExclusionService
+from repositories.file_storage import FileStorageRepository # Need repo instance
+from utils.response_utils import success_response, error_response
 
+logger = logging.getLogger(__name__)
 exclusions_blueprint = Blueprint('exclusions_blueprint', __name__)
 
-IGNORE_FILE_NAME = 'ignoreDirs.txt'
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+# --- Dependency Setup ---
+# In a real app, use Flask extensions or a proper DI container
+# For simplicity here, we instantiate directly.
+storage_repo = FileStorageRepository()
+exclusion_service = ExclusionService(storage_repo=storage_repo)
+# --- End Dependency Setup ---
+
 
 @exclusions_blueprint.route('/api/exclusions', methods=['GET', 'POST'])
-def handle_exclusions():
+def handle_global_exclusions():
     """
-    Global exclusions referencing 'ignoreDirs.txt' in the repo root.
-    GET => read it
-    POST => overwrite it
+    Handles GET and POST requests for global exclusions (ignoreDirs.txt).
     """
-    ignore_file_path = os.path.join(PROJECT_ROOT, IGNORE_FILE_NAME)
-
     if request.method == 'GET':
-        exclusions = []
         try:
-            with open(ignore_file_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if line:
-                        exclusions.append(line)
-        except FileNotFoundError:
-            current_app.logger.info("ignoreDirs.txt not found; returning empty list.")
-
-        return jsonify(success=True, exclusions=exclusions), 200
+            exclusions = exclusion_service.get_global_exclusions()
+            return success_response(data=exclusions)
+        except Exception as e:
+            logger.exception("Error getting global exclusions") # Log full traceback
+            return error_response(str(e), "Failed to retrieve global exclusions", 500)
 
     elif request.method == 'POST':
-        data = request.get_json() or {}
-        new_exclusions = data.get('exclusions', [])
-
-        if not isinstance(new_exclusions, list):
-            return jsonify(success=False, error="Exclusions must be an array of strings"), 400
-
-        # Clean and write to file
-        clean_lines = []
-        for item in new_exclusions:
-            item = item.strip()
-            if item:
-                clean_lines.append(item)
+        data = request.get_json()
+        if data is None or 'exclusions' not in data or not isinstance(data['exclusions'], list):
+            return error_response("Invalid request body. 'exclusions' list required.", status_code=400)
 
         try:
-            with open(ignore_file_path, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(clean_lines))
-            return jsonify(success=True, exclusions=clean_lines), 200
+            updated_exclusions = exclusion_service.update_global_exclusions(data['exclusions'])
+            return success_response(data=updated_exclusions, message="Global exclusions updated.")
+        except ValueError as e:
+             return error_response(str(e), status_code=400)
+        except IOError as e:
+            logger.error(f"IOError updating global exclusions: {e}")
+            return error_response(str(e), "Failed to write global exclusions file", 500)
         except Exception as e:
-            current_app.logger.error(f"Error writing to {ignore_file_path}: {str(e)}")
-            return jsonify(success=False, error=str(e)), 500
+            logger.exception("Error updating global exclusions")
+            return error_response(str(e), "Failed to update global exclusions", 500)
 
 @exclusions_blueprint.route('/api/localExclusions', methods=['GET', 'POST'])
-def local_exclusions():
+def handle_local_exclusions():
     """
-    Manages per-project "local exclusions" stored in:
-      <projectPath>/.codetoprompt/localExclusions.json
-
-    Query Param: ?projectPath=<absolute_path_to_project>
-    GET => read the JSON
-    POST => overwrite with new list
+    Handles GET and POST requests for project-specific local exclusions.
+    Requires 'projectPath' query parameter.
     """
-    project_path = request.args.get('projectPath', '').strip()
+    project_path = request.args.get('projectPath')
     if not project_path:
-        return jsonify(success=False, error="Missing 'projectPath' query param."), 400
+        return error_response("Missing 'projectPath' query parameter.", status_code=400)
 
-    codetoprompt_dir = os.path.join(project_path, '.codetoprompt')
-    os.makedirs(codetoprompt_dir, exist_ok=True)  # ensure folder exists
+    # Basic validation: check if path looks plausible (exists and is directory)
+    # Service layer also validates, but good to have early check
+    if not os.path.isdir(project_path):
+         return error_response(f"Project path '{project_path}' not found or is not a directory.", status_code=404)
 
-    local_exclusions_file = os.path.join(codetoprompt_dir, 'localExclusions.json')
 
     if request.method == 'GET':
-        data = []
-        if os.path.exists(local_exclusions_file):
-            try:
-                with open(local_exclusions_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-            except Exception as e:
-                current_app.logger.error(f"Error reading localExclusions.json: {str(e)}")
-        return jsonify(success=True, localExclusions=data), 200
+        try:
+            exclusions = exclusion_service.get_local_exclusions(project_path)
+            return success_response(data=exclusions)
+        except ValueError as e: # Catch invalid project path from service
+             return error_response(str(e), status_code=400)
+        except Exception as e:
+            logger.exception(f"Error getting local exclusions for {project_path}")
+            return error_response(str(e), "Failed to retrieve local exclusions", 500)
 
     elif request.method == 'POST':
-        body = request.get_json() or {}
-        new_exclusions = body.get('localExclusions', [])
-
-        if not isinstance(new_exclusions, list):
-            return jsonify(success=False, error="localExclusions must be an array"), 400
+        data = request.get_json()
+        if data is None or 'localExclusions' not in data or not isinstance(data['localExclusions'], list):
+            return error_response("Invalid request body. 'localExclusions' list required.", status_code=400)
 
         try:
-            with open(local_exclusions_file, 'w', encoding='utf-8') as f:
-                json.dump(new_exclusions, f, indent=2)
-            return jsonify(success=True, localExclusions=new_exclusions), 200
+            updated_exclusions = exclusion_service.update_local_exclusions(project_path, data['localExclusions'])
+            return success_response(data=updated_exclusions, message="Local exclusions updated.")
+        except ValueError as e:
+             return error_response(str(e), status_code=400)
+        except IOError as e:
+            logger.error(f"IOError updating local exclusions for {project_path}: {e}")
+            return error_response(str(e), "Failed to write local exclusions file", 500)
         except Exception as e:
-            current_app.logger.error(f"Error writing localExclusions.json: {str(e)}")
-            return jsonify(success=False, error=str(e)), 500
+            logger.exception(f"Error updating local exclusions for {project_path}")
+            return error_response(str(e), "Failed to update local exclusions", 500)
