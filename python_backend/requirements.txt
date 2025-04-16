@@ -6,6 +6,9 @@ itsdangerous==2.1.2
 Jinja2==3.1.2
 pytest==7.4.0
 gunicorn==21.2.0
+tiktoken==0.6.0     # fast, local tokeniser – no network needed
+pathspec==0.12.1    # .gitignore‑style pattern matching
+
 # Add these if you're using a database
 # SQLAlchemy==2.0.20
 # Flask-SQLAlchemy==3.0.5

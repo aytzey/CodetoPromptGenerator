@@ -1,27 +1,15 @@
-# python_backend/controllers/drives_controller.py
 """
-Cross‑platform endpoint that lists top‑level ‘drives’ for the folder picker.
+drives_controller.py
+————————————————————————————————————————————————————————
+Lists *top‑level* drives / mount points.
 
-• Windows  – traditional C:\, D:\ … (using Win32 API)
-• POSIX    – always returns "/" (root) and the current user's HOME.
-             It also adds first‑level mount points under /mnt and /media
-             if those directories exist.
-
-Response shape
-==============
-{
-    "success": true,
-    "drives": [
-        {"name": "Root", "path": "/"},
-        {"name": "Home", "path": "/home/aytzey"},
-        …                                         # platform specific
-    ]
-}
+⚠️  Path changed from `/api/select_drives` → **`/api/drives`**
+    to avoid duplicating the route already exposed by the folder‑browser
+    blueprint.  Front‑end calls aimed at `/api/select_drives` continue to
+    work via `resolve_folder_controller.py`.
 """
-
 from __future__ import annotations
 
-import os
 import platform
 import string
 import ctypes
@@ -29,39 +17,36 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify
 
-drives_bp = Blueprint("drives_bp", __name__)  # registered in app.py
+drives_bp = Blueprint("drives_bp", __name__)  # auto‑registered
 
+# ---------------------------------------------------------------------------
 
-@drives_bp.route("/api/select_drives", methods=["GET"])
-def select_drives():
+@drives_bp.get("/api/drives")
+def list_drives():
+    """
+    GET /api/drives
+    Returns a de‑duplicated list of logical drives or well‑known roots.
+    """
     drives: list[dict[str, str]] = []
     system = platform.system().lower()
 
     if system == "windows":
-        # Use Win32 API to enumerate logical drives
         bitmask = ctypes.windll.kernel32.GetLogicalDrives()
         for i, letter in enumerate(string.ascii_uppercase):
             if bitmask & (1 << i):
-                drives.append(
-                    {
-                        "name": f"{letter}:\\",
-                        "path": f"{letter}:\\",
-                    }
-                )
+                drives.append({"name": f"{letter}:\\", "path": f"{letter}:\\"})
     else:
-        # ── POSIX (Linux / macOS) ────────────────────────────────────────
-        # ① Root
         drives.append({"name": "Root", "path": "/"})
+        home = Path.home()
+        drives.append({"name": "Home", "path": str(home)})
 
-        # ② Current user's HOME
-        home_path = Path.home()
-        drives.append({"name": "Home", "path": str(home_path)})
+        for parent in (Path("/mnt"), Path("/media")):
+            if parent.is_dir():
+                for p in parent.iterdir():
+                    if p.is_dir():
+                        drives.append({"name": p.name, "path": str(p)})
 
-        # ③ First‑level mount points under /mnt and /media
-        for mount_parent in (Path("/mnt"), Path("/media")):
-            if mount_parent.is_dir():
-                for entry in mount_parent.iterdir():
-                    if entry.is_dir():
-                        drives.append({"name": entry.name, "path": str(entry)})
-
-    return jsonify(success=True, drives=drives)
+    # de‑duplicate while preserving order
+    seen: set[str] = set()
+    uniq = [d for d in drives if not (d["path"] in seen or seen.add(d["path"]))]
+    return jsonify(success=True, drives=uniq)

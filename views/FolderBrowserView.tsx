@@ -1,14 +1,17 @@
-// views/FolderBrowserView.tsx
-import React, { useEffect, useState, useRef } from "react";
+// views/FolderBrowserView.tsx — SECOND PATCH
+// --------------------------------------------------
+// Handles API responses that may return either
+//   1) { success: true, drives: [...] }
+//   2) [ ... ]  (plain array)
+// so that `drives` is **always** an array to avoid
+// `TypeError: drives.map is not a function` in React.
+
+import React, { useEffect, useState } from "react";
 import {
   ChevronLeft,
   Folder,
   HardDrive,
-  X,
-  ChevronRight,
   Search,
-  Home,
-  Clock,
   Loader2,
   FolderOpen,
 } from "lucide-react";
@@ -32,8 +35,6 @@ import {
 } from "@/components/ui/table";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
 
 interface FolderItem {
   name: string;
@@ -41,22 +42,24 @@ interface FolderItem {
 }
 
 interface FolderBrowserProps {
-  /** Whether the modal is open */
   isOpen: boolean;
-  /** Called when the user closes the modal (e.g., clicking the overlay or pressing Cancel) */
   onClose: () => void;
-  /** Called when the user selects a folder */
   onSelect: (path: string) => void;
-  /** The path initially displayed; if none, the user starts at e.g. drives. */
   currentPath: string;
 }
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
 
-/**
- * A modal "folder browser" that tries to list drives and subfolders from a (mock) Python API.
- * This code is for demonstration and not a secure production solution.
- */
+type DriveResponse = { drives?: FolderItem[] } | FolderItem[];
+
+// unwrap() keeps the earlier behaviour but is not responsible for array vs object anymore.
+function unwrap<T = any>(raw: any): T | null {
+  if (raw == null) return null;
+  if (raw.success !== undefined && raw.data !== undefined) return raw.data as T;
+  return raw as T;
+}
+
 const FolderBrowserView: React.FC<FolderBrowserProps> = ({
   isOpen,
   onClose,
@@ -69,404 +72,178 @@ const FolderBrowserView: React.FC<FolderBrowserProps> = ({
   const [parentPath, setParentPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [selectedDrive, setSelectedDrive] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [recentFolders, setRecentFolders] = useState<FolderItem[]>([]);
 
-  // On open, load drives + the current folder contents (if any)
+  /* ------------------------------------------------------------------ */
   useEffect(() => {
-    if (isOpen) {
-      loadDrives();
-      loadRecentFolders();
-      if (currentPath) {
-        browseFolder(currentPath);
-      }
-    }
+    if (!isOpen) return;
+    void loadDrives();
+    if (currentPath) void browseFolder(currentPath);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, currentPath]);
 
-  const loadRecentFolders = () => {
-    /* Browser only – guard for SSR */
-    // eslint‑disable-next-line @typescript-eslint/strict‑boolean‑expressions
-    const isWindows =
-      typeof navigator !== 'undefined' &&
-      navigator.platform.toLowerCase().startsWith('win');
-
-    if (isWindows) {
-      /* Classic Windows suggestions */
-      setRecentFolders([
-        { name: 'Documents', path: 'C:\\Users\\User\\Documents' },
-        { name: 'Downloads', path: 'C:\\Users\\User\\Downloads' },
-        { name: 'Projects',  path: 'C:\\Users\\User\\Projects'  },
-      ]);
-    } else {
-      /* Leave empty on Linux / macOS for now – avoids bad paths */
-      setRecentFolders([]);
-      /* ✱ Optional: push sensible *NIX* defaults here, e.g.
-         const home = '/home'; setRecentFolders([{ name: 'root', path: '/' }])
-         Feel free to extend later. */
-    }
-  };
-
-  /** Fetch available drives from the Python backend. */
+  /* ------------------------------------------------------------------ */
   const loadDrives = async () => {
     try {
       setIsLoading(true);
-      setError(null);
       const resp = await fetch(`${BACKEND_URL}/api/select_drives`);
-      const data = await resp.json();
-      if (data.success) {
-        setDrives(data.drives || []);
-      } else {
-        setError(data.error || "Failed to load drives");
-      }
-    } catch (err) {
-      setError("Failed to connect to the server");
+      const raw: DriveResponse | null = unwrap(await resp.json());
+      if (raw === null) throw new Error("Empty response from server");
+
+      // Normalise different possible shapes
+      const list: FolderItem[] = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw.drives)
+        ? raw.drives
+        : [];
+
+      setDrives(list);
+      setError(null);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to load drives");
+      setDrives([]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  /** Browse a folder (subfolders) from the Python backend. */
+  /* ------------------------------------------------------------------ */
   const browseFolder = async (folderPath: string) => {
     try {
       setIsLoading(true);
-      setError(null);
-
       const resp = await fetch(
         `${BACKEND_URL}/api/browse_folders?path=${encodeURIComponent(
           folderPath
         )}`
       );
-      const data = await resp.json();
+      const json = unwrap<{
+        current_path: string;
+        parent_path: string | null;
+        folders: FolderItem[];
+      }>(await resp.json());
+      if (!json) throw new Error("Bad response format");
 
-      if (data.success) {
-        setPath(data.current_path);
-        setParentPath(data.parent_path);
-        setFolders(data.folders || []);
-        setSearchQuery(""); // Clear any search on navigation
-
-        // Mark the drive as selected if path matches
-        const matchedDrive = drives.find((drive) =>
-          data.current_path.startsWith(drive.path)
-        );
-        setSelectedDrive(matchedDrive ? matchedDrive.path : null);
-      } else {
-        setError(data.error || "Failed to browse folder");
-      }
-    } catch (err) {
-      setError("Failed to browse folder");
+      setPath(json.current_path);
+      setParentPath(json.parent_path);
+      setFolders(json.folders ?? []);
+      setError(null);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to browse folder");
+      setFolders([]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  /** Navigate up one directory level. */
-  const goToParent = () => {
-    if (parentPath) {
-      browseFolder(parentPath);
-    }
-  };
-
-  /** When a user clicks a drive in the sidebar. */
-  const handleSelectDrive = (drivePath: string) => {
-    setSelectedDrive(drivePath);
-    browseFolder(drivePath);
-  };
-
-  /** Confirm selection. */
-  const handleSelectFolder = () => {
-    if (path) {
-      const newRecentFolder = { name: path.split(/[/\\]/).pop() || path, path };
-      if (!recentFolders.some((f) => f.path === path)) {
-        setRecentFolders([newRecentFolder, ...recentFolders.slice(0, 4)]);
-      }
-    }
-    onSelect(path);
-  };
-
-  /** Filter subfolders by search query. */
-  const filteredFolders = folders.filter((f) =>
+  /* ------------------------------------------------------------------ */
+  const goUp = () => parentPath && browseFolder(parentPath);
+  const filtered = folders.filter((f) =>
     f.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-  };
-
-  /** Display a basic breadcrumb navigation. */
-  const renderBreadcrumbs = () => {
-    if (!path)
-      return (
-        <span className="text-gray-500 dark:text-gray-400 italic">
-          No folder selected
-        </span>
-      );
-    const parts = path.split(/[/\\]/).filter(Boolean);
-    const isWindows = path.includes("\\");
-    const separator = isWindows ? "\\" : "/";
-
-    // Root part
-    const rootPart = isWindows ? path.substring(0, 3) : "/";
-
-    return (
-      <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap pb-1">
-        <Button
-          onClick={() => browseFolder(rootPart)}
-          variant="ghost"
-          size="sm"
-          className="h-7 px-1.5 flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950"
-          title={rootPart}
-        >
-          <Home size={14} className="mr-1" />
-          {rootPart}
-        </Button>
-
-        {parts.slice(isWindows ? 1 : 0).map((part, idx) => {
-          const currentPath = isWindows
-            ? rootPart + parts.slice(1, idx + 1).join(separator)
-            : separator + parts.slice(0, idx + 1).join(separator);
-
-          return (
-            <React.Fragment key={idx}>
-              <ChevronRight size={14} className="text-gray-400" />
-              <Button
-                onClick={() => browseFolder(currentPath)}
-                variant="ghost"
-                size="sm"
-                className="h-7 px-1.5 truncate max-w-xs text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950"
-                title={part}
-              >
-                {part}
-              </Button>
-            </React.Fragment>
-          );
-        })}
-      </div>
-    );
-  };
-
+  /* ------------------------------------------------------------------ */
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-5xl h-[80vh] p-0 flex flex-col overflow-hidden bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
+    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-5xl h-[80vh] p-0 flex flex-col overflow-hidden bg-white dark:bg-gray-900">
         <DialogHeader className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
-          <DialogTitle className="text-gray-800 dark:text-gray-200 flex items-center gap-2">
-            <FolderOpen
-              size={18}
-              className="text-indigo-500 dark:text-indigo-400"
-            />
-            Select Folder
+          <DialogTitle className="flex items-center gap-2">
+            <FolderOpen size={18} className="text-indigo-500" /> Select Folder
           </DialogTitle>
         </DialogHeader>
 
-        {/* Error message */}
         {error && (
-          <Alert
-            variant="destructive"
-            className="mx-4 mt-4 bg-rose-50 dark:bg-rose-950 border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-300"
-          >
+          <Alert variant="destructive" className="mx-4 mt-4">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
 
-        {/* Main content: left sidebar (drives/recent) and right subfolder list */}
-        <div className="flex flex-1 min-h-0 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden">
           {/* Sidebar */}
-          <aside className="w-1/4 border-r border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden">
-            {/* Drives */}
+          <aside className="w-1/4 border-r border-gray-200 dark:border-gray-800 flex flex-col">
             <div className="p-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center">
-              <HardDrive
-                size={16}
-                className="text-indigo-500 dark:text-indigo-400 mr-2"
-              />
-              <h4 className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                Drives
-              </h4>
+              <HardDrive size={16} className="text-indigo-500 mr-2" />
+              <span className="text-sm font-medium">Drives</span>
             </div>
-            <ScrollArea className="p-2 text-sm max-h-40 bg-white dark:bg-gray-900">
+            <ScrollArea className="p-2 max-h-40">
               {isLoading && drives.length === 0 ? (
-                <div className="flex items-center justify-center p-4 space-x-2">
-                  <Loader2 size={20} className="animate-spin text-gray-400" />
-                </div>
+                <Loader2 className="animate-spin mx-auto mt-6" />
               ) : (
-                <div className="space-y-1">
-                  {drives.map((drive) => (
-                    <Button
-                      key={drive.path}
-                      onClick={() => handleSelectDrive(drive.path)}
-                      variant={
-                        selectedDrive === drive.path ? "secondary" : "ghost"
-                      }
-                      className={`
-                        w-full justify-start
-                        ${
-                          selectedDrive === drive.path
-                            ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-900"
-                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                        }
-                      `}
-                      size="sm"
-                    >
-                      <HardDrive
-                        size={16}
-                        className={`mr-2 ${
-                          selectedDrive === drive.path
-                            ? "text-indigo-500 dark:text-indigo-400"
-                            : "text-gray-500 dark:text-gray-400"
-                        }`}
-                      />
-                      <span className="truncate">{drive.name}</span>
-                    </Button>
-                  ))}
-                </div>
-              )}
-            </ScrollArea>
-
-            {/* Recent Folders */}
-            <div className="p-2 bg-gray-100 dark:bg-gray-800 border-y border-gray-200 dark:border-gray-700 flex items-center">
-              <Clock
-                size={16}
-                className="text-cyan-500 dark:text-cyan-400 mr-2"
-              />
-              <h4 className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                Recent Folders
-              </h4>
-            </div>
-            <ScrollArea className="flex-1 p-2 text-sm bg-white dark:bg-gray-900">
-              {recentFolders.length === 0 ? (
-                <div className="text-center p-4 text-gray-500 dark:text-gray-400 italic">
-                  No recent folders
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  {recentFolders.map((folder) => (
-                    <Button
-                      key={folder.path}
-                      onClick={() => browseFolder(folder.path)}
-                      variant="ghost"
-                      className="w-full justify-start text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                      size="sm"
-                      title={folder.path}
-                    >
-                      <Folder
-                        size={16}
-                        className="text-cyan-500 dark:text-cyan-400 mr-2"
-                      />
-                      <span className="truncate">{folder.name}</span>
-                    </Button>
-                  ))}
-                </div>
+                drives.map((d) => (
+                  <Button
+                    key={d.path}
+                    size="sm"
+                    variant={path.startsWith(d.path) ? "secondary" : "ghost"}
+                    className="w-full justify-start"
+                    onClick={() => browseFolder(d.path)}
+                  >
+                    <HardDrive size={14} className="mr-2" />
+                    {d.name}
+                  </Button>
+                ))
               )}
             </ScrollArea>
           </aside>
 
-          {/* Main subfolder list */}
-          <main className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-gray-900">
-            {/* Folders header with search */}
-            <div className="p-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between sticky top-0 z-10">
-              <div className="flex items-center">
-                <Folder
-                  size={16}
-                  className="text-amber-500 dark:text-amber-400 mr-2"
-                />
-                <h4 className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                  Folders
-                </h4>
-
-                {/* Add parent navigation button */}
+          {/* Folder list */}
+          <main className="flex-1 flex flex-col">
+            {/* Toolbar */}
+            <div className="p-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Folder size={16} className="text-amber-500" />
+                <span className="text-sm font-medium">Folders</span>
                 {parentPath && (
-                  <Button
-                    onClick={goToParent}
-                    variant="ghost"
-                    size="sm"
-                    className="ml-2 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
-                  >
-                    <ChevronLeft size={16} />
-                    Up
+                  <Button size="sm" variant="ghost" onClick={goUp}>
+                    <ChevronLeft size={14} /> Up
                   </Button>
                 )}
               </div>
-
-              {/* Search input */}
               <div className="relative w-56">
-                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
-                  placeholder="Search folders..."
+                  className="pl-7 h-8"
+                  placeholder="Search…"
                   value={searchQuery}
-                  onChange={handleSearchChange}
-                  className="pl-8 h-8 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700"
+                  onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
             </div>
 
-            {/* Breadcrumbs */}
-            <div className="px-4 py-1 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-              {renderBreadcrumbs()}
+            {/* Current path */}
+            <div className="px-4 py-1 border-b border-gray-200 dark:border-gray-800 text-xs truncate">
+              {path || <span className="italic text-gray-500">No folder selected</span>}
             </div>
 
-            {/* Scrollable folder area */}
-            <ScrollArea className="flex-1 bg-white dark:bg-gray-900">
+            {/* List */}
+            <ScrollArea className="flex-1">
               {isLoading ? (
-                <div className="flex flex-col items-center justify-center h-full py-12">
-                  <Loader2
-                    size={32}
-                    className="animate-spin text-indigo-500 dark:text-indigo-400 mb-4"
-                  />
-                  <p className="text-gray-500 dark:text-gray-400">
-                    Loading folders...
-                  </p>
+                <div className="flex flex-col items-center py-12">
+                  <Loader2 className="animate-spin text-indigo-500 mb-3" />
+                  <p>Loading…</p>
                 </div>
-              ) : filteredFolders.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full py-12 text-gray-500 dark:text-gray-400">
-                  {searchQuery ? (
-                    <>
-                      <Search size={32} className="mb-4 opacity-90" />
-                      <p>No folders matching &quot;{searchQuery}&quot;</p>
-                      <Button
-                        onClick={() => setSearchQuery("")}
-                        variant="link"
-                        className="mt-2 text-indigo-500 dark:text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300"
-                      >
-                        Clear search
-                      </Button>
-                    </>
-                  ) : (
-                    <>
-                      <Folder size={32} className="mb-4 opacity-90" />
-                      <p>No folders found in this location</p>
-                    </>
-                  )}
+              ) : filtered.length === 0 ? (
+                <div className="flex flex-col items-center py-12 text-gray-500">
+                  <Folder size={32} className="mb-3 opacity-50" />
+                  <p>No folders</p>
                 </div>
               ) : (
                 <Table>
-                  <TableHeader className="sticky top-0 bg-white dark:bg-gray-900 z-10">
-                    <TableRow className="border-b border-gray-200 dark:border-gray-800">
-                      <TableHead className="w-2/5 text-gray-700 dark:text-gray-300">
-                        Name
-                      </TableHead>
-                      <TableHead className="w-3/5 hidden md:table-cell text-gray-700 dark:text-gray-300">
-                        Path
-                      </TableHead>
+                  <TableHeader className="sticky top-0 bg-white dark:bg-gray-900">
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead className="hidden md:table-cell">Path</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredFolders.map((folder, index) => (
+                    {filtered.map((f) => (
                       <TableRow
-                        key={folder.path}
-                        className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 border-b border-gray-200 dark:border-gray-800"
-                        onClick={() => browseFolder(folder.path)}
+                        key={f.path}
+                        className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
+                        onClick={() => browseFolder(f.path)}
                       >
-                        <TableCell className="font-medium text-gray-800 dark:text-gray-200">
-                          <div className="flex items-center">
-                            <Folder
-                              size={16}
-                              className="text-amber-500 dark:text-amber-400 mr-2"
-                            />
-                            <span>{folder.name}</span>
-                          </div>
+                        <TableCell className="font-medium flex items-center gap-2">
+                          <Folder size={14} className="text-amber-500" /> {f.name}
                         </TableCell>
-                        <TableCell className="text-gray-500 dark:text-gray-400 truncate hidden md:table-cell">
-                          {folder.path}
-                        </TableCell>
+                        <TableCell className="hidden md:table-cell">{f.path}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -476,33 +253,9 @@ const FolderBrowserView: React.FC<FolderBrowserProps> = ({
           </main>
         </div>
 
-        {/* Footer */}
-        <DialogFooter className="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
-          <div className="mr-auto text-sm text-gray-500 dark:text-gray-400">
-            {filteredFolders.length > 0 && (
-              <Badge
-                variant="outline"
-                className="text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/30"
-              >
-                {filteredFolders.length} folder
-                {filteredFolders.length !== 1 ? "s" : ""}
-              </Badge>
-            )}
-          </div>
-          <Button
-            variant="outline"
-            onClick={onClose}
-            className="border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSelectFolder}
-            disabled={!path}
-            className="bg-indigo-500 hover:bg-indigo-600 text-white"
-          >
-            Select This Folder
-          </Button>
+        <DialogFooter className="p-4 border-t border-gray-200 dark:border-gray-800">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => onSelect(path)} disabled={!path}>Select This Folder</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
