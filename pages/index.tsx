@@ -204,11 +204,12 @@ export default function Home() {
       setExtensionInput(""); // Clear local input state
   };
 
-   const handleSelectAllClick = () => {
-     // Get all paths from the *currently visible* filtered tree
-     const allVisiblePaths = flattenTree(filteredTree);
-     selectAllFiles(allVisiblePaths, localExclusionsSet); // Use action from store
-   };
+  const handleSelectAllClick = () => {
+    const allVisible = flattenTree(filteredTree);
+    const globalSet  = new Set(globalExclusions);
+    const localSet   = localExclusionsSet;           // already a Set
+    selectAllFiles(allVisible, globalSet, localSet); // NEW signature
+  };
 
    const handleRefreshAll = async () => {
         if (!projectPath) return;

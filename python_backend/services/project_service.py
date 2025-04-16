@@ -3,9 +3,15 @@
 """
 Project‑related operations:
 
-• Recursive file‑tree (honours ignoreDirs.txt using **git‑style patterns**)
+• Recursive file‑tree that honours ignore patterns in **ignoreDirs.txt**
 • Batch file‑content loader with **tiktoken**‑based token counts
 • Utility helpers for drive / folder picker
+
+SOLID ✦
+-------
+* **S**RP – path / token / ignore logic is encapsulated here.
+* **O**CP – new ignore rules or tokenisers can be added without touching
+  callers.
 """
 
 from __future__ import annotations
@@ -50,20 +56,53 @@ class ProjectService:
     # ────────────────────────────────────────────────────────────────────────
     @staticmethod
     def _norm(path: str) -> str:
-        """Normalise to forward slashes & strip leading ‘./’."""
-        return os.path.normpath(path).replace("\\", "/").lstrip("./")
+        """
+        Normalise to forward slashes **without** stripping leading dots.
+
+        * `".git"`          → **unchanged**
+        * `"./foo/bar"`     → `"foo/bar"`
+        * `".\\foo\\bar"`   → `"foo/bar"`
+        """
+        p = os.path.normpath(path).replace("\\", "/")
+
+        # remove *only* the literal "./" prefix that `os.path.relpath`
+        # sometimes adds – leave everything else intact.
+        if p.startswith("./"):
+            p = p[2:]
+
+        return p
 
     # ------------------------------------------------------------------ .gitignore
+    @staticmethod
+    def _expand_simple_pattern(p: str) -> List[str]:
+        """
+        Convert a *plain* directory name (no wildcards) to two git‑wildmatch
+        rules that ignore **the directory itself** *and* everything beneath it.
+
+            ".git"   → [".git", ".git/**"]
+            "dist"   → ["dist", "dist/**"]
+        """
+        return [p, f"{p}/**"]
+
     def _make_pathspec(self, patterns: List[str]) -> pathspec.PathSpec:
-        """Compile ignore patterns into a *gitwildmatch* PathSpec."""
+        """
+        Compile ignore patterns into a *gitwildmatch* `PathSpec`.
+
+        * Patterns that already contain wildcard characters are used verbatim.
+        * Plain names are expanded via :py:meth:`_expand_simple_pattern`.
+        """
         cleaned = [p.strip() for p in patterns if p.strip()]
-        # If the user puts plain folder names we treat them like '/foo/**'
-        auto_prefixed = [
-            p if any(ch in p for ch in "*?[]!.") else f"{p}/**" for p in cleaned
-        ]
+        compiled_lines: List[str] = []
+
+        for p in cleaned:
+            if any(ch in p for ch in "*?[]!"):        # already a glob
+                compiled_lines.append(p)
+            else:                                     # plain folder / file
+                compiled_lines.extend(self._expand_simple_pattern(p))
+
         try:
-            return pathspec.PathSpec.from_lines("gitwildmatch", auto_prefixed)
-        except Exception as e:
+            return pathspec.PathSpec.from_lines("gitwildmatch", compiled_lines)
+        except Exception as e:                        # pragma: no cover
             logger.warning("Invalid ignore pattern detected – ignoring it: %s", e)
             return pathspec.PathSpec.from_lines("gitwildmatch", [])
 
@@ -113,7 +152,7 @@ class ProjectService:
                 out.append(node)
         except PermissionError:
             logger.warning("Permission denied while reading %s", cur_dir)
-        except Exception as e:
+        except Exception as e:                  # pragma: no cover
             logger.error("Error scanning %s – %s", cur_dir, e)
 
     def get_project_tree(self, root_dir: str) -> List[dict]:
@@ -132,8 +171,7 @@ class ProjectService:
         self._walk(root_dir, root_dir, spec, tree)
 
         # sort: dirs first then files, alphabetically
-        def _key(n: dict): return (n["type"] != "directory", n["name"].lower())
-        tree.sort(key=_key)
+        tree.sort(key=lambda n: (n["type"] != "directory", n["name"].lower()))
         return tree
 
     # 2. Batch file content ----------------------------------------------------
@@ -162,7 +200,7 @@ class ProjectService:
                 content = self._storage_repo.read_text(full) or ""
                 file_info["content"] = content
                 file_info["tokenCount"] = self._token_count(content)
-            except Exception as e:
+            except Exception as e:              # pragma: no cover
                 logger.error("Failed reading %s – %s", full, e)
                 file_info["content"] = f"Error reading file: {rel_norm}"
 
