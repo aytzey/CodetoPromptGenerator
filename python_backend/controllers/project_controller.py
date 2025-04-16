@@ -1,95 +1,158 @@
-# File: python_backend/controllers/project_controller.py
-# REFACTOR / OVERWRITE
-import os
+from __future__ import annotations
+"""
+project_controller.py – safe folder‑browser + project tree endpoint.
+"""
+
 import logging
-from flask import Blueprint, request, current_app
+import string
+from pathlib import Path
+from typing import List
+
+from flask import Blueprint, jsonify, request
+
+from repositories.file_storage import FileStorageRepository
+from services.exclusion_service import ExclusionService
 from services.project_service import ProjectService
-from services.exclusion_service import ExclusionService # Need exclusion service
-from repositories.file_storage import FileStorageRepository # Need repo instance
-from utils.response_utils import success_response, error_response
+from utils.response_utils import success_response   #  ←–– added
 
 logger = logging.getLogger(__name__)
-project_blueprint = Blueprint('project_blueprint', __name__)
 
-# --- Dependency Setup ---
-storage_repo = FileStorageRepository()
-# ProjectService needs ExclusionService to get ignores when building tree
-exclusion_service = ExclusionService(storage_repo=storage_repo)
-project_service = ProjectService(storage_repo=storage_repo, exclusion_service=exclusion_service)
-# --- End Dependency Setup ---
+# ───── Service / Repository singletons ───────────────────────────────────────
+_storage = FileStorageRepository()
+_exclusions = ExclusionService(_storage)
+_projects = ProjectService(_storage, _exclusions)
+
+# ───── Helpers ───────────────────────────────────────────────────────────────
+def _list_subdirs(path: Path) -> List[dict]:
+    return sorted(
+        (
+            {"name": p.name, "path": str(p)}
+            for p in path.iterdir()
+            if p.is_dir() and not p.name.startswith(".")
+        ),
+        key=lambda d: d["name"].lower(),
+    )
 
 
-@project_blueprint.route('/api/projects/tree', methods=['GET'])
-def get_project_tree_endpoint():
-    """Gets the file tree for a given root directory."""
-    root_dir = request.args.get('rootDir')
+def _allowed_roots() -> list[Path]:
+    home = Path.home().resolve()
+    roots = {Path("/").resolve(), home}
+
+    media_root = Path("/media") / home.name
+    if media_root.exists():
+        roots.add(media_root.resolve())
+
+    volumes = Path("/Volumes")
+    if volumes.exists():
+        roots.add(volumes.resolve())
+
+    return list(roots)
+
+
+def _is_path_allowed(target: Path) -> bool:
+    if target.drive:          # Windows
+        return True
+    target = target.resolve()
+    return any(target == r or target.is_relative_to(r) for r in _allowed_roots())
+
+
+# ───── Blueprint ─────────────────────────────────────────────────────────────
+project_bp = Blueprint("projects", __name__, url_prefix="/api")
+
+# -- 1. logical drives --------------------------------------------------------
+@project_bp.get("/select_drives")
+def select_drives():
+    user_home = Path.home()
+    drives = [
+        {"name": "Root", "path": "/"},
+        {"name": "Home", "path": str(user_home)},
+    ]
+
+    root_home = Path("/root")
+    if root_home.exists() and root_home != user_home:
+        drives.append({"name": "root", "path": str(root_home)})
+
+    media_root = Path("/media") / user_home.name
+    if media_root.exists():
+        drives.extend(
+            {"name": m.name, "path": str(m)} for m in media_root.iterdir() if m.is_dir()
+        )
+
+    mac_volumes = Path("/Volumes")
+    if mac_volumes.exists():
+        drives.extend(
+            {"name": v.name, "path": str(v)} for v in mac_volumes.iterdir() if v.is_dir()
+        )
+
+    if Path("/").anchor == "\\":                      # Windows
+        from ctypes import windll                     # type: ignore
+        bitmask = windll.kernel32.GetLogicalDrives()  # noqa: S110
+        for letter in string.ascii_uppercase:
+            if bitmask & 1:
+                drives.append({"name": f"{letter}:\\", "path": f"{letter}:\\"})
+            bitmask >>= 1
+
+    # de‑duplicate
+    seen: set[str] = set()
+    drives = [d for d in drives if not (d["path"] in seen or seen.add(d["path"]))]
+
+    return jsonify({"success": True, "drives": drives}), 200
+
+
+# -- 2. list sub‑folders ------------------------------------------------------
+@project_bp.get("/browse_folders")
+def browse_folders():
+    raw = (request.args.get("path") or "").strip()
+    if not raw:
+        return jsonify({"success": False, "error": "Query parameter 'path' is required."}), 400
+
+    try:
+        path = Path(raw).expanduser().resolve(strict=True)
+    except (FileNotFoundError, RuntimeError):
+        return jsonify({"success": False, "error": "Path does not exist."}), 404
+
+    if not path.is_dir():
+        return jsonify({"success": False, "error": "Path is not a directory."}), 400
+    if not _is_path_allowed(path):
+        return jsonify({"success": False, "error": "Access denied."}), 403
+
+    try:
+        folders = _list_subdirs(path)
+    except PermissionError:
+        return jsonify({"success": False, "error": "Permission denied."}), 403
+
+    parent = None if path.parent == path else str(path.parent)
+    return (
+        jsonify(
+            {
+                "success": True,
+                "current_path": str(path),
+                "parent_path": parent,
+                "folders": folders,
+            }
+        ),
+        200,
+    )
+
+
+# -- 3. **FIXED** project tree endpoint --------------------------------------
+@project_bp.route("/projects/tree", methods=["GET", "OPTIONS"])
+def project_tree():
+    """
+    Returns the file‑tree for the requested rootDir.
+
+    Success → { success: true, data: [ …tree… ] }
+    """
+    root_dir = (request.args.get("rootDir") or "").strip()
     if not root_dir:
-        return error_response("Missing 'rootDir' query parameter.", status_code=400)
+        return jsonify({"success": False, "error": "Query parameter 'rootDir' is required."}), 400
 
     try:
-        tree = project_service.get_project_tree(root_dir)
-        return success_response(data=tree)
-    except ValueError as e: # Catches invalid root dir from service
-        return error_response(str(e), status_code=400)
-    except FileNotFoundError as e: # If root dir doesn't exist after checks
-         return error_response(str(e), status_code=404)
-    except PermissionError as e:
-        logger.warning(f"Permission error getting tree for {root_dir}: {e}")
-        return error_response(str(e), "Permission denied while scanning directory", 403)
-    except Exception as e:
-        logger.exception(f"Error getting project tree for {root_dir}")
-        return error_response(str(e), "Failed to get project tree", 500)
-
-
-@project_blueprint.route('/api/projects/files', methods=['POST'])
-def get_files_content_endpoint():
-    """Fetches content and token count for specified files."""
-    data = request.get_json()
-    if data is None or 'baseDir' not in data or 'paths' not in data or not isinstance(data['paths'], list):
-        return error_response("Invalid request body. Requires 'baseDir' (string) and 'paths' (list).", status_code=400)
-
-    base_dir = data['baseDir']
-    relative_paths = data['paths']
-
-    try:
-        files_data = project_service.get_files_content(base_dir, relative_paths)
-        return success_response(data=files_data)
-    except ValueError as e: # Catches invalid baseDir or paths list
-        return error_response(str(e), status_code=400)
-    except Exception as e:
-        logger.exception(f"Error getting file contents for {base_dir}")
-        return error_response(str(e), "Failed to get file contents", 500)
-
-
-@project_blueprint.route('/api/browse_folders', methods=['GET'])
-def browse_folders_endpoint():
-    """Gets subfolders for a given path."""
-    target_path = request.args.get('path', os.getcwd()) # Default to CWD if no path
-
-    try:
-        browse_info = project_service.get_folder_browse_info(target_path)
-        # Adapt the structure slightly to match the old controller's output
-        response_data = {
-            'current_path': browse_info['current_path'],
-            'parent_path': browse_info['parent_path'],
-            'folders': browse_info['folders']
-        }
-        return success_response(data=response_data)
-    except FileNotFoundError as e:
-        return error_response(str(e), status_code=404)
-    except PermissionError as e:
-        return error_response(str(e), "Permission denied", 403)
-    except Exception as e:
-        logger.exception(f"Error browsing folders for {target_path}")
-        return error_response(str(e), "Failed to browse folders", 500)
-
-
-@project_blueprint.route('/api/select_drives', methods=['GET'])
-def select_drives_endpoint():
-    """Gets available drives or common root directories."""
-    try:
-        drives = project_service.get_available_drives()
-        return success_response(data=drives) # Changed key from 'drives' to 'data' for consistency
-    except Exception as e:
-        logger.exception("Error selecting drives")
-        return error_response(str(e), "Failed to get drives", 500)
+        tree = _projects.get_project_tree(root_dir)
+        # ★ return in the standard envelope so the React hook recognises it
+        return success_response(data=tree)            # ←–– changed
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception:                                 # pragma: no cover
+        logger.exception("Error while building project tree")
+        return jsonify({"success": False, "error": "Internal server error."}), 500

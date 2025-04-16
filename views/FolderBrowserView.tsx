@@ -84,14 +84,27 @@ const FolderBrowserView: React.FC<FolderBrowserProps> = ({
     }
   }, [isOpen, currentPath]);
 
-  /** Mock: load some recently used folders (placeholder) */
   const loadRecentFolders = () => {
-    // In a real app, you might store/retrieve from localStorage or an API
-    setRecentFolders([
-      { name: "Documents", path: "C:\\Users\\User\\Documents" },
-      { name: "Downloads", path: "C:\\Users\\User\\Downloads" },
-      { name: "Projects", path: "C:\\Users\\User\\Projects" },
-    ]);
+    /* Browser only – guard for SSR */
+    // eslint‑disable-next-line @typescript-eslint/strict‑boolean‑expressions
+    const isWindows =
+      typeof navigator !== 'undefined' &&
+      navigator.platform.toLowerCase().startsWith('win');
+
+    if (isWindows) {
+      /* Classic Windows suggestions */
+      setRecentFolders([
+        { name: 'Documents', path: 'C:\\Users\\User\\Documents' },
+        { name: 'Downloads', path: 'C:\\Users\\User\\Downloads' },
+        { name: 'Projects',  path: 'C:\\Users\\User\\Projects'  },
+      ]);
+    } else {
+      /* Leave empty on Linux / macOS for now – avoids bad paths */
+      setRecentFolders([]);
+      /* ✱ Optional: push sensible *NIX* defaults here, e.g.
+         const home = '/home'; setRecentFolders([{ name: 'root', path: '/' }])
+         Feel free to extend later. */
+    }
   };
 
   /** Fetch available drives from the Python backend. */

@@ -11,6 +11,9 @@ import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Badge } from '@/components/ui/badge'
 
+// 1) IMPORT your store’s setProjectPath. This is crucial.
+import { useProjectStore } from '@/stores/useProjectStore'
+
 interface FolderPickerProps {
   currentPath: string
   onPathSelected: (path: string) => void
@@ -32,6 +35,9 @@ const FolderPickerView: React.FC<FolderPickerProps> = ({
   const [showBrowser, setShowBrowser] = useState(false)
   const [recentFolders, setRecentFolders] = useState<string[]>([])
 
+  // 2) Access the store action
+  const { setProjectPath } = useProjectStore.getState() 
+
   useEffect(() => {
     setInputValue(currentPath)
   }, [currentPath])
@@ -52,6 +58,10 @@ const FolderPickerView: React.FC<FolderPickerProps> = ({
     if (path) {
       onPathSelected(path)
       updateRecentFolders(path)
+
+      // 3) Also update global store here. This ensures that
+      //    loadProjectTree() runs, populating FileTreeView.
+      setProjectPath(path)
     }
   }
 

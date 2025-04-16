@@ -1,42 +1,79 @@
-# File: python_backend/controllers/resolve_folder_controller.py
-# REFACTOR / OVERWRITE
-import os
+"""
+controllers/resolve_folder_controller.py
+--------------------------------------------------
+Endpoints that support the Folder‑Browser UI.
+"""
+
+from __future__ import annotations
+
 import logging
-from flask import Blueprint, request, current_app
-from services.project_service import ProjectService # Using ProjectService for this logic now
-from repositories.file_storage import FileStorageRepository # Need repo instance
-from services.exclusion_service import ExclusionService # Needed by ProjectService, but not directly used here
-from utils.response_utils import success_response, error_response
+from http import HTTPStatus
+
+from flask import Blueprint, jsonify, request, abort
+
+from utils.path_utils import list_logical_drives, list_subfolders
 
 logger = logging.getLogger(__name__)
-resolve_blueprint = Blueprint('resolve_blueprint', __name__)
+resolve_bp = Blueprint("resolve", __name__, url_prefix="/api")
 
-# --- Dependency Setup ---
-# These are needed because ProjectService depends on them, even if not used directly here
-storage_repo = FileStorageRepository()
-exclusion_service = ExclusionService(storage_repo=storage_repo)
-# Instantiate ProjectService which now contains the resolve logic
-project_service = ProjectService(storage_repo=storage_repo, exclusion_service=exclusion_service)
-# --- End Dependency Setup ---
 
-@resolve_blueprint.route('/api/resolveFolder', methods=['POST'])
-def resolve_folder_endpoint():
+@resolve_bp.get("/select_drives")
+def api_select_drives():
     """
-    Attempts to resolve a folder name to an absolute path.
-    Uses logic now encapsulated within ProjectService.
-    """
-    data = request.get_json()
-    if data is None or 'folderName' not in data:
-        return error_response("Missing 'folderName' in request body.", status_code=400)
+    GET /api/select_drives
+    ----------------------
+    Returns a list of logical “drives”.
 
-    folder_name = data.get('folderName', '').strip()
+    Response → { success: bool, drives: [ {name, path}, … ] }
+    """
+    drives = list_logical_drives()
+    return jsonify({"success": True, "drives": drives})
+
+
+@resolve_bp.get("/browse_folders")
+def api_browse_folders():
+    """
+    GET /api/browse_folders?path=/some/dir
+    --------------------------------------
+    Lists *child* folders of the requested path.
+    """
+    raw_path: str | None = request.args.get("path")
+    if not raw_path:
+        abort(HTTPStatus.BAD_REQUEST, "Missing 'path' query‑param")
 
     try:
-        resolved_path = project_service.resolve_folder_path(folder_name)
-        # The service returns the path directly
-        return success_response(data={'path': resolved_path}) # Wrap path in dict for consistency
-    except ValueError as e: # Catches empty folder name
-        return error_response(str(e), status_code=400)
-    except Exception as e:
-        logger.exception(f"Error resolving folder name: {folder_name}")
-        return error_response(str(e), f"Failed to resolve folder: {folder_name}", 500)
+        folders = list_subfolders(raw_path)
+        parent_path = None if raw_path in ("/", raw_path.rstrip("/")) else str(
+            __import__("pathlib").Path(raw_path).resolve().parent
+        )
+        payload = {
+            "success": True,
+            "current_path": raw_path,
+            "parent_path": parent_path,
+            "folders": folders,
+        }
+        return jsonify(payload)
+
+    except PermissionError:
+        logger.warning("Permission denied while browsing %s", raw_path)
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "Permission denied",
+                    "current_path": raw_path,
+                }
+            ),
+            HTTPStatus.FORBIDDEN,
+        )
+    except (FileNotFoundError, NotADirectoryError):
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "Path does not exist or is not a directory",
+                    "current_path": raw_path,
+                }
+            ),
+            HTTPStatus.NOT_FOUND,
+        )

@@ -18,46 +18,65 @@ export function useProjectService() {
     const { setError } = useAppStore();
 
     const loadProjectTree = useCallback(async () => {
-        if (!projectPath) return;
+        // Get latest project path from store to ensure it's current
+        const currentProjectPath = useProjectStore.getState().projectPath;
+        if (!currentProjectPath) {
+             console.log("loadProjectTree: No project path set, skipping fetch.");
+             setFileTree([]); // Ensure tree is cleared if path is removed
+             setIsLoadingTree(false); // Ensure loading is false if we skip
+             return;
+        }
 
         setIsLoadingTree(true);
         setError(null);
-        console.log(`Fetching tree for: ${projectPath}`);
+        console.log(`Fetching tree for: ${currentProjectPath}`);
 
         // Backend returns { success: true, data: [...] }
-        // fetchApi extracts the 'data' part, so 'result' here will be the array [...]
-        const result = await fetchApi<FileNode[]>(`/api/projects/tree?rootDir=${encodeURIComponent(projectPath)}`);
+        // fetchApi extracts the 'data' part, so 'result' should be the array [...] or null on error
+        const result = await fetchApi<FileNode[]>(`/api/projects/tree?rootDir=${encodeURIComponent(currentProjectPath)}`);
 
-        // --- FIX START ---
-        // Check if the result is an array (which is the tree itself)
+        // --- Robust Validation START ---
+        // Validate that the result from fetchApi is indeed the expected array structure
+        // It could be null (if fetchApi handled an error) or potentially something else if API response was unexpected.
         if (result && Array.isArray(result)) {
-            console.log(`Tree received with ${result.length} root nodes.`);
+            // SUCCESS CASE: Data is a valid array
+            console.log(`Tree received with ${result.length} root nodes.`); // Added console log for verification
             setFileTree(result); // Use the result directly as the tree
         } else {
-             // Log the actual result structure if it's not the expected array
-             console.error("Failed to load tree or unexpected data structure received:", result);
+             // FAILURE CASE: Data is null, not an array, or fetchApi handled an error
+             console.error("Failed to load tree or unexpected data structure received from API:", result);
              setFileTree([]); // Clear tree on failure or unexpected structure
-             // Error might have been set by fetchApi, or we could set a specific one here
-             if (!useAppStore.getState().error) { // Only set error if fetchApi didn't already
-                setError("Failed to load project tree: Invalid data received from backend.");
+             // Add a fallback error message only if fetchApi didn't already set one and result wasn't null
+             if (!useAppStore.getState().error && result !== null) {
+                setError("Failed to load project tree: Invalid data format received from backend.");
              }
+             // If result is null, fetchApi should have already set the error state.
         }
-        // --- FIX END ---
-        setIsLoadingTree(false);
-    }, [projectPath, setIsLoadingTree, setFileTree, setError]); // Dependencies remain the same
+        // --- Robust Validation END ---
+
+        setIsLoadingTree(false); // Ensure loading is set to false in all cases (after processing)
+    }, [setIsLoadingTree, setFileTree, setError]); // Dependencies: setters and error handler
 
     const loadSelectedFileContents = useCallback(async (): Promise<FileData[]> => { // Added return type
         const currentSelectedFiles = useProjectStore.getState().selectedFilePaths;
         const currentProjectPath = useProjectStore.getState().projectPath;
 
+        // Skip if no path or no selection
         if (!currentProjectPath || currentSelectedFiles.length === 0) {
             setFilesData([]);
+            setIsLoadingContents(false); // Ensure loading is false
             return []; // Return empty array
         }
 
-        const filesToFetch = currentSelectedFiles.filter(p => !p.endsWith('/'));
+        // Filter out directories, only fetch files
+        const filesToFetch = currentSelectedFiles.filter(p => !p.endsWith('/')); // Simple check for directory marker
          if (filesToFetch.length === 0) {
-            setFilesData([]);
+            // If only directories were selected, ensure file data is cleared and exit
+            const currentFilesData = useProjectStore.getState().filesData;
+            if (currentFilesData.length > 0) {
+                setFilesData([]);
+            }
+            setIsLoadingContents(false); // Ensure loading is false
             return []; // Return empty array
          }
 
@@ -77,20 +96,29 @@ export function useProjectService() {
             body: JSON.stringify(body),
         });
 
+        // --- Robust Validation START ---
+        // Validate the result structure before setting state
+        let fetchedData: FileData[] = []; // Define variable to hold data or empty array
         if (result && Array.isArray(result)) { // Check if result is the expected array
              console.log(`Content received for ${result.length} files.`);
-            setFilesData(result);
-            setIsLoadingContents(false); // Set loading false here on success
-            return result; // Return the fetched data
+             setFilesData(result); // Update state
+             fetchedData = result; // Assign fetched data for return
         } else {
-             console.error("Failed to load file contents, result:", result);
-             setFilesData([]);
-             setIsLoadingContents(false); // Set loading false here on failure
-             // Error is set by fetchApi
-             return []; // Return empty array on failure
+             // FAILURE CASE: Handle null or non-array result
+             console.error("Failed to load file contents or unexpected data structure received:", result);
+             setFilesData([]); // Clear data on failure
+             // Add fallback error if needed and result wasn't null
+             if (!useAppStore.getState().error && result !== null) {
+                setError("Failed to load file contents: Invalid data format received from backend.");
+             }
+             // fetchedData remains []
         }
-        // setIsLoadingContents(false); // Moved inside if/else for clarity
-    }, [setFilesData, setIsLoadingContents, setError]); // Dependencies are state setters
+        // --- Robust Validation END ---
+
+        setIsLoadingContents(false); // Ensure loading is set to false after processing
+        return fetchedData; // Return the processed data (or empty array)
+
+    }, [setFilesData, setIsLoadingContents, setError]); // Dependencies are state setters and error handler
 
     return { loadProjectTree, loadSelectedFileContents };
 }
