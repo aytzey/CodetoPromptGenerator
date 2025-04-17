@@ -1,208 +1,303 @@
 // views/SelectedFilesListView.tsx
-import React from 'react'
-import { File, Folder, FileText, FileCode, Inbox, BarChart2 } from 'lucide-react'
-
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
-import { 
-  Tooltip, 
-  TooltipContent, 
-  TooltipProvider, 
-  TooltipTrigger 
-} from "@/components/ui/tooltip"
-
-interface FileData {
-  path: string
-  content: string
-  tokenCount: number
-}
-
-interface SelectedFilesListProps {
-  selectedFiles: string[]
-  filterExtensions: string[]
-  filesData: FileData[]
-}
-
 /**
- * Displays a list of selected files (and directories if any).
- * Also shows total token count of loaded files.
+ * Selected‑Files panel
+ * ————————————————————————————————————
+ * Displays the user’s current selection in a scroll‑area
+ * and lets them:
+ *   • inspect basic stats
+ *   • preview a codemap
+ *   • remove individual paths
+ *   • (NEW) sort list alphabetically or by token‑count
  */
-const SelectedFilesListView: React.FC<SelectedFilesListProps> = ({
-  selectedFiles,
-  filterExtensions,
-  filesData
-}) => {
-  // Filter out any selected files that don't match the extension filter
-  const filteredSelected = filterExtensions.length
-    ? selectedFiles.filter(f => matchesAnyExtension(f, filterExtensions))
-    : selectedFiles
 
-  const filePaths = new Set(filesData.map(fd => fd.path))
-  const directories = filteredSelected.filter(f => !filePaths.has(f))
-  const displayedData = filesData.filter(fd => filteredSelected.includes(fd.path))
+import React, { useMemo, useState } from "react";
+import {
+  File,
+  Folder,
+  X,
+  Share2,
+  Loader2,
+  BarChart2,
+  Inbox,
+  SortAsc,
+} from "lucide-react";
 
-  const totalTokens = displayedData.reduce((acc, f) => acc + f.tokenCount, 0)
-  const totalChars = displayedData.reduce((acc, f) => acc + f.content.length, 0)
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  TooltipProvider,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
 
-  // Get file extension for icon selection
-  const getFileIcon = (path: string) => {
-    const extension = path.split('.').pop()?.toLowerCase() || '';
-    
-    switch(extension) {
-      case 'js':
-      case 'jsx':
-      case 'ts':
-      case 'tsx':
-        return <FileCode className="h-4 w-4 mr-2 text-yellow-500 dark:text-yellow-400 flex-shrink-0" />;
-      case 'css':
-      case 'scss':
-      case 'sass':
-      case 'less':
-        return <FileCode className="h-4 w-4 mr-2 text-blue-500 dark:text-blue-400 flex-shrink-0" />;
-      case 'json':
-      case 'yml':
-      case 'yaml':
-        return <FileCode className="h-4 w-4 mr-2 text-orange-500 dark:text-orange-400 flex-shrink-0" />;
-      case 'md':
-      case 'txt':
-        return <FileText className="h-4 w-4 mr-2 text-gray-500 dark:text-gray-400 flex-shrink-0" />;
-      case 'html':
-      case 'xml':
-        return <FileCode className="h-4 w-4 mr-2 text-red-500 dark:text-red-400 flex-shrink-0" />;
-      case 'py':
-      case 'rb':
-      case 'php':
-        return <FileCode className="h-4 w-4 mr-2 text-green-500 dark:text-green-400 flex-shrink-0" />;
-      default:
-        return <File className="h-4 w-4 mr-2 text-teal-500 dark:text-teal-400 flex-shrink-0" />;
+import { useProjectStore } from "@/stores/useProjectStore";
+import { useExclusionStore } from "@/stores/useExclusionStore";
+import { useAppStore } from "@/stores/useAppStore";
+
+import { useCodemapExtractor } from "@/services/codemapServiceHooks";
+import CodemapPreviewModal from "./CodemapPreviewModal";
+
+import type { FileData } from "@/types";
+
+/* ─────────────────────────────────────────────────── */
+/* helpers */
+
+/** pick an icon colour based on extension */
+const extIcon = (p: string) => {
+  const ext = p.split(".").pop()?.toLowerCase();
+  switch (ext) {
+    case "ts":
+    case "tsx":
+    case "js":
+    case "jsx":
+      return (
+        <File className="h-4 w-4 mr-2 text-yellow-500 dark:text-yellow-400" />
+      );
+    case "py":
+    case "rb":
+    case "php":
+      return <File className="h-4 w-4 mr-2 text-green-500 dark:text-green-400" />;
+    case "json":
+    case "yml":
+    case "yaml":
+      return (
+        <File className="h-4 w-4 mr-2 text-orange-500 dark:text-orange-400" />
+      );
+    default:
+      return <File className="h-4 w-4 mr-2 text-teal-500 dark:text-teal-400" />;
+  }
+};
+
+/** extension filter util */
+const matchesExt = (name: string, exts: string[]) =>
+  exts.length === 0 ||
+  exts.some((e) =>
+    name.toLowerCase().endsWith(e.startsWith(".") ? e.toLowerCase() : `.${e}`),
+  );
+
+/* ─────────────────────────────────────────────────── */
+
+export default function SelectedFilesListView() {
+  /* — zustand state — */
+  const {
+    selectedFilePaths,
+    setSelectedFilePaths,
+    filesData,
+    fileTree,
+  } = useProjectStore();
+  const { extensionFilters } = useExclusionStore();
+  const { codemapFilterEmpty } = useAppStore();
+
+  /* — codemap extractor — */
+  const {
+    trigger: extractCodemap,
+    data: codemap,
+    isMutating,
+  } = useCodemapExtractor();
+  const [showPreview, setShowPreview] = useState(false);
+
+  /* — local UI state — */
+  const [sortMode, setSortMode] = useState<"name" | "tokens">("name");
+
+  /* — derive directory & file lists — */
+  const {
+    dirs,
+    files,
+    totalTokens,
+    totalChars,
+    visibleCount,
+    visiblePaths,
+  } = useMemo(() => {
+    const dirSet = new Set<string>();
+    const loaded = new Map(filesData.map((f) => [f.path, f]));
+
+    selectedFilePaths.forEach((p) => {
+      if (loaded.has(p)) return; // file
+      dirSet.add(p);            // directory
+    });
+
+    const rawFiles = [...loaded.values()].filter((f) =>
+      matchesExt(f.path, extensionFilters),
+    );
+
+    /* dynamic sort */
+    const sortedFiles =
+      sortMode === "tokens"
+        ? [...rawFiles].sort((a, b) => (b.tokenCount ?? 0) - (a.tokenCount ?? 0))
+        : [...rawFiles].sort((a, b) => a.path.localeCompare(b.path));
+
+    return {
+      dirs: [...dirSet].sort(),
+      files: sortedFiles,
+      totalTokens: rawFiles.reduce((a, f) => a + (f.tokenCount || 0), 0),
+      totalChars: rawFiles.reduce((a, f) => a + f.content.length, 0),
+      visibleCount: dirSet.size + rawFiles.length,
+      visiblePaths: [...dirSet, ...rawFiles.map((f) => f.path)],
+    };
+  }, [selectedFilePaths, filesData, extensionFilters, sortMode]);
+
+  /* remove single path */
+  const removePath = (p: string) =>
+    setSelectedFilePaths(selectedFilePaths.filter((x) => x !== p));
+
+  /* codemap preview */
+  const handlePreview = async () => {
+    const rel = visiblePaths.filter((p) => !p.endsWith("/"));
+    const result = await extractCodemap({ paths: rel });
+    if (result && codemapFilterEmpty) {
+      const keep = Object.entries(result)
+        .filter(([, v]) => (v.classes.length + v.functions.length) > 0)
+        .map(([file]) => file);
+      setSelectedFilePaths((prev) => prev.filter((p) => keep.includes(p)));
     }
+    setShowPreview(true);
   };
 
+  /* ─────────────────────────────── render ─────────────────────────────── */
+
+  if (visibleCount === 0) {
+    return (
+      <div className="py-8 flex flex-col items-center text-gray-500 dark:text-gray-400">
+        <Inbox className="h-10 w-10 mb-3 opacity-40" />
+        {extensionFilters.length
+          ? "No selected items match current extension filters."
+          : "No files selected."}
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-3">
-      {filteredSelected.length === 0 ? (
-        <div className="text-center py-8 text-gray-500 dark:text-gray-400 flex flex-col items-center">
-          <Inbox className="mx-auto h-12 w-12 opacity-30 mb-3" />
-          <p className="text-sm">
-            No files or directories selected{filterExtensions.length > 0 ? ', or none match the current filters' : ''}.
-          </p>
-          {filterExtensions.length > 0 && (
-            <div className="mt-2 flex gap-1 flex-wrap justify-center">
-              {filterExtensions.map(ext => (
-                <Badge key={ext} variant="outline" className="text-xs bg-gray-50 dark:bg-gray-800">
-                  {ext}
-                </Badge>
-              ))}
-            </div>
-          )}
-        </div>
-      ) : (
-        <>
-          <div className="flex justify-between items-center mb-2">
-            <div className="flex gap-1">
-              <Badge variant="outline" className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800">
-                {directories.length > 0 && (
-                  <span className="mr-1 text-xs">{directories.length} {directories.length === 1 ? 'dir' : 'dirs'}</span>
+    <>
+      {/* stats + actions header */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <Badge variant="outline">
+          {dirs.length > 0 && `${dirs.length} dir${dirs.length > 1 ? "s" : ""}, `}
+          {files.length} file{files.length !== 1 && "s"}
+        </Badge>
+
+        <Badge variant="outline" className="flex items-center gap-1">
+          <BarChart2 size={12} /> {totalTokens.toLocaleString()} tokens
+        </Badge>
+
+        <Badge variant="outline">{totalChars.toLocaleString()} chars</Badge>
+
+        {/* ─── sort control ─── */}
+        <Select value={sortMode} onValueChange={v => setSortMode(v as any)}>
+          <SelectTrigger className="ml-auto h-7 w-[158px] text-xs border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800">
+            <SortAsc size={12} className="mr-1" />
+            <SelectValue placeholder="Sort files…" />
+          </SelectTrigger>
+          <SelectContent className="text-xs">
+            <SelectItem value="name">Alphabetical (A‑Z)</SelectItem>
+            <SelectItem value="tokens">Token count (desc)</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {/* codemap preview button */}
+        <TooltipProvider delayDuration={100}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7"
+                disabled={isMutating || files.length === 0}
+                onClick={handlePreview}
+              >
+                {isMutating ? (
+                  <>
+                    <Loader2 size={14} className="mr-1 animate-spin" />
+                    Extracting…
+                  </>
+                ) : (
+                  <>
+                    <Share2 size={14} className="mr-1" />
+                    Preview Codemap
+                  </>
                 )}
-                {displayedData.length} {displayedData.length === 1 ? 'file' : 'files'}
-              </Badge>
-            </div>
-            
-            {displayedData.length > 0 && (
-              <Badge variant="outline" className="bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 border-teal-200 dark:border-teal-800">
-                <BarChart2 className="h-3 w-3 mr-1" />
-                {totalTokens.toLocaleString()} tokens
-              </Badge>
-            )}
-          </div>
-        
-          <ScrollArea className="h-[180px] pr-4 border rounded-md border-gray-200 dark:border-gray-800">
-            <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-              {directories.map(d => (
-                <li key={d} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors duration-150">
-                  <div className="p-2 flex items-center group">
-                    <Folder className="h-4 w-4 mr-2 text-amber-500 dark:text-amber-400 flex-shrink-0 group-hover:scale-110 transition-transform duration-200" />
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="text-sm truncate text-gray-700 dark:text-gray-300">{d}</span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="bg-gray-800 text-white dark:bg-gray-700">
-                          <p className="font-mono text-xs">{d}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    <Badge variant="outline" className="ml-auto text-xs bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800">
-                      directory
-                    </Badge>
-                  </div>
-                </li>
-              ))}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              Inspect classes / functions without sending full file bodies.
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
 
-              {displayedData.map(file => {
-                // Get the filename from the path for cleaner display
-                const filename = file.path.split('/').pop() || file.path;
-                
-                return (
-                  <li key={file.path} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors duration-150">
-                    <div className="p-2 flex items-center group">
-                      {getFileIcon(file.path)}
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm truncate text-gray-700 dark:text-gray-300 font-medium">
-                                {filename}
-                              </div>
-                              <div className="text-xs truncate text-gray-500 dark:text-gray-400">
-                                {file.path}
-                              </div>
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="bg-gray-800 text-white dark:bg-gray-700">
-                            <p className="font-mono text-xs">{file.path}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                      <Badge className="ml-2 text-xs bg-indigo-500 text-white">
-                        {file.tokenCount.toLocaleString()} tokens
-                      </Badge>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </ScrollArea>
-          
-          {displayedData.length > 0 && (
-            <div className="flex justify-between items-center px-1 pt-1">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center">
-                  <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">Files:</span>
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{displayedData.length}</span>
-                </div>
-                <div className="flex items-center">
-                  <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">Tokens:</span>
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{totalTokens.toLocaleString()}</span>
-                </div>
-                <div className="flex items-center">
-                  <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">Chars:</span>
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{totalChars.toLocaleString()}</span>
-                </div>
+      {/* list */}
+      <ScrollArea className="h-[180px] pr-3 border rounded-md border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40">
+        <ul className="divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+          {/* directories */}
+          {dirs.map((d) => (
+            <li
+              key={d}
+              className="flex items-center justify-between px-3 py-1.5 bg-white/40 dark:bg-gray-900/30 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/40 transition"
+            >
+              <span className="flex items-center truncate italic text-gray-600 dark:text-gray-400">
+                <Folder className="h-4 w-4 mr-2 text-amber-500" />
+                <span className="truncate font-mono">{d}</span>
+              </span>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-5 w-5 text-gray-400 hover:text-rose-500 dark:hover:text-rose-400"
+                aria-label={`Remove ${d}`}
+                onClick={() => removePath(d)}
+              >
+                <X size={14} />
+              </Button>
+            </li>
+          ))}
+
+          {/* files */}
+          {files.map((f) => (
+            <li
+              key={f.path}
+              className="flex items-center justify-between px-3 py-1.5 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/40 transition"
+            >
+              <span className="flex items-center truncate">
+                {extIcon(f.path)}
+                <span className="truncate font-mono">{f.path}</span>
+              </span>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Badge
+                  variant="secondary"
+                  className="px-1.5 py-0 text-[10px] bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
+                >
+                  {f.tokenCount}
+                </Badge>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-5 w-5 text-gray-400 hover:text-rose-500 dark:hover:text-rose-400"
+                  aria-label={`Remove ${f.path}`}
+                  onClick={() => removePath(f.path)}
+                >
+                  <X size={14} />
+                </Button>
               </div>
-            </div>
-          )}
-        </>
+            </li>
+          ))}
+        </ul>
+      </ScrollArea>
+
+      {/* codemap modal */}
+      {codemap && (
+        <CodemapPreviewModal
+          isOpen={showPreview}
+          onClose={() => setShowPreview(false)}
+          data={codemap}
+        />
       )}
-    </div>
-  )
-}
-
-export default SelectedFilesListView
-
-function matchesAnyExtension(fileNameOrPath: string, extensions: string[]): boolean {
-  const lower = fileNameOrPath.toLowerCase()
-  return extensions.some(ext => lower.endsWith(ext.toLowerCase()))
+    </>
+  );
 }

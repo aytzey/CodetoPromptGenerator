@@ -1,23 +1,39 @@
 /** @type {import('next').NextConfig} */
-
 const nextConfig = {
+  // Enable React runtime checks during development
   reactStrictMode: true,
-  webpack: (config, { isServer }) => {
-    // Enable WebAssembly support
-    config.experiments = {
-      ...config.experiments,
-      asyncWebAssembly: true,  // or syncWebAssembly: true
-    };
 
-    // Set the module type for .wasm files to webassembly/async
-    // (This may or may not be necessary depending on your exact setup)
-    config.module.rules.push({
-      test: /\.wasm$/,
-      type: 'webassembly/async',
-    });
+  /** 🧹 ESLint — run “npm run lint” or “yarn lint”
+   *   Lints the listed folders on build and via the dedicated script.
+   *   (Next ≥12 automatically fails the build if lint errors are detected.)
+   */
+  eslint: {
+    dirs: [
+      'pages',
+      'components',
+      'lib',
+      'services',
+      'stores',
+      'views',
+      'types',
+      'scripts',
+    ],
+  },
 
-    return config;
-  }
+  /** ↔ API reverse‑proxy */
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${process.env.NEXT_PUBLIC_API_URL}/api/:path*`,
+      },
+    ];
+  },
+
+  /** 🔐 Expose variables at build‑time only */
+  env: {
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+  },
 };
 
 module.exports = nextConfig;

@@ -1,184 +1,224 @@
 // views/FolderPickerView.tsx
-import React, { useState, useEffect } from 'react'
-import { Folder, FolderSearch, History, ArrowRight, RefreshCw } from 'lucide-react'
-import FolderBrowserView from './FolderBrowserView'
+/**
+ * A lightweight folder‑selection component that
+ *  • lets the user type or paste a path,
+ *  • opens a modal FolderBrowser,
+ *  • keeps a short “recent” history in localStorage, and
+ *  • optionally notifies a parent component via onPathSelected
+ *    **or** updates the global projectPath via zustand.
+ *
+ * SOLID compliance
+ * ----------------
+ * ‑ Single‑responsibility  Only concerns picking a folder
+ * ‑ Open/Closed      Extensible via injected props / zustand
+ * ‑ Liskov        No inheritance
+ * ‑ Interface‑segregation Props kept minimal
+ * ‑ Dependency‑inversion Uses the generic fetchApi / zustand stores
+ */
 
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Badge } from '@/components/ui/badge'
+import React, { useEffect, useState } from 'react';
+import {
+  Folder,
+  FolderSearch,
+  History,
+  ArrowRight,
+  RefreshCw,
+} from 'lucide-react';
 
-interface FolderPickerProps {
-  currentPath: string
-  onPathSelected: (path: string) => void
-  isLoading: boolean
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { Badge } from '@/components/ui/badge';
+
+import FolderBrowserView from './FolderBrowserView';
+import { useProjectStore } from '@/stores/useProjectStore';
+
+/* ————————————————————————— props ————————————————————————— */
+export interface FolderPickerProps {
+  /**  true while the backend is scanning a tree – disables every control  */
+  isLoading: boolean;
+  /**  externally controlled path; when omitted the global store is used   */
+  currentPath?: string;
+  /**  callback fired after the user has chosen / confirmed a path         */
+  onPathSelected?: (path: string) => void;
 }
 
-const LOCAL_STORAGE_KEY = 'recentFolders'
+/* ————————————————————————— constants ————————————————————————— */
+const RECENTS_KEY = 'recentFolders';
+const MAX_RECENTS  = 4;
 
-/**
- * Allows users to type in a folder path or open a "folder browser" (mocked).
- * Also manages and shows recent folder selections.
- */
+/* ————————————————————————— component ————————————————————————— */
 const FolderPickerView: React.FC<FolderPickerProps> = ({
-  currentPath,
+  isLoading,
+  currentPath: externalPath,
   onPathSelected,
-  isLoading
 }) => {
-  const [inputValue, setInputValue] = useState(currentPath)
-  const [showBrowser, setShowBrowser] = useState(false)
-  const [recentFolders, setRecentFolders] = useState<string[]>([])
+  /* ───── global store (fallback when no externalPath / onPathSelected) ───── */
+  const storePath   = useProjectStore((s) => s.projectPath);
+  const setStorePath = useProjectStore((s) => s.setProjectPath);
 
+  /*  final “authoritative” path in use by this component  */
+  const activePath  = externalPath ?? storePath;
+
+  /* ───── local UI state ───── */
+  const [inputValue,   setInputValue]   = useState(activePath);
+  const [showBrowser,  setShowBrowser]  = useState(false);
+  const [recent,       setRecent]       = useState<string[]>([]);
+
+  /* ───── initialise “recent” list once ───── */
   useEffect(() => {
-    setInputValue(currentPath)
-  }, [currentPath])
+    const stored = localStorage.getItem(RECENTS_KEY);
+    if (stored) setRecent(JSON.parse(stored));
+  }, []);
 
-  useEffect(() => {
-    const stored = localStorage.getItem(LOCAL_STORAGE_KEY)
-    if (stored) {
-      setRecentFolders(JSON.parse(stored))
+  /* ───── keep text‑input in sync with externally driven path changes ───── */
+  useEffect(() => setInputValue(activePath), [activePath]);
+
+  /* ───── helpers ───── */
+  const persistRecents = (list: string[]) =>
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(list));
+
+  const addRecent = (path: string) => {
+    setRecent((prev) => {
+      const next = [path, ...prev.filter((p) => p !== path)].slice(0, MAX_RECENTS);
+      persistRecents(next);
+      return next;
+    });
+  };
+
+  const choosePath = (path: string) => {
+    if (!path) return;                       // guard empty
+    if (onPathSelected) {
+      try {
+        onPathSelected(path);                // delegate to parent
+      } catch (err) {
+        // eslint‑disable‑next‑line no‑console
+        console.error('onPathSelected callback threw:', err);
+      }
+    } else {
+      setStorePath(path);                    // default behaviour
     }
-  }, [])
+    addRecent(path);
+  };
 
-  const handleManualSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    selectNewPath(inputValue.trim())
-  }
-
-  const selectNewPath = (path: string) => {
-    if (path) {
-      onPathSelected(path)
-      updateRecentFolders(path)
-    }
-  }
-
-  const updateRecentFolders = (path: string) => {
-    setRecentFolders(prev => {
-      const newList = [path, ...prev.filter(p => p !== path)]
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newList.slice(0, 3))) // keep up to 3
-      return newList.slice(0, 3)
-    })
-  }
-
-  const openBrowser = () => setShowBrowser(true)
-  const closeBrowser = () => setShowBrowser(false)
-
-  const handleFolderSelected = (newPath: string) => {
-    setInputValue(newPath)
-    selectNewPath(newPath)
-    setShowBrowser(false)
-  }
-
+  /* ————————————————————————— render ————————————————————————— */
   return (
-    <div className="space-y-4">
-      {/* Manual entry */}
+    <>
+      {/* main control row */}
       <form
-        onSubmit={handleManualSubmit}
-        className="flex flex-col md:flex-row items-stretch md:items-center gap-2"
+        className="flex flex-col md:flex-row gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          choosePath(inputValue.trim());
+        }}
       >
-        <div className="flex-1 relative">
-          <Folder className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+        {/* text input */}
+        <div className="relative flex-1">
+          <Folder className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
-            type="text"
+            placeholder="Enter absolute folder path…"
             value={inputValue}
-            onChange={e => setInputValue(e.target.value)}
-            placeholder="Enter or paste a folder path"
-            className="w-full pl-9 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            disabled={isLoading}
+            onChange={(e) => setInputValue(e.target.value)}
+            className="pl-9"
           />
         </div>
+
+        {/* “Set” button */}
         <Button
           type="submit"
           disabled={isLoading || !inputValue.trim()}
-          className="bg-indigo-500 hover:bg-indigo-600 text-white transition-colors"
+          className="bg-indigo-500 hover:bg-indigo-600 text-white"
         >
-          <ArrowRight className="mr-2 h-4 w-4" />
+          <ArrowRight size={16} className="mr-2" />
           Set
         </Button>
+
+        {/* “Browse…” button */}
         <Button
           type="button"
-          onClick={openBrowser}
-          disabled={isLoading}
           variant="outline"
-          className="border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950 transition-colors"
+          disabled={isLoading}
+          onClick={() => setShowBrowser(true)}
+          className="border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300"
         >
           {isLoading ? (
-            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+            <>
+              <RefreshCw size={16} className="mr-2 animate-spin" />
+              Loading…
+            </>
           ) : (
-            <FolderSearch className="mr-2 h-4 w-4" />
+            <>
+              <FolderSearch size={16} className="mr-2" />
+              Browse…
+            </>
           )}
-          {isLoading ? 'Loading...' : 'Browse...'}
         </Button>
       </form>
 
-      <div className="grid grid-cols-3 gap-4">
-        {/* Recent Folders */}
-        {recentFolders.length > 0 && (
-          <Card className="border-dashed border-gray-200 dark:border-gray-800 col-span-1">
-            <CardContent className="p-3">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center">
-                  <History className="mr-2 h-4 w-4 text-indigo-500 dark:text-indigo-400" />
-                  <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Recent</h4>
-                </div>
-                <Badge variant="outline" className="text-xs font-normal text-gray-500 dark:text-gray-400">
-                  {recentFolders.length}
-                </Badge>
+      {/* recents */}
+      {recent.length > 0 && (
+        <Card className="mt-4">
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <History size={14} className="text-indigo-500" />
+                <span className="text-sm font-medium">Recent folders</span>
               </div>
-              <Separator className="my-2 bg-gray-200 dark:bg-gray-700" />
-              <ScrollArea className="h-[90px] w-full">
-                <ul className="space-y-1">
-                  {recentFolders.map((pathStr, idx) => (
-                    <li key={`${pathStr}-${idx}`} className="group">
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button 
-                              variant="ghost" 
-                              className="w-full justify-start px-2 text-xs h-7 font-normal truncate hover:bg-gray-100 dark:hover:bg-gray-800"
-                              onClick={() => selectNewPath(pathStr)}
-                            >
-                              <Folder className="h-3.5 w-3.5 mr-2 text-gray-400 group-hover:text-indigo-500 dark:group-hover:text-indigo-400" />
-                              <span className="truncate">{pathStr}</span>
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="bg-gray-800 text-white dark:bg-gray-700">
-                            <p className="font-mono text-xs">{pathStr}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </li>
-                  ))}
-                </ul>
-              </ScrollArea>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Current Path Info */}
-        {currentPath && (
-          <div className="col-span-3 md:col-span-2 flex items-center bg-gray-50 dark:bg-gray-800 px-3 py-2 rounded-md border border-gray-200 dark:border-gray-700">
-            <span className="font-medium text-xs text-gray-600 dark:text-gray-300 mr-2">Current Path:</span>
-            <div className="text-xs text-gray-500 dark:text-gray-400 truncate font-mono">
-              {currentPath}
+              <Badge variant="outline">{recent.length}</Badge>
             </div>
-          </div>
-        )}
-      </div>
+            <Separator />
+            <ScrollArea className="h-20 mt-2">
+              <ul className="space-y-1">
+                {recent.map((p) => (
+                  <li key={p}>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start truncate"
+                            onClick={() => choosePath(p)}
+                          >
+                            {p}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="font-mono max-w-xs break-all">
+                          {p}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </li>
+                ))}
+              </ul>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* FolderBrowser Modal */}
+      {/* folder‑browser modal */}
       {showBrowser && (
         <FolderBrowserView
           isOpen={showBrowser}
-          onClose={closeBrowser}
-          onSelect={handleFolderSelected}
-          currentPath={currentPath}
+          onClose={() => setShowBrowser(false)}
+          onSelect={(p) => {
+            choosePath(p);
+            setShowBrowser(false);
+          }}
+          currentPath={activePath}
         />
       )}
-    </div>
-  )
-}
+    </>
+  );
+};
 
-export default FolderPickerView
+export default FolderPickerView;

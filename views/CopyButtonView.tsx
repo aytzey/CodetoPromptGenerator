@@ -1,260 +1,279 @@
-// views/CopyButtonView.tsx
-import React, { useRef, useState, useEffect } from 'react'
-import { Copy, CheckCircle, ClipboardCopy, FileCode } from 'lucide-react'
+// File: views/CopyButtonView.tsx
+// REFACTOR #2 – Prompt‑format overhaul for superior LLM results
+import React, { useRef, useState, useEffect, useMemo } from 'react';
+import {
+  Copy, CheckCircle, ClipboardCopy, FileCode, Loader2,
+} from 'lucide-react';
 
-// shadcn/ui
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Badge } from '@/components/ui/badge'
+import { usePromptStore }   from '@/stores/usePromptStore';
+import { useProjectStore }  from '@/stores/useProjectStore';
+import { useExclusionStore } from '@/stores/useExclusionStore';
+import { useProjectService } from '@/services/projectServiceHooks';
 
-interface FileNode {
-  name: string
-  relativePath: string
-  type: 'file' | 'directory'
-  children?: FileNode[]
+import { Button }            from '@/components/ui/button';
+import { Badge }             from '@/components/ui/badge';
+import {
+  Tooltip, TooltipProvider, TooltipTrigger, TooltipContent,
+} from '@/components/ui/tooltip';
+import { cn }                from '@/lib/utils';
+import type { FileNode, FileData } from '@/types';
+
+/* ════════════════════════════════════════════════════════════════ */
+/* 🔸 LOCAL HELPER UTILITIES                                       */
+/* ════════════════════════════════════════════════════════════════ */
+
+/** naive token approximation (kept for stats only) */
+function estimateTokens(txt = '') {
+  if (!txt) return 0;
+  return txt.trim().split(/\s+/).length + (txt.match(/[.,;:!?(){}\[\]<>]/g) || []).length;
 }
 
-interface FileData {
-  path: string
-  content: string
-  tokenCount: number
+/** language‑id per file‑extension – extend as needed */
+function extToLang(path: string): string {
+  const ext = (path.split('.').pop() || '').toLowerCase();
+  switch (ext) {
+    case 'ts':   return 'ts';
+    case 'tsx':  return 'tsx';
+    case 'js':   return 'js';
+    case 'jsx':  return 'jsx';
+    case 'py':   return 'python';
+    case 'rb':   return 'ruby';
+    case 'php':  return 'php';
+    case 'json': return 'json';
+    case 'yml':  return 'yaml';
+    case 'md':   return 'md';
+    case 'html': return 'html';
+    case 'css':
+    case 'scss': return 'css';
+    default:     return '';       // let model auto‑detect
+  }
 }
 
-interface CopyButtonProps {
-  metaPrompt: string
-  mainInstructions: string
-  selectedFiles: string[]
-  filesData: FileData[]
-  tree: FileNode[]
-  excludedPaths: string[]
-  filterExtensions: string[]
-  onFetchLatestFileData: () => Promise<FileData[]>
+/** render a file‑tree as indented list; fenced to freeze whitespace */
+function renderTree(tree: string) {
+  return `\`\`\`text
+${tree.trimEnd()}
+\`\`\``;
 }
 
-/**
- * A simple token estimator that splits the text on whitespace and common punctuation.
- * This mimics our backend's approach for a naive token count.
- * @param text The input string to count tokens for.
- * @returns The estimated token count.
- */
-function estimateTokenCount(text: string): number {
-  const tokens = text.trim().split(/\s+|[,.;:!?()\[\]{}'"<>]/).filter(token => token.length > 0)
-  const specialChars = (text.match(/[,.;:!?()\[\]{}'"<>]/g) || []).length
-  return tokens.length + specialChars
+/** render each file as ```lang path … ``` block */
+function renderFiles(data: FileData[]) {
+  return data
+    .map(f => {
+      const lang = extToLang(f.path);
+      return `\`\`\`${lang} ${f.path}
+${f.content.trimEnd()}
+\`\`\``;
+    })
+    .join('\n\n');
 }
 
-/**
- * Generates a textual representation of a file tree.
- */
+/** final prompt assembler – pure function for testability */
+function buildPrompt(
+  meta: string,
+  user: string,
+  treeTxt: string,
+  files: FileData[],
+) {
+  const parts: string[] = [];
+
+  if (meta.trim()) {
+    parts.push(`<|SYSTEM|>\n${meta.trim()}\n<|END|>`);
+  }
+  if (user.trim()) {
+    parts.push(`<|USER|>\n${user.trim()}\n<|END|>`);
+  }
+  const ctx: string[] = [];
+  if (treeTxt.trim()) {
+    ctx.push(`# PROJECT TREE\n${renderTree(treeTxt)}`);
+  }
+  if (files.length) {
+    ctx.push(`# SOURCE FILES\n${renderFiles(files)}`);
+  }
+  if (ctx.length) {
+    parts.push(`<|CODE_CONTEXT|>\n${ctx.join('\n\n')}\n<|END|>`);
+  }
+  return parts.join('\n\n');
+}
+
+/** replicate the exclusion + extension filtering from existing logic */
 function generateTextualTree(
   tree: FileNode[],
-  excludedPaths: string[],
-  filterExtensions: string[],
-  depth: number = 0
+  globalExcludes: string[],
+  filterExt: string[],
+  depth = 0,
 ): string {
-  let result = ''
-  const indent = '  '.repeat(depth)
+  const indent   = '  '.repeat(depth);
+  const excludes = new Set(globalExcludes);
 
-  const filtered = tree.filter(node => {
-    if (
-      excludedPaths.some(
-        ignored => node.relativePath === ignored || node.relativePath.startsWith(ignored + '/')
-      )
-    ) {
-      return false
-    }
-    return nodeMatchesExtensions(node, filterExtensions)
-  })
-
-  for (const node of filtered) {
-    const icon = node.type === 'directory' ? '📁' : '📄'
-    result += `${indent}${icon} ${node.name}\n`
-    if (node.type === 'directory' && node.children) {
-      result += generateTextualTree(
-        node.children,
-        excludedPaths,
-        filterExtensions,
-        depth + 1
-      )
-    }
-  }
-  return result
+  return tree
+    .filter(n => {
+      const segs = n.relativePath.split('/');
+      return !segs.some(s => excludes.has(s)) && !excludes.has(n.relativePath);
+    })
+    .filter(n => {
+      if (filterExt.length === 0) return true;
+      if (n.type === 'directory') return true;
+      const lower = n.name.toLowerCase();
+      return filterExt.some(e => lower.endsWith(e.toLowerCase()));
+    })
+    .map(n => {
+      const icon = n.type === 'directory' ? '📁' : '📄';
+      const line = `${indent}${icon} ${n.name}`;
+      if (n.type === 'directory' && n.children) {
+        const sub = generateTextualTree(n.children, globalExcludes, filterExt, depth + 1);
+        return `${line}\n${sub}`;
+      }
+      return line;
+    })
+    .join('\n');
 }
 
-function nodeMatchesExtensions(node: FileNode, extensions: string[]): boolean {
-  if (extensions.length === 0) return true
-  if (node.type === 'directory') {
-    if (!node.children) return false
-    return node.children.some(child => nodeMatchesExtensions(child, extensions))
-  } else {
-    return extensions.some(ext =>
-      node.name.toLowerCase().endsWith(ext.toLowerCase())
-    )
-  }
-}
+/* ════════════════════════════════════════════════════════════════ */
+/* 🔸 REACT COMPONENT                                              */
+/* ════════════════════════════════════════════════════════════════ */
 
-const CopyButtonView: React.FC<CopyButtonProps> = ({
-  metaPrompt,
-  mainInstructions,
-  selectedFiles,
-  filesData,
-  tree,
-  excludedPaths,
-  filterExtensions,
-  onFetchLatestFileData
-}) => {
-  const hiddenTextAreaRef = useRef<HTMLTextAreaElement | null>(null)
-  const [copySuccess, setCopySuccess] = useState<boolean>(false)
-  const [isLoading, setIsLoading] = useState<boolean>(false)
-  // Local state to hold the latest file data, so token counts update immediately when refreshed.
-  const [localFilesData, setLocalFilesData] = useState<FileData[]>(filesData)
+const CopyButtonView: React.FC = () => {
+  /* —— global state —— */
+  const { metaPrompt, mainInstructions }  = usePromptStore();
+  const {
+    selectedFilePaths, filesData, fileTree, isLoadingContents,
+  } = useProjectStore();
+  const { globalExclusions, extensionFilters } = useExclusionStore();
 
-  // Update local state if props.filesData changes
-  useEffect(() => {
-    setLocalFilesData(filesData)
-  }, [filesData])
+  /* —— services —— */
+  const { loadSelectedFileContents } = useProjectService();
 
-  // Calculate file tokens and add tokens from meta prompt and main instructions.
-  const fileTokens = localFilesData.reduce((acc, file) => acc + (file.tokenCount || 0), 0)
-  const metaTokens = estimateTokenCount(metaPrompt)
-  const mainTokens = estimateTokenCount(mainInstructions)
-  const totalTokens = fileTokens + metaTokens + mainTokens
+  /* —— local UI state —— */
+  const hiddenTA          = useRef<HTMLTextAreaElement>(null);
+  const [copied, setCopied]           = useState(false);
+  const [isBuilding, setIsBuilding]   = useState(false);
 
-  const totalChars = localFilesData.reduce((acc, file) => acc + file.content.length, 0)
-  const selectedFileCount = selectedFiles.filter(f => !f.endsWith('/')).length
+  /* —— derived stats —— */
+  const { fileCount, tokenCount, charCount } = useMemo(() => {
+    const current = filesData.filter(f => selectedFilePaths.includes(f.path));
+    return {
+      fileCount : current.length,
+      tokenCount: current.reduce((a, f) => a + (f.tokenCount || 0), 0)
+                  + estimateTokens(metaPrompt) + estimateTokens(mainInstructions),
+      charCount : current.reduce((a, f) => a + f.content.length, 0),
+    };
+  }, [filesData, selectedFilePaths, metaPrompt, mainInstructions]);
 
+  const ready = Boolean(
+    metaPrompt.trim() || mainInstructions.trim() || selectedFilePaths.length,
+  );
+
+  /* —— ACTION: build + copy —— */
   const handleCopy = async () => {
-    setIsLoading(true)
+    setIsBuilding(true);
     try {
-      const freshFilesData = await onFetchLatestFileData()
-      // Update local file data so that token counts refresh immediately.
-      setLocalFilesData(freshFilesData)
-      
-      let combined = ''
+      /* 1️⃣ ensure freshest content */
+      await loadSelectedFileContents();
+      const fresh   = useProjectStore.getState();
+      const liveFiles = fresh.filesData.filter(fd => fresh.selectedFilePaths.includes(fd.path));
 
-      if (metaPrompt.trim()) {
-        combined += `# Meta Prompt:\n${metaPrompt}\n\n`
-      }
-      if (mainInstructions.trim()) {
-        combined += `# Main Instructions:\n${mainInstructions}\n\n`
-      }
+      /* 2️⃣ (b)uild final string */
+      const treeTxt = generateTextualTree(
+        fileTree,
+        globalExclusions,
+        extensionFilters,
+      );
+      const prompt = buildPrompt(
+        metaPrompt,
+        mainInstructions,
+        treeTxt,
+        liveFiles,
+      );
 
-      const treeText = generateTextualTree(tree, excludedPaths, filterExtensions)
-      if (treeText.trim()) {
-        combined += `# Project Tree:\n${treeText}\n\n`
-      }
+      /* 3️⃣ copy – Clipboard API first, fallback second */
+      await navigator.clipboard.writeText(prompt).catch(() => {
+        if (!hiddenTA.current) throw new Error('Hidden textarea missing');
+        hiddenTA.current.value = prompt;
+        hiddenTA.current.select();
+        document.execCommand('copy');
+        hiddenTA.current.blur();
+      });
 
-      if (freshFilesData.length > 0) {
-        combined += `# Selected Files:\n`
-        for (const f of freshFilesData) {
-          combined += `## File: ${f.path}\n${f.content}\n\n`
-        }
-      }
-
-      try {
-        await navigator.clipboard.writeText(combined)
-        setCopySuccess(true)
-        setTimeout(() => setCopySuccess(false), 3000)
-      } catch {
-        fallbackCopyMethod(combined)
-      }
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const fallbackCopyMethod = (text: string) => {
-    if (!hiddenTextAreaRef.current) return
-    hiddenTextAreaRef.current.value = text
-    hiddenTextAreaRef.current.select()
-    try {
-      document.execCommand('copy')
-      setCopySuccess(true)
-      setTimeout(() => setCopySuccess(false), 3000)
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
     } catch (err) {
-      alert('Failed to copy to clipboard!')
+      /* eslint‑disable-next-line no-alert */
+      alert(`Copy failed: ${(err as Error).message}`);
+      console.error(err);
+    } finally {
+      setIsBuilding(false);
     }
-  }
+  };
 
-  const isReady = selectedFiles.length > 0 || metaPrompt.trim() || mainInstructions.trim()
+  /* —— UI —— */
+  const disabled = !ready || isBuilding || isLoadingContents;
 
   return (
     <div className="relative w-full">
-      <textarea
-        ref={hiddenTextAreaRef}
-        className="fixed -top-96 left-0 opacity-0"
-        readOnly
-        aria-hidden="true"
-      />
-      
-      <div className="space-y-4">
-        {/* Stats display */}
-        {selectedFileCount > 0 && (
-          <div className="flex flex-wrap gap-2 justify-center">
-            <Badge variant="outline" className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800">
-              <FileCode size={14} className="mr-1" />
-              {selectedFileCount} file{selectedFileCount !== 1 ? 's' : ''}
-            </Badge>
-            
-            <Badge variant="outline" className="bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 border-teal-200 dark:border-teal-800">
-              <span className="font-mono">{totalTokens.toLocaleString()}</span> tokens
-            </Badge>
-            
-            <Badge variant="outline" className="bg-cyan-50 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400 border-cyan-200 dark:border-cyan-800">
-              <span className="font-mono">{totalChars.toLocaleString()}</span> chars
-            </Badge>
-          </div>
-        )}
-      
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div>
-                <Button
-                  variant="default"
-                  className={cn(
-                    "w-full h-12 flex items-center justify-center gap-2 text-base font-medium relative overflow-hidden transition-all duration-300",
-                    copySuccess ? "bg-teal-500 hover:bg-teal-600" : "bg-indigo-500 hover:bg-indigo-600",
-                    !isReady && "opacity-70 cursor-not-allowed"
-                  )}
-                  onClick={handleCopy}
-                  disabled={!isReady || isLoading}
-                >
-                  <div className={cn(
-                    "flex items-center justify-center gap-2 transition-transform duration-300",
-                    copySuccess ? "transform -translate-y-10" : ""
-                  )}>
-                    {isLoading ? (
-                      <ClipboardCopy size={18} className="animate-spin" />
-                    ) : (
-                      <Copy size={18} className={copySuccess ? "opacity-0" : "opacity-100 transition-opacity duration-300"} />
-                    )}
-                    <span>{isLoading ? "Processing..." : "Copy All to Clipboard"}</span>
-                  </div>
-                  
-                  <div className={cn(
-                    "absolute inset-0 flex items-center justify-center gap-2 text-white transition-transform duration-300",
-                    copySuccess ? "transform translate-y-0" : "transform translate-y-10"
-                  )}>
-                    <CheckCircle size={18} />
-                    <span>Copied to Clipboard!</span>
-                  </div>
-                </Button>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {!isReady ? (
-                <p>Please select files or add instructions first</p>
-              ) : (
-                <p>Copy all content to clipboard</p>
-              )}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
-    </div>
-  )
-}
+      {/* invisible textarea for fallback copy */}
+      <textarea ref={hiddenTA} className="sr-only" aria-hidden="true" />
 
-export default CopyButtonView
+      {/* stats row */}
+      {(fileCount > 0 || tokenCount > 0) && (
+        <div className="flex justify-center flex-wrap gap-2 mb-4">
+          {fileCount > 0 && (
+            <Badge variant="outline">
+              <FileCode size={14} className="mr-1" />
+              {fileCount} file{fileCount !== 1 && 's'}
+            </Badge>
+          )}
+          <Badge variant="outline">
+            {tokenCount.toLocaleString()} tokens
+          </Badge>
+          {charCount > 0 && (
+            <Badge variant="outline">
+              {charCount.toLocaleString()} chars
+            </Badge>
+          )}
+        </div>
+      )}
+
+      {/* copy button */}
+      <TooltipProvider delayDuration={100}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              onClick={handleCopy}
+              disabled={disabled}
+              className={cn(
+                'w-full h-12 flex items-center justify-center gap-2 transition',
+                copied ? 'bg-teal-600 hover:bg-teal-700' : 'bg-indigo-600 hover:bg-indigo-700',
+                disabled && 'opacity-50 cursor-not-allowed',
+              )}
+            >
+              {isBuilding || isLoadingContents ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  Building…
+                </>
+              ) : copied ? (
+                <>
+                  <CheckCircle size={18} />
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <Copy size={18} />
+                  Copy Prompt
+                </>
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {ready
+              ? 'Copy generated prompt to clipboard'
+              : 'Select files or add instructions first'}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+  );
+};
+
+export default React.memo(CopyButtonView);

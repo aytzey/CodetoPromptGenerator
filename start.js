@@ -1,169 +1,145 @@
-// start.js
-const { spawn } = require('child_process');
-const path = require('path');
-const fs = require('fs');
-const os = require('os');
+// start.js  – orchestrates venv‑backed Flask + Next.js dev
+/* eslint-disable no-console */
+const { spawn, spawnSync }   = require("child_process");
+const path                   = require("path");
+const fs                     = require("fs");
+const os                     = require("os");
+const net                    = require("net");
+const { EOL }                = require("os");
 
-// Configuration
-const BACKEND_DIR = path.join(__dirname, 'python_backend');
-const PYTHON_COMMAND = os.platform() === 'win32' ? 'python' : 'python3';
-const BACKEND_SCRIPT = 'app.py';
-const FRONTEND_COMMAND = 'npm';
-const FRONTEND_ARGS = ['run', 'dev'];
+const BACKEND_DIR = path.join(__dirname, "python_backend");
+const VENV_DIR    = path.join(BACKEND_DIR, "venv");
+const REQ_FILE    = path.join(BACKEND_DIR, "requirements.txt");
+const PORTS_INI   = path.join(__dirname, "ports.ini");
+const ENV_LOCAL   = path.join(__dirname, ".env.local");
 
-console.log('Starting Code to Prompt Generator Tool...');
+const isWin = os.platform() === "win32";
+const venvPy = () =>
+  isWin
+    ? path.join(VENV_DIR, "Scripts", "python.exe")
+    : path.join(VENV_DIR, "bin", "python");
 
-// Check if virtual environment exists and activate if needed
-const hasVenv = fs.existsSync(path.join(BACKEND_DIR, 'venv')) || 
-                fs.existsSync(path.join(BACKEND_DIR, '.venv'));
-
-// Function to detect if Python dependencies are installed
-async function checkPythonDependencies() {
-  return new Promise((resolve) => {
-    const pip = spawn(PYTHON_COMMAND, ['-m', 'pip', 'freeze'], {
-      cwd: BACKEND_DIR,
-      shell: true
-    });
-    
-    let output = '';
-    pip.stdout.on('data', (data) => {
-      output += data.toString();
-    });
-    
-    pip.on('close', (code) => {
-      if (code !== 0) {
-        resolve(false);
-        return;
-      }
-      
-      // Check if Flask is in the output
-      const hasFlask = output.includes('Flask==') || output.includes('Flask>=');
-      resolve(hasFlask);
-    });
-  });
-}
-
-// Function to install Python dependencies
-async function installPythonDependencies() {
-  console.log('Installing Python dependencies...');
-  
-  return new Promise((resolve, reject) => {
-    const pip = spawn(PYTHON_COMMAND, ['-m', 'pip', 'install', '-r', 'requirements.txt'], {
-      cwd: BACKEND_DIR,
-      shell: true,
-      stdio: 'inherit'
-    });
-    
-    pip.on('close', (code) => {
-      if (code === 0) {
-        console.log('Python dependencies installed successfully');
-        resolve();
-      } else {
-        reject(new Error(`Failed to install Python dependencies (exit code: ${code})`));
-      }
-    });
-  });
-}
-
-// Function to start the backend server
-function startBackend() {
-  console.log(`Starting backend server from ${BACKEND_DIR}...`);
-  
-  const backend = spawn(PYTHON_COMMAND, [BACKEND_SCRIPT], {
-    cwd: BACKEND_DIR,
-    shell: true,
-    stdio: 'inherit',
-    env: { ...process.env, FLASK_DEBUG: 'True' }
-  });
-  
-  backend.on('close', (code) => {
-    if (code !== 0 && code !== null) {
-      console.error(`Backend server exited with code ${code}`);
-      process.exit(code);
+/* ─────────────────────────── helpers ──────────────────────────── */
+const parseIni = (src) => {
+  const out = {};
+  let sec   = null;
+  src.split(EOL).forEach((l) => {
+    const s = l.trim();
+    if (!s || s.startsWith("#") || s.startsWith(";")) return;
+    if (s.startsWith("[") && s.endsWith("]")) {
+      sec    = s.slice(1, -1).trim();
+      out[sec] = {};
+    } else if (sec) {
+      const i = s.indexOf("=");
+      if (i > 0) out[sec][s.slice(0, i).trim()] = s.slice(i + 1).trim();
     }
   });
-  
-  return backend;
-}
+  return out;
+};
 
-// Function to start the frontend server
-function startFrontend() {
-  console.log('Starting frontend server...');
-  
-  const frontend = spawn(FRONTEND_COMMAND, FRONTEND_ARGS, {
-    cwd: __dirname,
-    shell: true,
-    stdio: 'inherit'
-  });
-  
-  frontend.on('close', (code) => {
-    if (code !== 0 && code !== null) {
-      console.error(`Frontend server exited with code ${code}`);
-      process.exit(code);
-    }
-  });
-  
-  return frontend;
-}
-
-// Setup graceful shutdown
-function setupGracefulShutdown(backend, frontend) {
-  const shutdown = () => {
-    console.log('\nShutting down servers...');
-    
-    // Kill processes
-    if (os.platform() === 'win32') {
-      spawn('taskkill', ['/pid', backend.pid, '/f', '/t']);
-      spawn('taskkill', ['/pid', frontend.pid, '/f', '/t']);
-    } else {
-      backend.kill('SIGINT');
-      frontend.kill('SIGINT');
-    }
-    
-    // Give processes time to clean up
-    setTimeout(() => {
-      console.log('Shutdown complete');
-      process.exit(0);
-    }, 1000);
-  };
-  
-  // Handle various termination signals
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
-  process.on('SIGHUP', shutdown);
-  
-  // Handle Windows Ctrl+C
-  if (os.platform() === 'win32') {
-    process.on('SIGBREAK', shutdown);
-  }
-}
-
-// Main function to start everything
-async function main() {
+const cfgPorts = () => {
+  const def = { fe: 3000, be: 5000, host: "127.0.0.1", proto: "http" };
   try {
-    // Check and install Python dependencies if needed
-    const dependenciesInstalled = await checkPythonDependencies();
-    if (!dependenciesInstalled) {
-      await installPythonDependencies();
+    if (fs.existsSync(PORTS_INI)) {
+      const ini = parseIni(fs.readFileSync(PORTS_INI, "utf8"));
+      const fe  = +ini?.Ports?.Frontend || def.fe;
+      const be  = +ini?.Ports?.Backend  || def.be;
+      const host   = ini?.API?.Host     || def.host;
+      const proto  = ini?.API?.Protocol || def.proto;
+      return { fe, be, host, proto };
     }
-    
-    // Start backend first, then frontend
-    const backend = startBackend();
-    const frontend = startFrontend();
-    
-    // Setup graceful shutdown handlers
-    setupGracefulShutdown(backend, frontend);
-    
-    console.log('\n✅ Development servers are running!');
-    console.log('📂 Frontend: http://localhost:3000');
-    console.log('🚀 Backend: http://localhost:5000');
-    console.log('Press Ctrl+C to stop both servers\n');
-    
-  } catch (error) {
-    console.error('Error starting services:', error.message);
-    process.exit(1);
+  } catch {
+    /* ignore – fall back to defaults */
   }
-}
+  return { fe: def.fe, be: def.be, host: def.host, proto: def.proto };
+};
 
-// Start the application
-main();
+const portFree = (p) =>
+  new Promise((r) => {
+    const srv = net
+      .createServer()
+      .once("error", () => r(false))
+      .once("listening", () => srv.close(() => r(true)))
+      .listen(p, "0.0.0.0");
+  });
+
+const firstFree = async (start) => {
+  let p = start;
+  while (!(await portFree(p))) p += 1;
+  return p;
+};
+
+const sysPython = () => {
+  const candidates = isWin ? ["py", "python", "python3"] : ["python3", "python"];
+  return candidates.find((c) => spawnSync(c, ["--version"], { stdio: "ignore" }).status === 0);
+};
+
+const ensureVenv = () => {
+  const py = sysPython();
+  if (!py) throw new Error("No system Python interpreter found.");
+
+  if (!fs.existsSync(venvPy())) {
+    console.log("[start] Creating virtual‑env…");
+    if (spawnSync(py, ["-m", "venv", "venv"], { cwd: BACKEND_DIR, stdio: "inherit" }).status !== 0)
+      throw new Error("venv creation failed");
+  }
+
+  /* make sure Flask (and friends) are installed */
+  if (
+    spawnSync(venvPy(), ["-c", "import flask, sys; sys.exit(0)"], { stdio: "ignore" }).status !== 0
+  ) {
+    console.log("[start] Installing backend deps…");
+    const pip = isWin
+      ? path.join(VENV_DIR, "Scripts", "pip.exe")
+      : path.join(VENV_DIR, "bin", "pip");
+    if (spawnSync(pip, ["install", "-r", REQ_FILE], { stdio: "inherit" }).status !== 0)
+      throw new Error("pip install failed");
+  }
+};
+
+const writeEnvLocal = (apiUrl) => {
+  /* Persist current API URL so the browser code can read it at runtime
+     (Next.js ships env vars at build‑time, so we rewrite the file **before**
+     starting the dev server).                                               */
+  fs.writeFileSync(ENV_LOCAL, `NEXT_PUBLIC_API_URL=${apiUrl}${EOL}`, "utf8");
+};
+
+/* ─────────────────────────── spawners ─────────────────────────── */
+const startBackend = (port) => {
+  ensureVenv();
+  console.log(`↪︎  Backend  : http://127.0.0.1:${port}`);
+  const env = { ...process.env, FLASK_PORT: port, FLASK_DEBUG: "True" };
+  const p   = spawn(venvPy(), ["app.py"], { cwd: BACKEND_DIR, env, stdio: "inherit" });
+  p.on("close", (c) => c && process.exit(c));
+  return p;
+};
+
+const startFrontend = (port, apiUrl) => {
+  console.log(`↪︎  Frontend : http://localhost:${port}    (API → ${apiUrl})`);
+  writeEnvLocal(apiUrl);                                // <─── new
+  const env = { ...process.env, PORT: String(port), NEXT_PUBLIC_API_URL: apiUrl };
+  const p   = spawn("npm", ["run", "dev"], { cwd: __dirname, env, stdio: "inherit", shell: true });
+  p.on("close", (c) => c && process.exit(c));
+  return p;
+};
+
+/* ───────────────────────────── main ───────────────────────────── */
+(async () => {
+  const base      = cfgPorts();
+  const fePort    = await firstFree(base.fe);
+  const bePort    = (await firstFree(base.be)) === fePort ? await firstFree(base.be + 1) : base.be;
+  const apiUrl    = `${base.proto}://${base.host}:${bePort}`;
+
+  console.log(`\n📦  Ports  – Frontend ${fePort}  |  Backend ${bePort}`);
+
+  const beProc = startBackend(bePort);
+  const feProc = startFrontend(fePort, apiUrl);
+
+  const stop = () => {
+    beProc.kill("SIGINT");
+    feProc.kill("SIGINT");
+    process.exit(0);
+  };
+  process.on("SIGINT",  stop);
+  process.on("SIGTERM", stop);
+})();
