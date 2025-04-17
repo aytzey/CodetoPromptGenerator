@@ -6,14 +6,9 @@ itsdangerous==2.1.2
 Jinja2==3.1.2
 pytest==7.4.0
 gunicorn==21.2.0
-tiktoken==0.6.0     # fast, local tokeniser – no network needed
-pathspec==0.12.1    # .gitignore‑style pattern matching
+tiktoken==0.6.0
+pathspec==0.12.1
 tree_sitter==0.21.3
-tree_sitter_languages==1.10.2   # 🆕 multi‑language Tree‑sitter parsers
-
-# Add these if you're using a database
-# SQLAlchemy==2.0.20
-# Flask-SQLAlchemy==3.0.5
-# flask-migrate==4.0.4
-# pymysql==1.1.0  # for MySQL
-# psycopg2-binary==2.9.7  # for PostgreSQL
+tree_sitter_languages==1.10.2
+httpx==0.27.0           # ─┐ Upstream call (sync client)
+responses==0.25.0       # ─┘ HTTP‑mocking for unit tests

@@ -1,5 +1,6 @@
+
 // types/index.ts
-// Shared / re‑exported project types – EXTENDED with Codemap models.
+// Shared / re‑exported project types – EXTENDED with Codemap + Auto‑select models.
 
 export interface FileNode {
   name: string;
@@ -24,7 +25,7 @@ export interface TodoItem {
   createdAt?: string;
 }
 
-/* ═════════════════ Codemap models ═════════════════ */
+/* ═══════════════ Codemap models ═══════════════ */
 export interface CodemapRequest {
   baseDir: string;
   paths: string[];             // *relative* paths
@@ -41,3 +42,12 @@ export interface CodemapInfo {
 }
 
 export type CodemapResponse = Record<string, CodemapInfo>;
+
+/* ═══════════════ Auto‑select models ═══════════════ */
+export interface AutoSelectRequest {
+  projectPath: string;
+  instructions: string;
+  treePaths: string[];               // flattened *relative* paths
+}
+
+export type AutoSelectResponse = string[];            // list of *relative* paths
