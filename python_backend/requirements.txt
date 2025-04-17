@@ -8,6 +8,8 @@ pytest==7.4.0
 gunicorn==21.2.0
 tiktoken==0.6.0     # fast, local tokeniser – no network needed
 pathspec==0.12.1    # .gitignore‑style pattern matching
+tree_sitter==0.21.3
+tree_sitter_languages==1.10.2   # 🆕 multi‑language Tree‑sitter parsers
 
 # Add these if you're using a database
 # SQLAlchemy==2.0.20
