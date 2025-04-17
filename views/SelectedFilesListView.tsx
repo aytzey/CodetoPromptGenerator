@@ -2,13 +2,12 @@
 /**
  * Selected‑Files panel
  * ————————————————————————————————————
- * Displays the user’s current selection in
- * a scroll‑area and lets them:
+ * Displays the user’s current selection in a scroll‑area
+ * and lets them:
  *   • inspect basic stats
  *   • preview a codemap
  *   • remove individual paths
- *
- * (Replaces earlier stub that rendered nothing.)
+ *   • (NEW) sort list alphabetically or by token‑count
  */
 
 import React, { useMemo, useState } from "react";
@@ -20,6 +19,7 @@ import {
   Loader2,
   BarChart2,
   Inbox,
+  SortAsc,
 } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -31,6 +31,13 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
 
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useExclusionStore } from "@/stores/useExclusionStore";
@@ -44,6 +51,7 @@ import type { FileData } from "@/types";
 /* ─────────────────────────────────────────────────── */
 /* helpers */
 
+/** pick an icon colour based on extension */
 const extIcon = (p: string) => {
   const ext = p.split(".").pop()?.toLowerCase();
   switch (ext) {
@@ -69,6 +77,7 @@ const extIcon = (p: string) => {
   }
 };
 
+/** extension filter util */
 const matchesExt = (name: string, exts: string[]) =>
   exts.length === 0 ||
   exts.some((e) =>
@@ -78,6 +87,7 @@ const matchesExt = (name: string, exts: string[]) =>
 /* ─────────────────────────────────────────────────── */
 
 export default function SelectedFilesListView() {
+  /* — zustand state — */
   const {
     selectedFilePaths,
     setSelectedFilePaths,
@@ -87,7 +97,7 @@ export default function SelectedFilesListView() {
   const { extensionFilters } = useExclusionStore();
   const { codemapFilterEmpty } = useAppStore();
 
-  /* codemap extractor */
+  /* — codemap extractor — */
   const {
     trigger: extractCodemap,
     data: codemap,
@@ -95,7 +105,10 @@ export default function SelectedFilesListView() {
   } = useCodemapExtractor();
   const [showPreview, setShowPreview] = useState(false);
 
-  /* derive lists & stats */
+  /* — local UI state — */
+  const [sortMode, setSortMode] = useState<"name" | "tokens">("name");
+
+  /* — derive directory & file lists — */
   const {
     dirs,
     files,
@@ -109,22 +122,28 @@ export default function SelectedFilesListView() {
 
     selectedFilePaths.forEach((p) => {
       if (loaded.has(p)) return; // file
-      dirSet.add(p); // directory
+      dirSet.add(p);            // directory
     });
 
-    const allFiles = [...loaded.values()].filter((f) =>
+    const rawFiles = [...loaded.values()].filter((f) =>
       matchesExt(f.path, extensionFilters),
     );
 
+    /* dynamic sort */
+    const sortedFiles =
+      sortMode === "tokens"
+        ? [...rawFiles].sort((a, b) => (b.tokenCount ?? 0) - (a.tokenCount ?? 0))
+        : [...rawFiles].sort((a, b) => a.path.localeCompare(b.path));
+
     return {
       dirs: [...dirSet].sort(),
-      files: allFiles.sort((a, b) => a.path.localeCompare(b.path)),
-      totalTokens: allFiles.reduce((a, f) => a + (f.tokenCount || 0), 0),
-      totalChars: allFiles.reduce((a, f) => a + f.content.length, 0),
-      visibleCount: dirSet.size + allFiles.length,
-      visiblePaths: [...dirSet, ...allFiles.map((f) => f.path)],
+      files: sortedFiles,
+      totalTokens: rawFiles.reduce((a, f) => a + (f.tokenCount || 0), 0),
+      totalChars: rawFiles.reduce((a, f) => a + f.content.length, 0),
+      visibleCount: dirSet.size + rawFiles.length,
+      visiblePaths: [...dirSet, ...rawFiles.map((f) => f.path)],
     };
-  }, [selectedFilePaths, filesData, extensionFilters]);
+  }, [selectedFilePaths, filesData, extensionFilters, sortMode]);
 
   /* remove single path */
   const removePath = (p: string) =>
@@ -133,9 +152,9 @@ export default function SelectedFilesListView() {
   /* codemap preview */
   const handlePreview = async () => {
     const rel = visiblePaths.filter((p) => !p.endsWith("/"));
-    const r = await extractCodemap({ paths: rel });
-    if (r && codemapFilterEmpty) {
-      const keep = Object.entries(r)
+    const result = await extractCodemap({ paths: rel });
+    if (result && codemapFilterEmpty) {
+      const keep = Object.entries(result)
         .filter(([, v]) => (v.classes.length + v.functions.length) > 0)
         .map(([file]) => file);
       setSelectedFilePaths((prev) => prev.filter((p) => keep.includes(p)));
@@ -143,7 +162,7 @@ export default function SelectedFilesListView() {
     setShowPreview(true);
   };
 
-  /* ───────────────────────── render ───────────────────────── */
+  /* ─────────────────────────────── render ─────────────────────────────── */
 
   if (visibleCount === 0) {
     return (
@@ -158,26 +177,39 @@ export default function SelectedFilesListView() {
 
   return (
     <>
-      {/* stats + actions */}
-      <div className="flex flex-wrap items-center gap-2 mb-2">
+      {/* stats + actions header */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
         <Badge variant="outline">
           {dirs.length > 0 && `${dirs.length} dir${dirs.length > 1 ? "s" : ""}, `}
           {files.length} file{files.length !== 1 && "s"}
         </Badge>
 
         <Badge variant="outline" className="flex items-center gap-1">
-          <BarChart2 size={12} /> {totalTokens.toLocaleString()} tokens
+          <BarChart2 size={12} /> {totalTokens.toLocaleString()} tokens
         </Badge>
 
-        <Badge variant="outline">{totalChars.toLocaleString()} chars</Badge>
+        <Badge variant="outline">{totalChars.toLocaleString()} chars</Badge>
 
+        {/* ─── sort control ─── */}
+        <Select value={sortMode} onValueChange={v => setSortMode(v as any)}>
+          <SelectTrigger className="ml-auto h-7 w-[158px] text-xs border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800">
+            <SortAsc size={12} className="mr-1" />
+            <SelectValue placeholder="Sort files…" />
+          </SelectTrigger>
+          <SelectContent className="text-xs">
+            <SelectItem value="name">Alphabetical (A‑Z)</SelectItem>
+            <SelectItem value="tokens">Token count (desc)</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {/* codemap preview button */}
         <TooltipProvider delayDuration={100}>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 size="sm"
                 variant="outline"
-                className="ml-auto h-7"
+                className="h-7"
                 disabled={isMutating || files.length === 0}
                 onClick={handlePreview}
               >
@@ -189,13 +221,13 @@ export default function SelectedFilesListView() {
                 ) : (
                   <>
                     <Share2 size={14} className="mr-1" />
-                    Preview Codemap
+                    Preview Codemap
                   </>
                 )}
               </Button>
             </TooltipTrigger>
-            <TooltipContent>
-              Inspect classes/functions without sending full file bodies.
+            <TooltipContent side="bottom">
+              Inspect classes / functions without sending full file bodies.
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -210,7 +242,7 @@ export default function SelectedFilesListView() {
               key={d}
               className="flex items-center justify-between px-3 py-1.5 bg-white/40 dark:bg-gray-900/30 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/40 transition"
             >
-              <span className="flex items-center truncate">
+              <span className="flex items-center truncate italic text-gray-600 dark:text-gray-400">
                 <Folder className="h-4 w-4 mr-2 text-amber-500" />
                 <span className="truncate font-mono">{d}</span>
               </span>
@@ -237,7 +269,10 @@ export default function SelectedFilesListView() {
                 <span className="truncate font-mono">{f.path}</span>
               </span>
               <div className="flex items-center gap-2 flex-shrink-0">
-                <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                <Badge
+                  variant="secondary"
+                  className="px-1.5 py-0 text-[10px] bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
+                >
                   {f.tokenCount}
                 </Badge>
                 <Button
