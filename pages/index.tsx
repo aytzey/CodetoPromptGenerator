@@ -1,5 +1,7 @@
 // File: pages/index.tsx
-// FULL FILE – 2025‑04‑17  (🔧 Fix “Select All” button: use relative paths)
+// FULL FILE – 2025‑04‑17
+// 🔧 FIX: fetch local exclusions immediately when a project is selected
+// ──────────────────────────────────────────────────────────────────────
 
 import React, {
   useState,
@@ -147,7 +149,10 @@ export default function Home() {
   /* ————————————————— services ————————————————— */
   const { loadProjectTree, loadSelectedFileContents } = useProjectService();
   const { fetchMetaPromptList } = usePromptService();
-  const { fetchGlobalExclusions } = useExclusionService();
+  const {
+    fetchGlobalExclusions,
+    fetchLocalExclusions,          // ← ADDED
+  } = useExclusionService();
   const { loadTodos } = useTodoService();
   const { autoSelect, isSelecting } = useAutoSelectService();
 
@@ -177,6 +182,7 @@ export default function Home() {
       setShowWelcome(false);
       loadProjectTree();
       loadTodos();
+      fetchLocalExclusions();                                   // ← NEW: load project‑specific exclusions
     } else {
       useProjectStore.setState({
         fileTree: [],
@@ -184,8 +190,14 @@ export default function Home() {
         filesData: [],
       });
       useTodoStore.setState({ todos: [] });
+      useExclusionStore.setState({ localExclusions: [] });      // ← keep store consistent
     }
-  }, [projectPath, loadProjectTree, loadTodos]);
+  }, [
+    projectPath,
+    loadProjectTree,
+    loadTodos,
+    fetchLocalExclusions,                                       // ← dependency
+  ]);
 
   /* ③ load file contents when selection changes */
   useEffect(() => {
@@ -238,7 +250,11 @@ export default function Home() {
     );
 
     // 3. Delegate to the store helper – it will honour global/local exclusions
-    selectAllFiles(allVisibleFiles, new Set(globalExclusions), localExclusionsSet);
+    selectAllFiles(
+      allVisibleFiles,
+      new Set(globalExclusions),
+      localExclusionsSet,
+    );
   };
 
   const handleRefresh = async () => {

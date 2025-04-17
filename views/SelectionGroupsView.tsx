@@ -42,9 +42,10 @@ const SelectionGroupsView: React.FC<Props> = ({
   onSelectPaths,
 }) => {
   const [newName, setNewName] = useState('');
-  const { saveGroup, deleteGroup, listGroups } = useSelectionGroupStore();
+  const { saveGroup, deleteGroup } = useSelectionGroupStore();
 
-  const groups = useMemo(() => listGroups(projectPath), [listGroups, projectPath]);
+  const groups = useSelectionGroupStore(
+      React.useCallback(state => state.groups[projectPath] ?? {}, [projectPath]),);
 
   /* ––––– handlers ––––– */
   const handleSave = () => {

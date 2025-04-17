@@ -4,7 +4,8 @@
  *  • lets the user type or paste a path,
  *  • opens a modal FolderBrowser,
  *  • keeps a short “recent” history in localStorage, and
- *  • updates the global projectPath via zustand.
+ *  • optionally notifies a parent component via onPathSelected
+ *    **or** updates the global projectPath via zustand.
  *
  * SOLID compliance
  * ----------------
@@ -14,6 +15,7 @@
  * ‑ Interface‑segregation Props kept minimal
  * ‑ Dependency‑inversion Uses the generic fetchApi / zustand stores
  */
+
 import React, { useEffect, useState } from 'react';
 import {
   Folder,
@@ -39,37 +41,50 @@ import { Badge } from '@/components/ui/badge';
 import FolderBrowserView from './FolderBrowserView';
 import { useProjectStore } from '@/stores/useProjectStore';
 
-interface FolderPickerProps {
-  /** true while the backend is scanning a tree – disables the picker */
+/* ————————————————————————— props ————————————————————————— */
+export interface FolderPickerProps {
+  /**  true while the backend is scanning a tree – disables every control  */
   isLoading: boolean;
+  /**  externally controlled path; when omitted the global store is used   */
+  currentPath?: string;
+  /**  callback fired after the user has chosen / confirmed a path         */
+  onPathSelected?: (path: string) => void;
 }
 
-/* —————————————————————————————————— constants —————————————————————————————————— */
+/* ————————————————————————— constants ————————————————————————— */
 const RECENTS_KEY = 'recentFolders';
-const MAX_RECENTS = 4;
+const MAX_RECENTS  = 4;
 
-/* —————————————————————————————————— component —————————————————————————————————— */
-const FolderPickerView: React.FC<FolderPickerProps> = ({ isLoading }) => {
-  const projectPath  = useProjectStore((s) => s.projectPath);
-  const setProject   = useProjectStore((s) => s.setProjectPath);
+/* ————————————————————————— component ————————————————————————— */
+const FolderPickerView: React.FC<FolderPickerProps> = ({
+  isLoading,
+  currentPath: externalPath,
+  onPathSelected,
+}) => {
+  /* ───── global store (fallback when no externalPath / onPathSelected) ───── */
+  const storePath   = useProjectStore((s) => s.projectPath);
+  const setStorePath = useProjectStore((s) => s.setProjectPath);
 
-  const [inputValue, setInputValue] = useState(projectPath);
-  const [showBrowser, setShowBrowser] = useState(false);
-  const [recent, setRecent] = useState<string[]>([]);
+  /*  final “authoritative” path in use by this component  */
+  const activePath  = externalPath ?? storePath;
 
-  /* ───── init “recent” list once ───── */
+  /* ───── local UI state ───── */
+  const [inputValue,   setInputValue]   = useState(activePath);
+  const [showBrowser,  setShowBrowser]  = useState(false);
+  const [recent,       setRecent]       = useState<string[]>([]);
+
+  /* ───── initialise “recent” list once ───── */
   useEffect(() => {
     const stored = localStorage.getItem(RECENTS_KEY);
     if (stored) setRecent(JSON.parse(stored));
   }, []);
 
-  /* ───── keep text‑input in sync with external changes ───── */
-  useEffect(() => setInputValue(projectPath), [projectPath]);
+  /* ───── keep text‑input in sync with externally driven path changes ───── */
+  useEffect(() => setInputValue(activePath), [activePath]);
 
   /* ───── helpers ───── */
-  const persistRecents = (list: string[]) => {
+  const persistRecents = (list: string[]) =>
     localStorage.setItem(RECENTS_KEY, JSON.stringify(list));
-  };
 
   const addRecent = (path: string) => {
     setRecent((prev) => {
@@ -80,12 +95,21 @@ const FolderPickerView: React.FC<FolderPickerProps> = ({ isLoading }) => {
   };
 
   const choosePath = (path: string) => {
-    if (!path) return;
-    setProject(path);     // 🔗 updates global store – everything downstream reacts
+    if (!path) return;                       // guard empty
+    if (onPathSelected) {
+      try {
+        onPathSelected(path);                // delegate to parent
+      } catch (err) {
+        // eslint‑disable‑next‑line no‑console
+        console.error('onPathSelected callback threw:', err);
+      }
+    } else {
+      setStorePath(path);                    // default behaviour
+    }
     addRecent(path);
   };
 
-  /* —————————————————————————————————— render —————————————————————————————————— */
+  /* ————————————————————————— render ————————————————————————— */
   return (
     <>
       {/* main control row */}
@@ -190,7 +214,7 @@ const FolderPickerView: React.FC<FolderPickerProps> = ({ isLoading }) => {
             choosePath(p);
             setShowBrowser(false);
           }}
-          currentPath={projectPath}
+          currentPath={activePath}
         />
       )}
     </>
