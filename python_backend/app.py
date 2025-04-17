@@ -7,11 +7,8 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 from werkzeug.exceptions import HTTPException
 
-# 👇  EKLENDİ
-from utils.response_utils import error_response           # <-- **EK**
-# -------------------------------------------------------
+from utils.response_utils import error_response
 from controllers import all_blueprints
-# -------------------------------------------------------
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,10 +34,16 @@ def create_app(test_config=None):
 
     os.makedirs(app.instance_path, exist_ok=True)
 
-    CORS(app, resources={r"/api/*": {"origins": r"http://localhost:*"}})
+    # ────────────────────────────────────────────────────────────────────
+    # CORS – allow localhost **and** 127.0.0.1 on any port for /api/*
+    # ────────────────────────────────────────────────────────────────────
+    CORS(
+        app,
+        resources={r"/api/*": {"origins": [r"http://localhost:*", r"http://127.0.0.1:*"]}},
+        supports_credentials=False,
+    )
 
-
-    # ───── JSON hata yakalayıcıları ───────────────────────────────────────────
+    # ───── JSON error handlers ─────────────────────────────────────────
     @app.errorhandler(404)
     def not_found_error(_):
         return error_response("Not Found", "The requested resource was not found.", 404)
@@ -60,7 +63,7 @@ def create_app(test_config=None):
         logger.exception("Unhandled exception")
         return error_response("Internal Server Error", str(e), 500)
 
-    # ───── Blueprint kayıtları ───────────────────────────────────────────────
+    # ───── Blueprint registration ──────────────────────────────────────
     for bp in all_blueprints:
         app.register_blueprint(bp)
 

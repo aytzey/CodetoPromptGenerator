@@ -1,12 +1,42 @@
 // File: pages/index.tsx
-// FULL FILE – 2025‑04‑17
-import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+// FULL FILE – 2025‑04‑17  (🔧 Fix OpenRouter‑key persistence + validation)
+
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useCallback,
+} from "react";
 import Head from "next/head";
 import {
-  Settings, FileCode, List, Sun, Moon, Github, Search, RefreshCw,
-  CheckSquare, XSquare, Code, LayoutGrid, Zap, Flame, BookOpen, Terminal,
-  HelpCircle, Rocket, Coffee, X, Folder, BarChart2, ListChecks, ChevronsUp,
-  ChevronsDown, KeyRound, PlusCircle
+  Settings,
+  FileCode,
+  List,
+  Sun,
+  Moon,
+  Github,
+  Search,
+  RefreshCw,
+  CheckSquare,
+  XSquare,
+  Code,
+  LayoutGrid,
+  Zap,
+  Flame,
+  BookOpen,
+  Terminal,
+  HelpCircle,
+  Rocket,
+  Coffee,
+  X,
+  Folder,
+  BarChart2,
+  ListChecks,
+  ChevronsUp,
+  ChevronsDown,
+  KeyRound,
+  PlusCircle,
 } from "lucide-react";
 
 import { useSelectionGroupStore } from "@/stores/useSelectionGroupStore";
@@ -18,12 +48,13 @@ import { useProjectStore } from "@/stores/useProjectStore";
 import { usePromptStore } from "@/stores/usePromptStore";
 import { useExclusionStore } from "@/stores/useExclusionStore";
 import { useTodoStore } from "@/stores/useTodoStore";
+import { useSettingsStore } from "@/stores/useSettingStore";
 
 import { useProjectService } from "@/services/projectServiceHooks";
 import { usePromptService } from "@/services/promptServiceHooks";
 import { useExclusionService } from "@/services/exclusionServiceHooks";
 import { useTodoService } from "@/services/todoServiceHooks";
-import { fetchApi } from "@/services/apiService";
+import { useAutoSelectService } from "@/services/autoSelectServiceHooks"; // ← NEW
 
 import FileTreeView from "@/views/FileTreeView";
 import InstructionsInputView from "@/views/InstructionsInputView";
@@ -34,34 +65,65 @@ import ExclusionsManagerView from "@/views/ExclusionsManagerView";
 import LocalExclusionsManagerView from "@/views/LocalExclusionsManagerView";
 import TodoListView from "@/views/TodoListView";
 
-import { applyExtensionFilter, applySearchFilter, flattenTree, flattenFilePaths } from "@/lib/fileFilters";
-import { FileNode } from '@/types';
+import {
+  applyExtensionFilter,
+  applySearchFilter,
+  flattenTree,
+} from "@/lib/fileFilters";
+import { FileNode } from "@/types";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
-  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
 /* ────────────────────────────────────────────────────────────── */
 /* helpers                                                        */
 /* ────────────────────────────────────────────────────────────── */
-const LS_KEY_OR = "openrouter_api_key";
+
+/**
+ * Single source‑of‑truth key for the OpenRouter secret.
+ * Now matches the zustand useSettingsStore implementation.
+ */
+const LS_KEY_OR = "openrouterApiKey";
 
 /**
  * Extract all descendant paths (file & dir) 📁→📄
  */
-function getAllDescendantsOfPath(tree: FileNode[], targetPath: string): string[] {
+function getAllDescendantsOfPath(
+  tree: FileNode[],
+  targetPath: string,
+): string[] {
   const normTarget = targetPath.replace(/\\/g, "/");
-  return flattenTree(tree).filter(p =>
-    p === normTarget || p.startsWith(normTarget + "/")
+  return flattenTree(tree).filter(
+    (p) => p === normTarget || p.startsWith(normTarget + "/"),
   );
 }
 
@@ -70,35 +132,50 @@ function getAllDescendantsOfPath(tree: FileNode[], targetPath: string): string[]
 /* ────────────────────────────────────────────────────────────── */
 export default function Home() {
   /* ————————————————— global state ————————————————— */
-  const darkMode      = useAppStore(s => s.darkMode);
-  const toggleDark    = useAppStore(s => s.toggleDarkMode);
-  const setError      = useAppStore(s => s.setError);
+  const darkMode = useAppStore((s) => s.darkMode);
+  const toggleDark = useAppStore((s) => s.toggleDarkMode);
+  const setError = useAppStore((s) => s.setError);
 
   const {
-    projectPath, setProjectPath, fileTree, selectedFilePaths,
-    setSelectedFilePaths, isLoadingTree, filesData, fileSearchTerm,
-    setFileSearchTerm, selectAllFiles, deselectAllFiles
+    projectPath,
+    setProjectPath,
+    fileTree,
+    selectedFilePaths,
+    setSelectedFilePaths,
+    isLoadingTree,
+    filesData,
+    fileSearchTerm,
+    setFileSearchTerm,
+    selectAllFiles,
+    deselectAllFiles,
   } = useProjectStore();
 
   const { metaPrompt, mainInstructions } = usePromptStore();
-  const { globalExclusions, localExclusions, extensionFilters } = useExclusionStore();
+  const { globalExclusions, localExclusions, extensionFilters } =
+    useExclusionStore();
   const { todos } = useTodoStore();
+
+  /* settings store */
+  const setOpenrouterApiKey = useSettingsStore((s) => s.setOpenrouterApiKey);
 
   /* ————————————————— services ————————————————— */
   const { loadProjectTree, loadSelectedFileContents } = useProjectService();
-  const { fetchMetaPromptList }   = usePromptService();
+  const { fetchMetaPromptList } = usePromptService();
   const { fetchGlobalExclusions } = useExclusionService();
-  const { loadTodos }             = useTodoService();
+  const { loadTodos } = useTodoService();
+  const { autoSelect, isSelecting } = useAutoSelectService();           // 🎯
 
   /* ————————————————— refs & local UI state ————————————————— */
-  const treeRef    = useRef<FileTreeViewHandle>(null);
-  const [activeTab, setActiveTab] = useState<"files" | "options" | "tasks">("files");
+  const treeRef = useRef<FileTreeViewHandle>(null);
+  const [activeTab, setActiveTab] = useState<"files" | "options" | "tasks">(
+    "files",
+  );
   const [extensionInput, setExtensionInput] = useState("");
   const [showWelcome, setShowWelcome] = useState(true);
 
   /* OpenRouter settings modal */
   const [showSettings, setShowSettings] = useState(false);
-  const [apiKeyDraft, setApiKeyDraft]   = useState<string>("");
+  const [apiKeyDraft, setApiKeyDraft] = useState<string>("");
 
   /* ————————————————— lifecycle ————————————————— */
   /* ① initial load */
@@ -115,7 +192,11 @@ export default function Home() {
       loadProjectTree();
       loadTodos();
     } else {
-      useProjectStore.setState({ fileTree: [], selectedFilePaths: [], filesData: [] });
+      useProjectStore.setState({
+        fileTree: [],
+        selectedFilePaths: [],
+        filesData: [],
+      });
       useTodoStore.setState({ todos: [] });
     }
   }, [projectPath, loadProjectTree, loadTodos]);
@@ -139,24 +220,31 @@ export default function Home() {
       : extFiltered;
   }, [fileTree, extensionFilters, fileSearchTerm]);
 
-  const localExclusionsSet = useMemo(() => new Set(localExclusions), [localExclusions]);
+  const localExclusionsSet = useMemo(
+    () => new Set(localExclusions),
+    [localExclusions],
+  );
 
   const selectedFileCount = useMemo(
-    () => selectedFilePaths.filter(p => !p.endsWith("/")).length,
-    [selectedFilePaths]
+    () => selectedFilePaths.filter((p) => !p.endsWith("/")).length,
+    [selectedFilePaths],
   );
   const totalTokens = useMemo(
     () => filesData.reduce((a, f) => a + f.tokenCount, 0),
-    [filesData]
+    [filesData],
   );
   const hasContent = useMemo(
-    () => metaPrompt.trim() || mainInstructions.trim() || selectedFileCount > 0,
-    [metaPrompt, mainInstructions, selectedFileCount]
+    () =>
+      metaPrompt.trim() || mainInstructions.trim() || selectedFileCount > 0,
+    [metaPrompt, mainInstructions, selectedFileCount],
   );
 
   /* ————————————————— handlers ————————————————— */
   const handleSelectAll = () => {
-    const allVisibleFiles = flattenFilePaths(filteredTree);
+    const allVisibleFiles = getAllDescendantsOfPath(
+      filteredTree,
+      projectPath ?? "",
+    );
     selectAllFiles(allVisibleFiles, new Set(globalExclusions), localExclusionsSet);
   };
 
@@ -167,53 +255,16 @@ export default function Home() {
   };
 
   /* ╭─────────────────────────────────────────────────────────╮
-   * │  SMART‑SELECT WIZARD (Gemma‑3 via OpenRouter)           │
-   * ╰─────────────────────────────────────────────────────────╯ */
-  const runSmartSelect = useCallback(async () => {
-    if (!projectPath) return setError("Select a project first.");
-    const key = localStorage.getItem(LS_KEY_OR);
-    if (!key) {
-      setError("OpenRouter API key missing. Add it in Settings.");
-      setShowSettings(true);
-      return;
-    }
-    const instructions = [metaPrompt, mainInstructions].join("\n").trim();
-    if (!instructions) {
-      setError("Please enter instructions before running Smart‑Select.");
-      return;
-    }
-
-    const res = await fetchApi<string[]>(
-      "/api/codemapi/autoselect",
-      {
-        method: "POST",
-        headers: { "x-openrouter-key": key },
-        body: JSON.stringify({ projectPath, instructions })
-      },
-      /* handleError */
-      (status) => {
-        if (status === 401) {
-          setShowSettings(true);
-          return true; // handled
-        }
-      }
-    );
-
-    if (res && Array.isArray(res)) {
-      setSelectedFilePaths(res);
-    }
-  }, [projectPath, metaPrompt, mainInstructions, setError]);
-
-  /* ╭─────────────────────────────────────────────────────────╮
    * │  OPENROUTER KEY – persist & validate                    │
    * ╰─────────────────────────────────────────────────────────╯ */
   const saveApiKey = () => {
     const trimmed = apiKeyDraft.trim();
-    if (!/^sk-[\w\d]{20,}$/.test(trimmed)) {
+    if (!/^sk-[A-Za-z0-9_-]{20,}$/.test(trimmed)) {
       setError("API key format looks invalid.");
       return;
     }
     localStorage.setItem(LS_KEY_OR, trimmed);
+    setOpenrouterApiKey(trimmed); // keep zustand & LS in sync
     setShowSettings(false);
   };
 
@@ -221,8 +272,11 @@ export default function Home() {
   return (
     <div className="min-h-screen">
       <Head>
-        <title>Code → Prompt Generator</title>
-        <meta name="description" content="Generate finely‑tuned LLM prompts straight from your code base." />
+        <title>Code → Prompt Generator</title>
+        <meta
+          name="description"
+          content="Generate finely‑tuned LLM prompts straight from your code base."
+        />
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
@@ -242,53 +296,90 @@ export default function Home() {
           {/* right */}
           <div className="flex items-center space-x-2 sm:space-x-3">
             {/* Smart‑select */}
-            <TooltipProvider><Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline" size="icon"
-                  disabled={!projectPath}
-                  onClick={runSmartSelect}
-                  className="border-teal-300 text-teal-600 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-400"
-                >
-                  <Zap size={18} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Smart‑Select files with Gemma‑3</TooltipContent>
-            </Tooltip></TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    disabled={!projectPath || isSelecting}
+                    onClick={autoSelect}
+                    className="border-teal-300 text-teal-600 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-400"
+                  >
+                    {isSelecting ? (
+                      <RefreshCw size={18} className="animate-spin" />
+                    ) : (
+                      <Zap size={18} />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  Smart‑Select files with Gemma‑3
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
 
             {/* theme toggle */}
-            <TooltipProvider><Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={toggleDark}
-                  className="rounded-full h-9 w-9">
-                  {darkMode ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} className="text-indigo-600" />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{darkMode ? "Light Mode" : "Dark Mode"}</TooltipContent>
-            </Tooltip></TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={toggleDark}
+                    className="rounded-full h-9 w-9"
+                  >
+                    {darkMode ? (
+                      <Sun size={18} className="text-amber-400" />
+                    ) : (
+                      <Moon size={18} className="text-indigo-600" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {darkMode ? "Light Mode" : "Dark Mode"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
 
             {/* settings */}
-            <TooltipProvider><Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={() => setShowSettings(true)}
-                  className="rounded-full h-9 w-9">
-                  <Settings size={18} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Settings</TooltipContent>
-            </Tooltip></TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowSettings(true)}
+                    className="rounded-full h-9 w-9"
+                  >
+                    <Settings size={18} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Settings</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
 
             {/* GitHub */}
-            <TooltipProvider><Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon"
-                  onClick={() => window.open("https://github.com/aytzey/CodetoPromptGenerator", "_blank")}
-                  className="rounded-full h-9 w-9">
-                  <Github size={18} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">View on GitHub</TooltipContent>
-            </Tooltip></TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() =>
+                      window.open(
+                        "https://github.com/aytzey/CodetoPromptGenerator",
+                        "_blank",
+                      )
+                    }
+                    className="rounded-full h-9 w-9"
+                  >
+                    <Github size={18} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">View on GitHub</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
       </header>
@@ -321,9 +412,14 @@ export default function Home() {
                 Code to Prompt Generator
               </h2>
               <p className="text-gray-600 dark:text-gray-400 max-w-xl text-sm">
-                Select a project folder above to scan files, add instructions, and generate structured LLM prompts.
+                Select a project folder above to scan files, add instructions,
+                and generate structured LLM prompts.
               </p>
-              <Button variant="outline" className="mt-6" onClick={() => setShowWelcome(false)}>
+              <Button
+                variant="outline"
+                className="mt-6"
+                onClick={() => setShowWelcome(false)}
+              >
                 Dismiss
               </Button>
             </CardContent>
@@ -333,11 +429,23 @@ export default function Home() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* LEFT – Tabs */}
             <div className="lg:col-span-2 space-y-6">
-              <Tabs value={activeTab} onValueChange={v => setActiveTab(v as any)}>
+              <Tabs
+                value={activeTab}
+                onValueChange={(v) => setActiveTab(v as any)}
+              >
                 <TabsList className="grid grid-cols-3">
-                  <TabsTrigger value="files"><FileCode size={16} className="mr-1" />Files</TabsTrigger>
-                  <TabsTrigger value="options"><Settings size={16} className="mr-1" />Options</TabsTrigger>
-                  <TabsTrigger value="tasks"><ListChecks size={16} className="mr-1" />Tasks</TabsTrigger>
+                  <TabsTrigger value="files">
+                    <FileCode size={16} className="mr-1" />
+                    Files
+                  </TabsTrigger>
+                  <TabsTrigger value="options">
+                    <Settings size={16} className="mr-1" />
+                    Options
+                  </TabsTrigger>
+                  <TabsTrigger value="tasks">
+                    <ListChecks size={16} className="mr-1" />
+                    Tasks
+                  </TabsTrigger>
                 </TabsList>
 
                 {/* FILES TAB */}
@@ -354,31 +462,72 @@ export default function Home() {
                         <div className="flex flex-wrap items-center gap-2">
                           {/* search */}
                           <div className="relative">
-                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                            <Search
+                              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
+                              size={14}
+                            />
                             <Input
-                              placeholder="Filter files…" value={fileSearchTerm}
-                              onChange={e => setFileSearchTerm(e.target.value)}
+                              placeholder="Filter files…"
+                              value={fileSearchTerm}
+                              onChange={(e) =>
+                                setFileSearchTerm(e.target.value)
+                              }
                               className="pl-8 h-8 w-40"
                             />
                           </div>
                           {/* refresh */}
-                          <Button size="sm" variant="outline" onClick={handleRefresh} disabled={isLoadingTree || !projectPath}>
-                            <RefreshCw size={14} className={cn("mr-1", isLoadingTree && "animate-spin")} />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={handleRefresh}
+                            disabled={isLoadingTree || !projectPath}
+                          >
+                            <RefreshCw
+                              size={14}
+                              className={cn(
+                                "mr-1",
+                                isLoadingTree && "animate-spin",
+                              )}
+                            />
                             Refresh
                           </Button>
                           {/* select/deselect */}
-                          <Button size="sm" variant="outline" onClick={handleSelectAll} disabled={!projectPath}>
-                            <CheckSquare size={14} className="mr-1" />Select All
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={handleSelectAll}
+                            disabled={!projectPath}
+                          >
+                            <CheckSquare size={14} className="mr-1" />
+                            Select All
                           </Button>
-                          <Button size="sm" variant="outline" onClick={deselectAllFiles} disabled={!selectedFilePaths.length}>
-                            <XSquare size={14} className="mr-1" />Deselect
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={deselectAllFiles}
+                            disabled={!selectedFilePaths.length}
+                          >
+                            <XSquare size={14} className="mr-1" />
+                            Deselect
                           </Button>
                           {/* expand/collapse */}
-                          <Button size="sm" variant="outline" onClick={() => treeRef.current?.expandAll()} disabled={!projectPath}>
-                            <ChevronsDown size={14} className="mr-1" />Expand
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => treeRef.current?.expandAll()}
+                            disabled={!projectPath}
+                          >
+                            <ChevronsDown size={14} className="mr-1" />
+                            Expand
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => treeRef.current?.collapseAll()} disabled={!projectPath}>
-                            <ChevronsUp size={14} className="mr-1" />Collapse
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => treeRef.current?.collapseAll()}
+                            disabled={!projectPath}
+                          >
+                            <ChevronsUp size={14} className="mr-1" />
+                            Collapse
                           </Button>
                         </div>
                       </div>
@@ -386,10 +535,16 @@ export default function Home() {
                     <CardContent className="p-3">
                       {isLoadingTree ? (
                         <div className="flex items-center justify-center py-10 text-gray-400">
-                          <RefreshCw size={24} className="animate-spin mr-2" />Loading tree…
+                          <RefreshCw
+                            size={24}
+                            className="animate-spin mr-2"
+                          />
+                          Loading tree…
                         </div>
                       ) : !projectPath ? (
-                        <div className="text-center py-10 text-gray-400 text-sm">Select a project folder above.</div>
+                        <div className="text-center py-10 text-gray-400 text-sm">
+                          Select a project folder above.
+                        </div>
                       ) : (
                         <FileTreeView
                           ref={treeRef}
@@ -405,8 +560,13 @@ export default function Home() {
                   <Card>
                     <CardHeader className="py-3 px-4 border-b border-gray-200 dark:border-gray-700">
                       <CardTitle className="text-base font-semibold flex items-center gap-2">
-                        <CheckSquare size={16} className="text-teal-500" />Selected Files
-                        {selectedFileCount > 0 && <Badge variant="secondary" className="ml-auto">{selectedFileCount}</Badge>}
+                        <CheckSquare size={16} className="text-teal-500" />
+                        Selected Files
+                        {selectedFileCount > 0 && (
+                          <Badge variant="secondary" className="ml-auto">
+                            {selectedFileCount}
+                          </Badge>
+                        )}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="p-3 space-y-3">
@@ -424,12 +584,16 @@ export default function Home() {
                 {/* OPTIONS TAB */}
                 <TabsContent value="options" className="mt-4 space-y-5">
                   <ExclusionsManagerView />
-                  {projectPath && <LocalExclusionsManagerView projectPath={projectPath} />}
+                  {projectPath && (
+                    <LocalExclusionsManagerView projectPath={projectPath} />
+                  )}
                 </TabsContent>
 
                 {/* TASKS TAB */}
                 <TabsContent value="tasks" className="mt-4">
-                  {projectPath ? <TodoListView /> : (
+                  {projectPath ? (
+                    <TodoListView />
+                  ) : (
                     <div className="p-6 border border-dashed text-center text-gray-500 dark:text-gray-400 rounded-lg">
                       <ListChecks size={32} className="mx-auto mb-2 opacity-50" />
                       Select a project to manage tasks.
@@ -444,7 +608,8 @@ export default function Home() {
               <Card>
                 <CardHeader className="py-3 px-4 border-b border-gray-200 dark:border-gray-700">
                   <CardTitle className="text-base font-semibold flex items-center gap-2">
-                    <BookOpen size={16} className="text-purple-500" />Prompt Instructions
+                    <BookOpen size={16} className="text-purple-500" />
+                    Prompt Instructions
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-4">
@@ -455,11 +620,14 @@ export default function Home() {
               <Card>
                 <CardHeader className="py-3 px-4 border-b border-gray-200 dark:border-gray-700">
                   <CardTitle className="text-base font-semibold flex items-center gap-2">
-                    <Flame size={16} className="text-orange-500" />Generate & Copy
+                    <Flame size={16} className="text-orange-500" />
+                    Generate & Copy
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-4">
-                  {hasContent ? <CopyButtonView /> : (
+                  {hasContent ? (
+                    <CopyButtonView />
+                  ) : (
                     <div className="flex flex-col items-center py-6 text-gray-500">
                       <Coffee size={24} className="mb-2" />
                       Select files or add instructions first.
@@ -471,7 +639,8 @@ export default function Home() {
               <Card>
                 <CardHeader className="py-3 px-4 border-b border-gray-200 dark:border-gray-700">
                   <CardTitle className="text-base font-semibold flex items-center gap-2">
-                    <BarChart2 size={16} className="text-blue-500" />Prompt Stats
+                    <BarChart2 size={16} className="text-blue-500" />
+                    Prompt Stats
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-4 grid grid-cols-2 gap-3 text-sm">
@@ -481,7 +650,9 @@ export default function Home() {
                   </div>
                   <div className="flex items-center justify-between p-2 border rounded">
                     <span>Tokens</span>
-                    <span className="font-medium">{totalTokens.toLocaleString()}</span>
+                    <span className="font-medium">
+                      {totalTokens.toLocaleString()}
+                    </span>
                   </div>
                 </CardContent>
               </Card>
@@ -506,13 +677,15 @@ export default function Home() {
           </DialogHeader>
 
           <div className="space-y-3 px-1">
-            <Label htmlFor="or-key" className="font-medium">API Key</Label>
+            <Label htmlFor="or-key" className="font-medium">
+              API Key
+            </Label>
             <Input
               id="or-key"
               type="password"
               placeholder="sk-..."
               value={apiKeyDraft}
-              onChange={e => setApiKeyDraft(e.target.value)}
+              onChange={(e) => setApiKeyDraft(e.target.value)}
             />
             <p className="text-xs text-gray-500">
               Stored locally in your browser (never sent to our server).
@@ -520,9 +693,12 @@ export default function Home() {
           </div>
 
           <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setShowSettings(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setShowSettings(false)}>
+              Cancel
+            </Button>
             <Button onClick={saveApiKey} disabled={!apiKeyDraft.trim()}>
-              <PlusCircle size={16} className="mr-1" />Save
+              <PlusCircle size={16} className="mr-1" />
+              Save
             </Button>
           </DialogFooter>
         </DialogContent>
