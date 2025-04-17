@@ -1,139 +1,141 @@
-/* styles/globals.css */
+/* ──────────────────────────────────────────────────────────────
+   GLOBAL STYLES – theme‑aware rewrite
+   ────────────────────────────────────────────────────────────── */
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-@layer base {
-  html, body {
-    margin: 0;
-    padding: 0;
-    font-family: 'Inter', sans-serif;
-    background-color: #141527;
-    color: #E0E2F0;
-    scrollbar-width: thin;
-    scrollbar-color: #3C3F57 #1A1B2E;
-  }
-  
-  h1, h2, h3, h4, h5, h6 {
-    font-weight: 600;
-    line-height: 1.2;
-  }
-  
-  * {
-    @apply transition-colors duration-200;
-  }
-}
-
-/* Custom components */
-@layer components {
-  .card {
-    @apply bg-[#1A1B2E] rounded-xl border border-[#2A2C42] p-5 shadow-lg;
-  }
-  
-  .btn {
-    @apply px-4 py-2 rounded-lg font-medium transition-all duration-300 transform hover:translate-y-[-2px] focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-[#141527];
-  }
-  
-  .btn-primary {
-    @apply btn bg-[#50fa7b] hover:bg-[#7b93fd] text-[#141527] shadow-md;
-  }
-  
-  .btn-secondary {
-    @apply btn bg-[#bd93f9] hover:bg-[#ff79c6] text-[#141527] shadow-md;
-  }
-  
-  .btn-outline {
-    @apply btn bg-transparent border border-[#3f4257] text-gray-100 hover:bg-[#3C3F57] hover:border-[#50fa7b];
-  }
-  
-  .input-field {
-    @apply bg-[#141527] border border-[#3f4257] rounded-lg px-3 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-[#bd93f9] transition-all;
-  }
-  
-  .gradient-text {
-    @apply bg-clip-text text-transparent bg-gradient-to-r;
-  }
-  
-  .gradient-primary {
-    @apply from-[#8be9fd] to-[#50fa7b];
-  }
-  
-  .gradient-secondary {
-    @apply from-[#ff79c6] to-[#bd93f9];
-  }
-}
-
-/* Custom utility classes */
-@layer utilities {
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-  
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: #141527;
-    border-radius: 4px;
-  }
-  
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #3C3F57;
-    border-radius: 4px;
-  }
-  
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #50fa7b;
-  }
-  
-  .custom-select {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%238be9fd'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 0.5rem center;
-    background-size: 1.5em 1.5em;
-  }
-  
-  /* Animation utilities */
-  .animate-fadeIn {
-    animation: fadeIn 0.5s ease-in-out;
-  }
-  
-  .animate-slideUp {
-    animation: slideUp 0.3s ease-out;
-  }
-  
-  .animate-pulse {
-    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  }
-  
-  /* Glass morphism effect */
-  .glass {
-    background: rgba(26, 27, 46, 0.7);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-  }
-  
-  /* Hover card effect */
-  .hover-card {
-    @apply transition-all duration-300;
-  }
-  
-  .hover-card:hover {
-    @apply transform -translate-y-1 shadow-xl border-[#50fa7b];
-  }
-}
-
-/* Keyframes */
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes slideUp {
-  from { transform: translateY(10px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
+   @tailwind base;
+   @tailwind components;
+   @tailwind utilities;
+   
+   /* ───────────── Base layer ───────────── */
+   @layer base {
+     /* Light‑theme defaults -------------------------------------------------- */
+     html,
+     body {
+       margin: 0;
+       padding: 0;
+       font-family: 'Inter', sans-serif;
+   
+       /* 👇 Light palette */
+       @apply bg-white text-gray-900;
+   
+       /* OS/Firefox scrollbar */
+       scrollbar-width: thin;
+       scrollbar-color: #d1d5db #f3f4f6;
+     }
+   
+     /* Dark‑theme overrides -------------------------------------------------- */
+     .dark html,
+     .dark body {
+       background-color: #141527;
+       color: #E0E2F0;
+       scrollbar-color: #3C3F57 #1A1B2E;
+       color-scheme: dark; /* ensures native widgets adopt dark colours */
+     }
+   
+     /* Headings */
+     h1,
+     h2,
+     h3,
+     h4,
+     h5,
+     h6 {
+       font-weight: 600;
+       line-height: 1.2;
+     }
+   
+     /* Smooth colour transitions everywhere */
+     * {
+       @apply transition-colors duration-200;
+     }
+   }
+   
+   /* ───────────── Utility layer ───────────── */
+   @layer utilities {
+     /* Scrollbars (WebKit) – now theme‑aware */
+     .custom-scrollbar::-webkit-scrollbar {
+       width: 8px;
+       height: 8px;
+     }
+   
+     .custom-scrollbar::-webkit-scrollbar-track {
+       background: #f3f4f6;
+       border-radius: 4px;
+     }
+     .dark .custom-scrollbar::-webkit-scrollbar-track {
+       background: #1A1B2E;
+     }
+   
+     .custom-scrollbar::-webkit-scrollbar-thumb {
+       background: #d1d5db;
+       border-radius: 4px;
+     }
+     .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+       background: #3C3F57;
+     }
+   
+     .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+       background: #9ca3af;
+     }
+     .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+       background: #50fa7b;
+     }
+   
+     /* Animation helpers (unchanged) */
+     .animate-fadeIn  { animation: fadeIn 0.5s ease-in-out; }
+     .animate-slideUp { animation: slideUp 0.3s ease-out; }
+     .animate-pulse   { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+   
+     /* Glass morphism container */
+     .glass  { background: rgba(255,255,255,.6); backdrop-filter: blur(10px); }
+     .dark .glass { background: rgba(26,27,46,.7); }
+   
+     /* Hover‑lift for cards */
+     .hover-card       { @apply transition-all duration-300; }
+     .hover-card:hover { @apply -translate-y-1 shadow-xl border-indigo-400; }
+     .dark .hover-card:hover { border-color: #50fa7b; }
+   }
+   
+   /* ───────────── Component layer ───────────── */
+   @layer components {
+     /* Card utility (used outside <Card> component) */
+     .card              { @apply bg-white   rounded-xl border border-gray-200 p-5 shadow-lg; }
+     .dark .card        { @apply bg-[#1A1B2E] border-[#2A2C42]; }
+   
+     /* Button base */
+     .btn { 
+       @apply px-4 py-2 rounded-lg font-medium transition-all duration-300 transform
+              hover:-translate-y-[2px] focus:outline-none focus:ring-2 focus:ring-offset-1
+              focus:ring-offset-white;
+     }
+     .dark .btn { @apply focus:ring-offset-[#141527]; }
+   
+     /* Outline button – now readable on white */
+     .btn-outline {
+       @apply btn bg-transparent border border-gray-300 text-gray-800
+              hover:bg-gray-50 hover:border-indigo-500;
+     }
+     .dark .btn-outline {
+       @apply border-[#3f4257] text-gray-100 hover:bg-[#3C3F57] hover:border-[#50fa7b];
+     }
+   
+     /* Inputs */
+     .input-field {
+       @apply bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900
+              focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all;
+     }
+     .dark .input-field {
+       @apply bg-[#141527] border-[#3f4257] text-gray-100 focus:ring-[#bd93f9];
+     }
+   
+     /* Gradient utilities (unchanged in both themes) */
+     .gradient-text      { @apply bg-clip-text text-transparent bg-gradient-to-r; }
+     .gradient-primary   { @apply from-[#6366f1] to-[#ec4899]; }
+     .gradient-secondary { @apply from-[#ff79c6] to-[#bd93f9]; }
+   }
+   
+   /* ───────────── Keyframes ───────────── */
+   @keyframes fadeIn   { from { opacity: 0; } to { opacity: 1; } }
+   @keyframes slideUp  { from { transform: translateY(10px); opacity: 0; }
+                         to   { transform: translateY(0);    opacity: 1; } }
+   @keyframes pulse    { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
+   
