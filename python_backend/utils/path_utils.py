@@ -69,3 +69,13 @@ def list_subfolders(path: str) -> List[Dict[str, str]]:
         # Bubble up so controller can return 403
         raise
     return sorted(folders, key=lambda f: f["name"].lower())
+
+
+def ensure_subdir(base: Path, name: str) -> Path:
+    """
+    Ensure *base/<name>* exists; return its Path.
+    Creates the directory (parents=True) if missing.
+    """
+    sub = base / name
+    sub.mkdir(parents=True, exist_ok=True)
+    return sub

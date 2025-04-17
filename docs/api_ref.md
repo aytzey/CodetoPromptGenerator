@@ -26,10 +26,14 @@ All responses follow the envelope
 
 ## 3 · Exclusions
 ### 3.1 Global (`ignoreDirs.txt`)
+| Method | Path | Result |
+| ------ | ---- | ------ |
 | GET  | `/api/exclusions` | → `string[]` |
 | POST | `/api/exclusions` | Body → `{ "exclusions": ["node_modules", "dist"] }` |
 
 ### 3.2 Local (per project)
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
 | GET  | `/api/localExclusions?projectPath=<dir>` | project‑specific ignore list |
 | POST | idem                                     | Body → `{ "localExclusions": ["*.log"] }` |
 
@@ -38,8 +42,8 @@ All responses follow the envelope
 ## 4 · Navigation & Files
 | Method | Path | Purpose |
 | ------ | ---- | ------- |
-| GET  | `/api/select_drives` | Drives / root folders (legacy path) |
-| GET  | `/api/drives`        | Same as above – preferred modern path |
+| GET  | `/api/drives`        | Top‑level drives / mount points *(preferred)* |
+| GET  | `/api/select_drives` | **Legacy** alias kept for FE backward‑compat |
 | GET  | `/api/browse_folders?path=<dir>` | Immediate sub‑folders of *path* |
 | GET  | `/api/projects/tree?rootDir=<dir>` | Recursive tree (honours global ignores) |
 | POST | `/api/projects/files` | Body → `{ "baseDir": "<dir>", "paths": ["rel/a.ts", …] }` → content + token counts |
@@ -60,6 +64,14 @@ All responses follow the envelope
 | Method | Path              | Purpose                |
 | ------ | ----------------- | ---------------------- |
 | POST   | `/api/tokenCount` | `{ text }` → tokens |
+
+---
+
+## 7 · Selection Groups  🆕
+| Method | Path | Notes |
+| ------ | ---- | ----- |
+| GET  | `/api/selectionGroups?projectPath=<dir>` | Load all stored groups for project |
+| POST | `/api/selectionGroups?projectPath=<dir>` | Save groups. Body → `{ "groups": { "<name>": { "files": [] } } }` |
 
 ---
 

@@ -1,26 +1,31 @@
 // views/FileTreeView.tsx
 /**
  * Virtualised file‑tree · react‑window + auto‑sizer
- *
- * – Flattens the nested FileNode[] into a row array
- *   containing meta (depth, isDir, isCollapsed, …).
- * – Only visible rows are mounted.
- * – Checkbox logic preserved.
- *
- * SRP  : rendering + selection logic live here, nothing else.  
- * OCP  : swap out virtualisation strategy without touching parent.  
+ * ──────────────────────────────────────────────────
+ * Exposes `collapseAll()` / `expandAll()` via `ref`.
  */
 
-import React, { useMemo, useState, useCallback } from "react";
-import { ChevronRight, ChevronDown, Folder, File } from "lucide-react";
+import React, {
+  useMemo, useState, useCallback, useImperativeHandle, forwardRef,
+} from "react";
+import {
+  ChevronRight, ChevronDown, Folder, File,
+} from "lucide-react";
 import AutoSizer from "react-virtualized-auto-sizer";
 import { FixedSizeList as List, ListChildComponentProps } from "react-window";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-
+import {
+  TooltipProvider, Tooltip, TooltipTrigger, TooltipContent,
+} from "@/components/ui/tooltip";
 import type { FileNode } from "@/types";
+
+/* ––––– public interface ––––– */
+export interface FileTreeViewHandle {
+  collapseAll(): void;
+  expandAll(): void;
+}
 
 interface Props {
   tree: FileNode[];
@@ -35,39 +40,65 @@ interface Row {
 
 const ROW_HEIGHT = 28;
 
-const FileTreeView: React.FC<Props> = ({ tree, selectedFiles, onSelectFiles }) => {
-  /* —──────────────── state —──────────────── */
+const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
+({ tree, selectedFiles, onSelectFiles }, ref) => {
+  /* ––––– state ––––– */
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
-  /* —──────── helpers —──────── */
+  /* ––––– imperative API ––––– */
+  useImperativeHandle(
+    ref,
+    () => ({
+      collapseAll() {
+        const dirs = new Set<string>();
+        const walk = (n: FileNode[]) =>
+          n.forEach(node => {
+            if (node.type === "directory") {
+              dirs.add(node.absolutePath);
+              node.children && walk(node.children);
+            }
+          });
+        walk(tree);
+        setCollapsed(dirs);
+      },
+      expandAll() {
+        setCollapsed(new Set());
+      },
+    }),
+    [tree],
+  );
+
+  /* ––––– helpers ––––– */
   const toggleCollapse = useCallback(
     (absPath: string) =>
-      setCollapsed((s) => {
+      setCollapsed(s => {
         const next = new Set(s);
         next.has(absPath) ? next.delete(absPath) : next.add(absPath);
         return next;
       }),
-    []
+    [],
   );
 
   const flatten = useCallback(
     (nodes: FileNode[], depth = 0): Row[] =>
-      nodes.flatMap((n) => {
+      nodes.flatMap(n => {
         const rows: Row[] = [{ node: n, depth }];
-        if (n.type === "directory" && n.children && !collapsed.has(n.absolutePath)) {
+        if (
+          n.type === "directory" &&
+          n.children &&
+          !collapsed.has(n.absolutePath)
+        ) {
           rows.push(...flatten(n.children, depth + 1));
         }
         return rows;
       }),
-    [collapsed]
+    [collapsed],
   );
 
-  /* —──────── derived rows —──────── */
+  /* ––––– derived ––––– */
   const rows = useMemo(() => flatten(tree), [flatten, tree]);
-
   const allPaths = useMemo(() => new Set(selectedFiles), [selectedFiles]);
 
-  /* —──────── selection logic —──────── */
   const collectDesc = (n: FileNode): string[] => {
     if (n.type === "file" || !n.children) return [n.relativePath];
     return [n.relativePath, ...n.children.flatMap(collectDesc)];
@@ -76,24 +107,26 @@ const FileTreeView: React.FC<Props> = ({ tree, selectedFiles, onSelectFiles }) =
   const toggleSelection = (n: FileNode) => {
     const paths = collectDesc(n);
     const next = new Set(allPaths);
-    const everySelected = paths.every((p) => next.has(p));
-    paths.forEach((p) => (everySelected ? next.delete(p) : next.add(p)));
+    const everySelected = paths.every(p => next.has(p));
+    paths.forEach(p => (everySelected ? next.delete(p) : next.add(p)));
     onSelectFiles(Array.from(next));
   };
 
-  /* —──────── render row —──────── */
+  /* ––––– render row ––––– */
   const RowRenderer = ({ index, style }: ListChildComponentProps) => {
     const { node, depth } = rows[index];
     const isDir = node.type === "directory";
     const desc = collectDesc(node);
-    const isChecked = desc.every((p) => allPaths.has(p));
-    const isPartial = !isChecked && desc.some((p) => allPaths.has(p));
+    const isChecked = desc.every(p => allPaths.has(p));
+    const isPartial = !isChecked && desc.some(p => allPaths.has(p));
 
     return (
       <div
         style={{ ...style, paddingLeft: depth * 1.2 + "rem" }}
         className={`flex items-center pr-3 ${
-          isChecked ? "bg-indigo-50 dark:bg-indigo-950/30" : "hover:bg-gray-50 dark:hover:bg-gray-800/50"
+          isChecked
+            ? "bg-indigo-50 dark:bg-indigo-950/30"
+            : "hover:bg-gray-50 dark:hover:bg-gray-800/50"
         }`}
       >
         {/* collapse handle */}
@@ -116,7 +149,9 @@ const FileTreeView: React.FC<Props> = ({ tree, selectedFiles, onSelectFiles }) =
         <Checkbox
           id={`chk-${node.absolutePath}`}
           checked={isChecked}
-          data-state={isPartial ? "indeterminate" : isChecked ? "checked" : "unchecked"}
+          data-state={
+            isPartial ? "indeterminate" : isChecked ? "checked" : "unchecked"
+          }
           onCheckedChange={() => toggleSelection(node)}
           className="data-[state=checked]:bg-indigo-500 data-[state=indeterminate]:bg-indigo-300 dark:data-[state=indeterminate]:bg-indigo-700"
         />
@@ -128,14 +163,21 @@ const FileTreeView: React.FC<Props> = ({ tree, selectedFiles, onSelectFiles }) =
               <span
                 className={`
                   ml-2 truncate text-sm flex items-center gap-1
-                  ${isDir ? "text-amber-600 dark:text-amber-400" : "text-teal-600 dark:text-teal-400"}
+                  ${
+                    isDir
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-teal-600 dark:text-teal-400"
+                  }
                 `}
               >
                 {isDir ? <Folder size={14} /> : <File size={14} />}
                 {node.name}
               </span>
             </TooltipTrigger>
-            <TooltipContent side="right" className="font-mono text-xs max-w-sm break-all">
+            <TooltipContent
+              side="right"
+              className="font-mono text-xs max-w-sm break-all"
+            >
               {node.relativePath}
             </TooltipContent>
           </Tooltip>
@@ -154,7 +196,7 @@ const FileTreeView: React.FC<Props> = ({ tree, selectedFiles, onSelectFiles }) =
     );
   };
 
-  /* —──────── shell —──────── */
+  /* ––––– shell ––––– */
   return rows.length === 0 ? (
     <div className="flex flex-col items-center justify-center h-full py-8 text-gray-400">
       <Folder size={40} className="mb-2 opacity-50" />
@@ -177,6 +219,6 @@ const FileTreeView: React.FC<Props> = ({ tree, selectedFiles, onSelectFiles }) =
       </AutoSizer>
     </div>
   );
-};
+});
 
 export default React.memo(FileTreeView);

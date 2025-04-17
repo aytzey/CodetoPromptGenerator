@@ -37,7 +37,8 @@ def create_app(test_config=None):
 
     os.makedirs(app.instance_path, exist_ok=True)
 
-    CORS(app, resources={r"/api/*": {"origins": os.environ.get("CORS_ORIGINS", "*")}})
+    CORS(app, resources={r"/api/*": {"origins": r"http://localhost:*"}})
+
 
     # ───── JSON hata yakalayıcıları ───────────────────────────────────────────
     @app.errorhandler(404)

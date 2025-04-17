@@ -5,9 +5,13 @@ import Head from "next/head";
 import {
   Settings, FileCode, List, Sun, Moon, Github, Search, RefreshCw,
   CheckSquare, XSquare, Code, LayoutGrid, Zap, Flame, BookOpen, Terminal,
-  HelpCircle, Rocket, Coffee, X, Folder, BarChart2, ListChecks
+  HelpCircle, Rocket, Coffee, X, Folder, BarChart2, ListChecks,ChevronsUp, ChevronsDown
 } from "lucide-react";
 
+
+import { useSelectionGroupStore } from "@/stores/useSelectionGroupStore";         /* NEW */
+import SelectionGroupsView from "@/views/SelectionGroupsView";                    /* NEW */
+import type { FileTreeViewHandle } from "@/views/FileTreeView"; 
 // Import Zustand Stores
 import { useAppStore } from "@/stores/useAppStore";
 import { useProjectStore } from "@/stores/useProjectStore";
@@ -97,7 +101,7 @@ export default function Home() {
   const darkMode = useAppStore((state) => state.darkMode);
   const toggleDarkMode = useAppStore((state) => state.toggleDarkMode);
   // Global error is handled in _app.tsx
-
+  const treeRef = React.useRef<FileTreeViewHandle>(null); 
   const {
     projectPath, setProjectPath, fileTree, selectedFilePaths,
     setSelectedFilePaths, isLoadingTree, filesData, fileSearchTerm,
@@ -195,6 +199,7 @@ export default function Home() {
 
 
   // --- Event Handlers ---
+  const handleSelectPaths = (paths: string[]) => setSelectedFilePaths(paths);
   const handlePathSelected = (path: string) => {
       setProjectPath(path); // Update store, which triggers effects
   };
@@ -400,6 +405,40 @@ export default function Home() {
                                     </Button>
                                   </TooltipTrigger><TooltipContent><p>Deselect all</p></TooltipContent></Tooltip>
                                 </TooltipProvider>
+
+                                <TooltipProvider delayDuration={100}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-8 border-gray-300 dark:border-gray-700"
+                                      disabled={!projectPath}
+                                      onClick={() => treeRef.current?.expandAll()}
+                                    >
+                                      <ChevronsDown size={14} className="mr-1" /> Expand
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent><p>Expand all folders</p></TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+
+                              <TooltipProvider delayDuration={100}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-8 border-gray-300 dark:border-gray-700"
+                                      disabled={!projectPath}
+                                      onClick={() => treeRef.current?.collapseAll()}
+                                    >
+                                      <ChevronsUp size={14} className="mr-1" /> Collapse
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent><p>Collapse all folders</p></TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                              </div>
                            </div>
                      </CardHeader>
@@ -415,11 +454,12 @@ export default function Home() {
                          ): filteredTree.length === 0 && fileSearchTerm ? (
                              <div className="text-center py-10 text-gray-400 text-sm">No files match filter "{fileSearchTerm}".</div>
                          ) : (
-                             <FileTreeView
-                                tree={filteredTree}
-                                selectedFiles={selectedFilePaths}
-                                onSelectFiles={handleSelectFilesInTree} // Pass the correct handler
-                             />
+                              <FileTreeView
+                              ref={treeRef}                                  /* NEW */
+                              tree={filteredTree}
+                              selectedFiles={selectedFilePaths}
+                              onSelectFiles={handleSelectFilesInTree}
+                            />
                          )}
                      </CardContent>
                     </Card>
@@ -438,6 +478,12 @@ export default function Home() {
                              filterExtensions={extensionFilters}
                              filesData={filesData}
                            />
+                             <SelectionGroupsView
+                              projectPath={projectPath}
+                              fileTree={fileTree}
+                              selectedPaths={selectedFilePaths}
+                              onSelectPaths={handleSelectPaths}
+                            />
                        </CardContent>
                     </Card>
                  </TabsContent>
