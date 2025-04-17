@@ -36,7 +36,7 @@ import LocalExclusionsManagerView from "../views/LocalExclusionsManagerView";
 import TodoListView from "../views/TodoListView";
 
 // Import Libs/Types
-import { applyExtensionFilter, applySearchFilter, flattenTree } from "@/lib/fileFilters";
+import { applyExtensionFilter, applySearchFilter, flattenTree, flattenFilePaths } from "@/lib/fileFilters";
 import { FileNode, FileData, TodoItem } from '@/types'; // Use central types
 
 // UI Components
@@ -210,10 +210,11 @@ export default function Home() {
   };
 
   const handleSelectAllClick = () => {
-    const allVisible = flattenTree(filteredTree);
-    const globalSet  = new Set(globalExclusions);
-    const localSet   = localExclusionsSet;           // already a Set
-    selectAllFiles(allVisible, globalSet, localSet); // NEW signature
+    // files only, no directories
+    const allVisibleFiles = flattenFilePaths(filteredTree);
+    const globalSet = new Set(globalExclusions);
+    const localSet  = localExclusionsSet;
+    selectAllFiles(allVisibleFiles, globalSet, localSet);
   };
 
    const handleRefreshAll = async () => {

@@ -1,24 +1,30 @@
 // services/projectServiceHooks.ts
 /**
- * Single source of truth for
- *  • loading the project tree  ➜  GET /api/projects/tree
- *  • loading selected file contents ➜ POST /api/projects/files
+ * Authoritative loader for:
+ *   • project tree  (GET /projects/tree)
+ *   • file contents (POST /projects/files)
  *
- * Uses central `fetchApi` which already handles global errors.
- * All state lives in zustand stores – the hook merely orchestrates IO.
+ * Now avoids an infinite refresh loop by only
+ * updating selectedFilePaths *iff* the list
+ * actually changed.
  */
 
 import { useCallback } from 'react';
 import { useProjectStore } from '@/stores/useProjectStore';
-import { useAppStore }    from '@/stores/useAppStore';
-import { fetchApi }       from './apiService';
+import { fetchApi } from './apiService';
 import type { FileNode, FileData } from '@/types';
 
-export function useProjectService() {
-  const st          = useProjectStore;
-  const setError    = useAppStore((s) => s.setError);
+/* ───────── helper ────────── */
+const sameSet = (a: string[], b: string[]) => {
+  if (a.length !== b.length) return false;
+  const S = new Set(a);
+  return b.every(p => S.has(p));
+};
 
-  /* ─────────────────── tree ─────────────────── */
+export function useProjectService() {
+  const st = useProjectStore;
+
+  /* ─────── tree ─────── */
   const loadProjectTree = useCallback(async () => {
     const path = st.getState().projectPath;
     if (!path) return;
@@ -28,11 +34,10 @@ export function useProjectService() {
       `/api/projects/tree?rootDir=${encodeURIComponent(path)}`,
     );
     st.getState().setIsLoadingTree(false);
-
-    st.getState().setFileTree(tree ?? []);   // always return array
+    st.getState().setFileTree(tree ?? []);
   }, []);
 
-  /* ─────────────────── file contents ─────────────────── */
+  /* ─── selected file‑contents ─── */
   const loadSelectedFileContents = useCallback(async () => {
     const { projectPath, selectedFilePaths } = st.getState();
     if (!projectPath || selectedFilePaths.length === 0) {
@@ -40,9 +45,9 @@ export function useProjectService() {
       return;
     }
 
-    // directories end with '/' (convention from backend); skip those
-    const files = selectedFilePaths.filter((p) => !p.endsWith('/'));
-    if (files.length === 0) {
+    /* strip dir placeholders (end with “/”) */
+    const pathsToFetch = selectedFilePaths.filter(p => !p.endsWith('/'));
+    if (pathsToFetch.length === 0) {
       st.getState().setFilesData([]);
       return;
     }
@@ -50,12 +55,20 @@ export function useProjectService() {
     st.getState().setIsLoadingContents(true);
     const res = await fetchApi<FileData[]>('/api/projects/files', {
       method: 'POST',
-      body: JSON.stringify({ baseDir: projectPath, paths: files }),
+      body : JSON.stringify({ baseDir: projectPath, paths: pathsToFetch }),
     });
     st.getState().setIsLoadingContents(false);
+    if (!res) return;                          // error already surfaced
 
-    if (!res) return;          // error already handled by fetchApi
-    st.getState().setFilesData(res);
+    /* 🔎 Keep only non‑empty files */
+    const valid = res.filter(f => (f.tokenCount ?? 0) > 0);
+    st.getState().setFilesData(valid);
+
+    /* 🛑 Update selection only if it truly differs */
+    const keep = valid.map(f => f.path);
+    if (!sameSet(keep, selectedFilePaths)) {
+      st.getState().setSelectedFilePaths(keep);
+    }
   }, []);
 
   return { loadProjectTree, loadSelectedFileContents };

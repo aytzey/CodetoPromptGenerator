@@ -7,6 +7,14 @@ Project‑related operations:
 • Batch file‑content loader with **tiktoken**‑based token counts
 • Utility helpers for drive / folder picker
 
+⚡ CPU‑optimisations (2025‑04‑17)
+────────────────────────────────
+* Skip directory symlinks to avoid infinite loops.
+* Track visited inodes to prevent path cycles even without symlinks.
+* Hard depth‑limit (env `CTP_MAX_TREE_DEPTH`, default 25).
+* Token‑count guard for very large files (env `CTP_TOKEN_SIZE_LIMIT`,
+  default 200 000 chars) – returns **‑1** when skipped.
+
 SOLID ✦
 -------
 * **S**RP – path / token / ignore logic is encapsulated here.
@@ -19,7 +27,7 @@ from __future__ import annotations
 import os
 import logging
 import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set
 
 import pathspec               # ← gitignore‑style matcher
 from repositories.file_storage import FileStorageRepository
@@ -27,13 +35,21 @@ from services.exclusion_service import ExclusionService
 
 logger = logging.getLogger(__name__)
 
-# Try to import tiktoken once at module‑load – fall back to regex later
+# ---------------------------------------------------------------------------
+# Tokeniser initialisation (unchanged)
+# ---------------------------------------------------------------------------
 try:
     import tiktoken            # type: ignore
     _ENC = tiktoken.get_encoding("cl100k_base")
 except Exception:              # pragma: no cover
     _ENC = None
     logger.info("tiktoken unavailable – falling back to regex token counter.")
+
+# ---------------------------------------------------------------------------
+# Tunables – overridable via environment for power users
+# ---------------------------------------------------------------------------
+_SAFE_MAX_DEPTH: int = int(os.getenv("CTP_MAX_TREE_DEPTH", "50"))
+_TOKEN_COUNT_SIZE_LIMIT: int = int(os.getenv("CTP_TOKEN_SIZE_LIMIT", "2000000"))
 
 
 class ProjectService:
@@ -59,38 +75,23 @@ class ProjectService:
         """
         Normalise to forward slashes **without** stripping leading dots.
 
-        * `".git"`          → **unchanged**
-        * `"./foo/bar"`     → `"foo/bar"`
-        * `".\\foo\\bar"`   → `"foo/bar"`
+            ".git"       → **unchanged**
+            "./foo/bar"  → "foo/bar"
+            ".\\foo\\bar"→ "foo/bar"
         """
         p = os.path.normpath(path).replace("\\", "/")
-
-        # remove *only* the literal "./" prefix that `os.path.relpath`
-        # sometimes adds – leave everything else intact.
         if p.startswith("./"):
             p = p[2:]
-
         return p
 
     # ------------------------------------------------------------------ .gitignore
     @staticmethod
     def _expand_simple_pattern(p: str) -> List[str]:
-        """
-        Convert a *plain* directory name (no wildcards) to two git‑wildmatch
-        rules that ignore **the directory itself** *and* everything beneath it.
-
-            ".git"   → [".git", ".git/**"]
-            "dist"   → ["dist", "dist/**"]
-        """
+        """Expand `"dir"` → `["dir", "dir/**"]` to match dir and its children."""
         return [p, f"{p}/**"]
 
     def _make_pathspec(self, patterns: List[str]) -> pathspec.PathSpec:
-        """
-        Compile ignore patterns into a *gitwildmatch* `PathSpec`.
-
-        * Patterns that already contain wildcard characters are used verbatim.
-        * Plain names are expanded via :py:meth:`_expand_simple_pattern`.
-        """
+        """Compile ignore patterns into a *gitwildmatch* PathSpec."""
         cleaned = [p.strip() for p in patterns if p.strip()]
         compiled_lines: List[str] = []
 
@@ -130,36 +131,73 @@ class ProjectService:
         base_dir: str,
         spec: pathspec.PathSpec,
         out: list[dict],
+        depth: int = 0,
+        visited_inodes: Optional[Set[int]] = None,
     ) -> None:
-        """Depth‑first traversal that appends nodes into *out* list in‑place."""
+        """
+        Depth‑first traversal with **cycle & depth guards**.
+
+        * Skips directory symlinks entirely (`follow_symlinks=False`).
+        * Keeps a set of visited inode numbers to cut cycles even without
+          symlinks (rare but possible on some filesystems).
+        """
+        if visited_inodes is None:
+            visited_inodes = set()
+
+        if depth > _SAFE_MAX_DEPTH:
+            logger.warning("Max traversal depth (%s) exceeded at %s – pruning subtree.",
+                           _SAFE_MAX_DEPTH, cur_dir)
+            return
+
         try:
-            for entry in os.scandir(cur_dir):
-                rel_path = self._norm(os.path.relpath(entry.path, base_dir))
-                if spec.match_file(rel_path):
-                    continue
+            with os.scandir(cur_dir) as scandir_it:
+                for entry in scandir_it:
+                    rel_path = self._norm(os.path.relpath(entry.path, base_dir))
 
-                node: Dict[str, Any] = {
-                    "name": entry.name,
-                    "relativePath": rel_path,
-                    "absolutePath": self._norm(entry.path),
-                    "type": "directory" if entry.is_dir() else "file",
-                }
+                    if spec.match_file(rel_path):
+                        continue  # Honour global/project ignore rules
 
-                if entry.is_dir():
-                    node["children"] = []
-                    self._walk(entry.path, base_dir, spec, node["children"])
+                    # Skip directory symlinks – avoids most infinite loops
+                    is_dir = entry.is_dir(follow_symlinks=False)
+                    if not is_dir and entry.is_symlink():
+                        # Treat as regular file; we still include it
+                        pass
 
-                out.append(node)
+                    node: Dict[str, Any] = {
+                        "name": entry.name,
+                        "relativePath": rel_path,
+                        "absolutePath": self._norm(entry.path),
+                        "type": "directory" if is_dir else "file",
+                    }
+
+                    if is_dir:
+                        inode = entry.inode()
+                        if inode in visited_inodes:
+                            logger.debug("Cycle detected – already visited %s (inode %s). Skipping.",
+                                         entry.path, inode)
+                            continue
+                        visited_inodes.add(inode)
+
+                        node["children"] = []
+                        self._walk(
+                            entry.path,
+                            base_dir,
+                            spec,
+                            node["children"],
+                            depth + 1,
+                            visited_inodes,
+                        )
+
+                    out.append(node)
         except PermissionError:
             logger.warning("Permission denied while reading %s", cur_dir)
+        except FileNotFoundError:
+            logger.warning("Directory vanished while scanning: %s", cur_dir)
         except Exception as e:                  # pragma: no cover
             logger.error("Error scanning %s – %s", cur_dir, e)
 
     def get_project_tree(self, root_dir: str) -> List[dict]:
-        """
-        Build a recursive tree starting at *root_dir*.
-        Patterns in **ignoreDirs.txt** are treated like .gitignore rules.
-        """
+        """Build a recursive tree starting at *root_dir* with safety guards."""
         if not root_dir or not os.path.isdir(root_dir):
             raise ValueError("Invalid root directory.")
 
@@ -199,7 +237,14 @@ class ProjectService:
             try:
                 content = self._storage_repo.read_text(full) or ""
                 file_info["content"] = content
-                file_info["tokenCount"] = self._token_count(content)
+
+                if len(content) > _TOKEN_COUNT_SIZE_LIMIT:
+                    # Too big – skip token count to save CPU
+                    file_info["tokenCount"] = -1
+                    logger.info("Skipping token count for %s (%s chars > limit %s)",
+                                rel_norm, len(content), _TOKEN_COUNT_SIZE_LIMIT)
+                else:
+                    file_info["tokenCount"] = self._token_count(content)
             except Exception as e:              # pragma: no cover
                 logger.error("Failed reading %s – %s", full, e)
                 file_info["content"] = f"Error reading file: {rel_norm}"

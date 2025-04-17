@@ -100,3 +100,20 @@ export interface FileNode {
     return result
   }
   
+  /**
+ * Flatten a tree into *file* relative paths only.
+ *
+ * @param nodes File‑tree nodes.
+ * @returns    Array of relative paths for files (no directories).
+ */
+export function flattenFilePaths(nodes: FileNode[]): string[] {
+  let out: string[] = [];
+  for (const n of nodes) {
+    if (n.type === 'file') {
+      out.push(n.relativePath);
+    } else if (n.children?.length) {
+      out = out.concat(flattenFilePaths(n.children));
+    }
+  }
+  return out;
+}

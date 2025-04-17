@@ -1,34 +1,44 @@
-// File: stores/useAppStore.ts
-// NEW FILE
-import { create } from 'zustand';
+// stores/useAppStore.ts
+import { create } from "zustand";
 
 interface AppState {
   darkMode: boolean;
-  toggleDarkMode: () => void;
+  toggleDarkMode(): void;
+
+  /** Global error banner (set via fetchApi) */
   error: string | null;
-  setError: (error: string | null) => void;
-  clearError: () => void;
-  isLoading: boolean; // Generic loading indicator if needed
-  setIsLoading: (loading: boolean) => void;
+  setError(e: string | null): void;
+  clearError(): void;
+
+  /** Generic spinner flag (kept for future use) */
+  isLoading: boolean;
+  setIsLoading(b: boolean): void;
+
+  /**
+   * SETTINGS  – Token optimisation:
+   * If true → after codemap extraction, files with *zero*
+   * classes & functions are auto‑deselected to save context tokens.
+   */
+  codemapFilterEmpty: boolean;
+  toggleCodemapFilterEmpty(): void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  darkMode: true, // Default to dark mode
-  toggleDarkMode: () => set((state) => ({ darkMode: !state.darkMode })),
-  error: null,
-  setError: (error) => set({ error }),
-  clearError: () => set({ error: null }),
-  isLoading: false,
-  setIsLoading: (loading) => set({ isLoading: loading }),
-}));
+  /* theme */
+  darkMode: true,
+  toggleDarkMode: () => set((s) => ({ darkMode: !s.darkMode })),
 
-// Initialize dark mode based on system preference or localStorage (optional enhancement)
-// Example:
-// const storedDarkMode = localStorage.getItem('darkMode');
-// useAppStore.setState({
-//   darkMode: storedDarkMode ? JSON.parse(storedDarkMode) : window.matchMedia('(prefers-color-scheme: dark)').matches
-// });
-// // Persist changes
-// useAppStore.subscribe(
-//   (state) => localStorage.setItem('darkMode', JSON.stringify(state.darkMode))
-// );
+  /* error handling */
+  error: null,
+  setError: (e) => set({ error: e }),
+  clearError: () => set({ error: null }),
+
+  /* misc loading */
+  isLoading: false,
+  setIsLoading: (b) => set({ isLoading: b }),
+
+  /* settings */
+  codemapFilterEmpty: false,
+  toggleCodemapFilterEmpty: () =>
+    set((s) => ({ codemapFilterEmpty: !s.codemapFilterEmpty })),
+}));

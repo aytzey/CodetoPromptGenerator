@@ -1,106 +1,168 @@
 // File: stores/useProjectStore.ts
-import { create } from 'zustand';
-import { FileNode } from '@/lib/fileFilters';   // reused type
+import { create } from "zustand";
+import { FileNode } from "@/lib/fileFilters";
 
-interface FileData {
+/* ──────────────────────────────────────────────────────────── *
+ *                        Helpers                               *
+ * ──────────────────────────────────────────────────────────── */
+
+/** Set‐eşitliği (sıra gözetmez) */
+const sameSet = (a: string[], b: string[]): boolean => {
+  if (a.length !== b.length) return false;
+  const S = new Set(a);
+  return b.every((p) => S.has(p));
+};
+
+/** Sıralı & sığ eşitlik (referans veya ===) */
+const arraysShallowEqual = <T>(a: T[], b: T[]): boolean =>
+  a.length === b.length && a.every((v, i) => v === b[i]);
+
+/* ──────────────────────────────────────────────────────────── *
+ *                        Types                                 *
+ * ──────────────────────────────────────────────────────────── */
+
+export interface FileData {
   path: string;
   content: string;
   tokenCount: number;
 }
 
 interface ProjectState {
+  /* core */
   projectPath: string;
-  setProjectPath: (path: string) => void;
+  setProjectPath(path: string): void;
+
   fileTree: FileNode[];
-  setFileTree: (tree: FileNode[]) => void;
+  setFileTree(tree: FileNode[]): void;
 
   /** selected *relative* paths (file and dir) */
   selectedFilePaths: string[];
-  setSelectedFilePaths: (paths: string[]) => void;
-  toggleFilePathSelection: (
+  setSelectedFilePaths(paths: string[]): void;
+  toggleFilePathSelection(
     path: string,
     isSelected: boolean,
     descendants: string[]
-  ) => void;
+  ): void;
 
-  /**
-   * Add *all* `allPaths`, skipping anything present in either
-   * `globalExclusions` or `localExclusions`
-   */
-  selectAllFiles: (
+  /** bulk‑select honouring exclusions */
+  selectAllFiles(
     allPaths: string[],
     globalExclusions: Set<string>,
     localExclusions: Set<string>
-  ) => void;
+  ): void;
+  deselectAllFiles(): void;
 
-  deselectAllFiles: () => void;
-
-  /** fetched file‑contents */
+  /* loaded contents */
   filesData: FileData[];
-  setFilesData: (data: FileData[]) => void;
-  addFilesData: (data: FileData[]) => void;
+  setFilesData(data: FileData[]): void;
+  addFilesData(data: FileData[]): void;
 
+  /* flags */
   isLoadingTree: boolean;
-  setIsLoadingTree: (loading: boolean) => void;
+  setIsLoadingTree(loading: boolean): void;
   isLoadingContents: boolean;
-  setIsLoadingContents: (loading: boolean) => void;
+  setIsLoadingContents(loading: boolean): void;
 
-  /** UI helpers */
+  /* UI helpers */
   fileSearchTerm: string;
-  setFileSearchTerm: (term: string) => void;
+  setFileSearchTerm(term: string): void;
 }
 
+/* ──────────────────────────────────────────────────────────── *
+ *                        Store                                 *
+ * ──────────────────────────────────────────────────────────── */
+
 export const useProjectStore = create<ProjectState>((set, get) => ({
-  projectPath: '',
-  setProjectPath: path => {
+  /* ───── basic path ───── */
+  projectPath: "",
+  setProjectPath: (path) => {
     set({
       projectPath: path,
       selectedFilePaths: [],
       filesData: [],
       fileTree: [],
-      fileSearchTerm: '',
+      fileSearchTerm: "",
     });
-    if (typeof window !== 'undefined')
-      localStorage.setItem('lastProjectPath', path);
+    if (typeof window !== "undefined")
+      localStorage.setItem("lastProjectPath", path);
   },
 
+  /* ───── tree ───── */
   fileTree: [],
-  setFileTree: tree => set({ fileTree: tree }),
+  setFileTree: (tree) => {
+    if (arraysShallowEqual(tree, get().fileTree)) return; // no change
+    set({ fileTree: tree });
+  },
 
+  /* ───── selection ───── */
   selectedFilePaths: [],
-  setSelectedFilePaths: paths => set({ selectedFilePaths: paths }),
+  setSelectedFilePaths: (paths) => {
+    if (sameSet(paths, get().selectedFilePaths)) return; // identical
+    set({ selectedFilePaths: paths });
+  },
 
   toggleFilePathSelection: (path, isSel, descendants) => {
     const cur = new Set(get().selectedFilePaths);
-    (isSel ? descendants : []).forEach(p => cur.add(p));
-    (!isSel ? descendants : []).forEach(p => cur.delete(p));
-    set({ selectedFilePaths: Array.from(cur) });
+    (isSel ? descendants : []).forEach((p) => cur.add(p));
+    (!isSel ? descendants : []).forEach((p) => cur.delete(p));
+    const next = Array.from(cur);
+    if (!sameSet(next, get().selectedFilePaths)) {
+      set({ selectedFilePaths: next });
+    }
   },
 
-  /** NEW – honours *both* global & local exclusion sets */
+  /** honours global & local exclusions */
   selectAllFiles: (all, gSet, lSet) => {
-    const files = all.filter(p => !gSet.has(p) && !lSet.has(p));
+    const files = all.filter((p) => !gSet.has(p) && !lSet.has(p));
+    if (sameSet(files, get().selectedFilePaths)) return;
     set({ selectedFilePaths: files });
   },
 
-  deselectAllFiles: () => set({ selectedFilePaths: [], filesData: [] }),
+  deselectAllFiles: () => {
+    if (get().selectedFilePaths.length === 0 && get().filesData.length === 0)
+      return;
+    set({ selectedFilePaths: [], filesData: [] });
+  },
 
+  /* ───── file contents ───── */
   filesData: [],
-  setFilesData: data => set({ filesData: data }),
-  addFilesData: data =>
-    set(state => ({ filesData: [...state.filesData, ...data] })),
+  setFilesData: (data) => {
+    // hızlı kontrol: aynı referans veya aynı uzunluk & her path eşleşiyor
+    const prev = get().filesData;
+    const eq =
+      prev === data ||
+      (prev.length === data.length &&
+        prev.every((f, i) => f.path === data[i].path && f.tokenCount === data[i].tokenCount));
+    if (eq) return;
+    set({ filesData: data });
+  },
 
+  addFilesData: (data) =>
+    set((state) => ({ filesData: [...state.filesData, ...data] })),
+
+  /* ───── flags ───── */
   isLoadingTree: false,
-  setIsLoadingTree: loading => set({ isLoadingTree: loading }),
-  isLoadingContents: false,
-  setIsLoadingContents: loading => set({ isLoadingContents: loading }),
+  setIsLoadingTree: (loading) => {
+    if (loading === get().isLoadingTree) return;
+    set({ isLoadingTree: loading });
+  },
 
-  fileSearchTerm: '',
-  setFileSearchTerm: term => set({ fileSearchTerm: term }),
+  isLoadingContents: false,
+  setIsLoadingContents: (loading) => {
+    if (loading === get().isLoadingContents) return;
+    set({ isLoadingContents: loading });
+  },
+
+  /* ───── ui helpers ───── */
+  fileSearchTerm: "",
+  setFileSearchTerm: (term) => {
+    if (term === get().fileSearchTerm) return;
+    set({ fileSearchTerm: term });
+  },
 }));
 
-/* restore persisted project path (once) */
-if (typeof window !== 'undefined') {
-  const stored = localStorage.getItem('lastProjectPath') || '';
+/* ─────────────── restore persisted project path (once) ─────────────── */
+if (typeof window !== "undefined") {
+  const stored = localStorage.getItem("lastProjectPath") || "";
   if (stored) useProjectStore.setState({ projectPath: stored });
 }

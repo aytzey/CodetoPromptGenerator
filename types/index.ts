@@ -1,31 +1,43 @@
-// File: types/index.ts
-// NEW FILE
+// types/index.ts
+// Shared / re‑exported project types – EXTENDED with Codemap models.
 
-// Re-export or define common types used across the application
-
-// From lib/fileFilters or define here if preferred
 export interface FileNode {
-    name: string;
-    relativePath: string;
-    absolutePath: string; // Added absolutePath based on backend service
-    type: 'file' | 'directory';
-    children?: FileNode[];
-  }
-  
-  // From stores/useProjectStore
-  export interface FileData {
-    path: string;
-    content: string;
-    tokenCount: number;
-  }
-  
-  // From stores/useTodoStore
-  export interface TodoItem {
-    id: number;
-    text: string;
-    completed: boolean;
-    createdAt?: string;
-  }
-  
-  // Add other shared types as needed
-  
+  name: string;
+  relativePath: string;
+  absolutePath: string;
+  type: "file" | "directory";
+  children?: FileNode[];
+}
+
+/* — project file‑content payload — */
+export interface FileData {
+  path: string;
+  content: string;
+  tokenCount: number;
+}
+
+/* — todo items — */
+export interface TodoItem {
+  id: number;
+  text: string;
+  completed: boolean;
+  createdAt?: string;
+}
+
+/* ═════════════════ Codemap models ═════════════════ */
+export interface CodemapRequest {
+  baseDir: string;
+  paths: string[];             // *relative* paths
+}
+
+export interface CodemapInfo {
+  classes: string[];
+  functions: string[];
+  references: string[];
+  /** Populated when the backend failed for this file */
+  error?: string;
+  /** true ⇢ binary file, extraction skipped */
+  binary?: boolean;
+}
+
+export type CodemapResponse = Record<string, CodemapInfo>;

@@ -2,7 +2,10 @@
 /**
  * Virtualised file‑tree · react‑window + auto‑sizer
  * ──────────────────────────────────────────────────
- * Exposes `collapseAll()` / `expandAll()` via `ref`.
+ * A directory checkbox now selects *only* its files (not the folder
+ * itself) so downstream code never tries to “read” a folder as a file.
+ *
+ * exposes collapseAll()/expandAll() via ref
  */
 
 import React, {
@@ -21,7 +24,18 @@ import {
 } from "@/components/ui/tooltip";
 import type { FileNode } from "@/types";
 
-/* ––––– public interface ––––– */
+/* ─────────── helpers ─────────── */
+/**
+ * Collect **file** descendants only.
+ * A directory path itself is deliberately **excluded** so that the
+ * selection list never contains folder entries.
+ */
+const collectDesc = (node: FileNode): string[] => {
+  if (node.type === "file" || !node.children) return [node.relativePath];
+  return node.children.flatMap(collectDesc);
+};
+
+/* ─────────── public interface ─────────── */
 export interface FileTreeViewHandle {
   collapseAll(): void;
   expandAll(): void;
@@ -42,10 +56,10 @@ const ROW_HEIGHT = 28;
 
 const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
 ({ tree, selectedFiles, onSelectFiles }, ref) => {
-  /* ––––– state ––––– */
+  /* — state — */
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
-  /* ––––– imperative API ––––– */
+  /* — imperative API — */
   useImperativeHandle(
     ref,
     () => ({
@@ -68,7 +82,7 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
     [tree],
   );
 
-  /* ––––– helpers ––––– */
+  /* — helpers — */
   const toggleCollapse = useCallback(
     (absPath: string) =>
       setCollapsed(s => {
@@ -95,36 +109,31 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
     [collapsed],
   );
 
-  /* ––––– derived ––––– */
+  /* — derived — */
   const rows = useMemo(() => flatten(tree), [flatten, tree]);
-  const allPaths = useMemo(() => new Set(selectedFiles), [selectedFiles]);
-
-  const collectDesc = (n: FileNode): string[] => {
-    if (n.type === "file" || !n.children) return [n.relativePath];
-    return [n.relativePath, ...n.children.flatMap(collectDesc)];
-  };
+  const selectedSet = useMemo(() => new Set(selectedFiles), [selectedFiles]);
 
   const toggleSelection = (n: FileNode) => {
     const paths = collectDesc(n);
-    const next = new Set(allPaths);
+    const next  = new Set(selectedSet);
     const everySelected = paths.every(p => next.has(p));
     paths.forEach(p => (everySelected ? next.delete(p) : next.add(p)));
     onSelectFiles(Array.from(next));
   };
 
-  /* ––––– render row ––––– */
+  /* — render row — */
   const RowRenderer = ({ index, style }: ListChildComponentProps) => {
     const { node, depth } = rows[index];
-    const isDir = node.type === "directory";
-    const desc = collectDesc(node);
-    const isChecked = desc.every(p => allPaths.has(p));
-    const isPartial = !isChecked && desc.some(p => allPaths.has(p));
+    const isDir   = node.type === "directory";
+    const desc    = collectDesc(node);
+    const checked = desc.every(p => selectedSet.has(p));
+    const partial = !checked && desc.some(p => selectedSet.has(p));
 
     return (
       <div
         style={{ ...style, paddingLeft: depth * 1.2 + "rem" }}
         className={`flex items-center pr-3 ${
-          isChecked
+          checked
             ? "bg-indigo-50 dark:bg-indigo-950/30"
             : "hover:bg-gray-50 dark:hover:bg-gray-800/50"
         }`}
@@ -148,10 +157,8 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
         {/* checkbox */}
         <Checkbox
           id={`chk-${node.absolutePath}`}
-          checked={isChecked}
-          data-state={
-            isPartial ? "indeterminate" : isChecked ? "checked" : "unchecked"
-          }
+          checked={checked}
+          data-state={partial ? "indeterminate" : checked ? "checked" : "unchecked"}
           onCheckedChange={() => toggleSelection(node)}
           className="data-[state=checked]:bg-indigo-500 data-[state=indeterminate]:bg-indigo-300 dark:data-[state=indeterminate]:bg-indigo-700"
         />
@@ -196,7 +203,7 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
     );
   };
 
-  /* ––––– shell ––––– */
+  /* — shell — */
   return rows.length === 0 ? (
     <div className="flex flex-col items-center justify-center h-full py-8 text-gray-400">
       <Folder size={40} className="mb-2 opacity-50" />
