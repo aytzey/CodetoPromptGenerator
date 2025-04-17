@@ -1,5 +1,5 @@
 // File: pages/index.tsx
-// FULL FILE – 2025‑04‑17  (🔧 Fix OpenRouter‑key persistence + validation)
+// FULL FILE – 2025‑04‑17  (🔧 Fix “Select All” button: use relative paths)
 
 import React, {
   useState,
@@ -54,7 +54,7 @@ import { useProjectService } from "@/services/projectServiceHooks";
 import { usePromptService } from "@/services/promptServiceHooks";
 import { useExclusionService } from "@/services/exclusionServiceHooks";
 import { useTodoService } from "@/services/todoServiceHooks";
-import { useAutoSelectService } from "@/services/autoSelectServiceHooks"; // ← NEW
+import { useAutoSelectService } from "@/services/autoSelectServiceHooks";
 
 import FileTreeView from "@/views/FileTreeView";
 import InstructionsInputView from "@/views/InstructionsInputView";
@@ -70,7 +70,6 @@ import {
   applySearchFilter,
   flattenTree,
 } from "@/lib/fileFilters";
-import { FileNode } from "@/types";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -109,23 +108,10 @@ import { cn } from "@/lib/utils";
 /* ────────────────────────────────────────────────────────────── */
 
 /**
- * Single source‑of‑truth key for the OpenRouter secret.
- * Now matches the zustand useSettingsStore implementation.
+ * Single source‑of‑truth key for the OpenRouter secret.
+ * Now matches the zustand useSettingsStore implementation.
  */
 const LS_KEY_OR = "openrouterApiKey";
-
-/**
- * Extract all descendant paths (file & dir) 📁→📄
- */
-function getAllDescendantsOfPath(
-  tree: FileNode[],
-  targetPath: string,
-): string[] {
-  const normTarget = targetPath.replace(/\\/g, "/");
-  return flattenTree(tree).filter(
-    (p) => p === normTarget || p.startsWith(normTarget + "/"),
-  );
-}
 
 /* ────────────────────────────────────────────────────────────── */
 /* main component                                                 */
@@ -163,7 +149,7 @@ export default function Home() {
   const { fetchMetaPromptList } = usePromptService();
   const { fetchGlobalExclusions } = useExclusionService();
   const { loadTodos } = useTodoService();
-  const { autoSelect, isSelecting } = useAutoSelectService();           // 🎯
+  const { autoSelect, isSelecting } = useAutoSelectService();
 
   /* ————————————————— refs & local UI state ————————————————— */
   const treeRef = useRef<FileTreeViewHandle>(null);
@@ -239,12 +225,19 @@ export default function Home() {
     [metaPrompt, mainInstructions, selectedFileCount],
   );
 
-  /* ————————————————— handlers ————————————————— */
+  /* ────────────────────────────────────────────────────────── */
+  /*              🔑  FIX:  Select All Handler                  */
+  /* ────────────────────────────────────────────────────────── */
   const handleSelectAll = () => {
-    const allVisibleFiles = getAllDescendantsOfPath(
-      filteredTree,
-      projectPath ?? "",
+    if (!projectPath) return;
+
+    // 1. Grab every visible *relative* path in the current tree view
+    // 2. Ignore directory placeholders (those end with “/”)
+    const allVisibleFiles = flattenTree(filteredTree).filter(
+      (p) => !p.endsWith("/"),
     );
+
+    // 3. Delegate to the store helper – it will honour global/local exclusions
     selectAllFiles(allVisibleFiles, new Set(globalExclusions), localExclusionsSet);
   };
 
@@ -255,7 +248,7 @@ export default function Home() {
   };
 
   /* ╭─────────────────────────────────────────────────────────╮
-   * │  OPENROUTER KEY – persist & validate                    │
+   * │  OPENROUTER KEY – persist & validate                    │
    * ╰─────────────────────────────────────────────────────────╯ */
   const saveApiKey = () => {
     const trimmed = apiKeyDraft.trim();
@@ -267,6 +260,7 @@ export default function Home() {
     setOpenrouterApiKey(trimmed); // keep zustand & LS in sync
     setShowSettings(false);
   };
+
 
   /* ————————————————— render ————————————————— */
   return (

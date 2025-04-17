@@ -22,7 +22,7 @@ const sameSet = (a: string[], b: string[]) => {
 };
 
 export function useProjectService() {
-  const st = useProjectStore;
+  const st = useProjectStore; // ✅ stable reference, but included in deps for eslint
 
   /* ─────── tree ─────── */
   const loadProjectTree = useCallback(async () => {
@@ -35,7 +35,7 @@ export function useProjectService() {
     );
     st.getState().setIsLoadingTree(false);
     st.getState().setFileTree(tree ?? []);
-  }, []);
+  }, [st]);          // 🟢 added `st` to dependency array
 
   /* ─── selected file‑contents ─── */
   const loadSelectedFileContents = useCallback(async () => {
@@ -69,7 +69,7 @@ export function useProjectService() {
     if (!sameSet(keep, selectedFilePaths)) {
       st.getState().setSelectedFilePaths(keep);
     }
-  }, []);
+  }, [st]);          // 🟢 added `st` to dependency array
 
   return { loadProjectTree, loadSelectedFileContents };
 }

@@ -3,22 +3,15 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card } from '@/components/ui/card'; // Removed unused Card components
+import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Pencil, Save, Plus, X, AlertTriangle, FolderMinus, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-// Import Store and Service Hook
 import { useExclusionStore } from '@/stores/useExclusionStore';
 import { useExclusionService } from '@/services/exclusionServiceHooks';
-
-// No props needed anymore
-// interface ExclusionsManagerProps {
-//   excludedPaths: string[]
-//   onUpdateExclusions: (paths: string[]) => Promise<void>
-// }
 
 const ExclusionsManagerView: React.FC = () => {
   // Get state from Zustand store
@@ -82,7 +75,6 @@ const ExclusionsManagerView: React.FC = () => {
 
   // Common exclusion suggestions
   const suggestions = ['node_modules', '.git', '.next', 'dist', 'build', 'coverage', '.DS_Store', '__pycache__', 'venv'];
-
   const currentList = isEditing ? localExclusionsEdit : globalExclusions;
 
   return (
@@ -160,7 +152,7 @@ const ExclusionsManagerView: React.FC = () => {
              <AlertTriangle size={20} className="mb-1 opacity-50" />
             <p className="text-xs text-center italic">
               No global exclusions defined.
-              {isEditing && <><br />Add directories like 'node_modules' or '.git'.</>}
+              {isEditing && <><br />Add directories like &apos;node_modules&apos; or &apos;.git&apos;.</>}
             </p>
           </div>
         ) : isEditing ? (
