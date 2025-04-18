@@ -216,42 +216,54 @@ class ProjectService:
     def get_files_content(
         self, base_dir: str, relative_paths: List[str]
     ) -> List[Dict[str, Any]]:
+        """
+        Return `[ { path, content, tokenCount }, … ]` for every entry in
+        *relative_paths*.
+
+        • Accepts both **relative** *and* **absolute** paths.
+        • Paths that resolve outside *base_dir* are still served – the caller
+          is responsible for access control.
+        """
         if not base_dir or not os.path.isdir(base_dir):
             raise ValueError("Invalid base directory.")
         if not isinstance(relative_paths, list):
             raise ValueError("`paths` must be a list.")
 
-        base_dir = os.path.abspath(base_dir)
+        base_dir   = os.path.abspath(base_dir)
         results: List[Dict[str, Any]] = []
 
-        for rel in relative_paths:
-            rel_norm = self._norm(rel)
-            full = os.path.join(base_dir, rel_norm)
-            file_info = {"path": rel_norm, "content": "", "tokenCount": 0}
+        for raw in relative_paths:
+            is_abs = os.path.isabs(raw)
+            rel_norm = self._norm(raw if not is_abs else os.path.relpath(raw, base_dir))
+            full_path = os.path.abspath(raw) if is_abs else os.path.join(base_dir, rel_norm)
 
-            if not os.path.isfile(full):
-                file_info["content"] = f"File not found on server: {rel_norm}"
-                results.append(file_info)
+            info: Dict[str, Any] = {"path": rel_norm, "content": "", "tokenCount": 0}
+
+            if not os.path.isfile(full_path):
+                info["content"] = f"File not found on server: {raw}"
+                results.append(info)
                 continue
 
             try:
-                content = self._storage_repo.read_text(full) or ""
-                file_info["content"] = content
+                content = self._storage_repo.read_text(full_path) or ""
+                info["content"] = content
 
                 if len(content) > _TOKEN_COUNT_SIZE_LIMIT:
-                    # Too big – skip token count to save CPU
-                    file_info["tokenCount"] = -1
-                    logger.info("Skipping token count for %s (%s chars > limit %s)",
-                                rel_norm, len(content), _TOKEN_COUNT_SIZE_LIMIT)
+                    info["tokenCount"] = -1           # skipped – too large
+                    logger.info(
+                        "Skipping token count for %s (%s chars > limit %s)",
+                        full_path, len(content), _TOKEN_COUNT_SIZE_LIMIT
+                    )
                 else:
-                    file_info["tokenCount"] = self._token_count(content)
-            except Exception as e:              # pragma: no cover
-                logger.error("Failed reading %s – %s", full, e)
-                file_info["content"] = f"Error reading file: {rel_norm}"
+                    info["tokenCount"] = self._token_count(content)
+            except Exception as exc:                   # pragma: no cover
+                logger.error("Failed reading %s – %s", full_path, exc)
+                info["content"] = f"Error reading file: {raw}"
 
-            results.append(file_info)
+            results.append(info)
 
         return results
+
 
     # 3. Utility helpers -------------------------------------------------------
     def get_available_drives(self) -> List[Dict[str, str]]:
