@@ -4,7 +4,7 @@
     "private": true,
     "scripts": {
       "dev": "next dev",
-      "build": "next build",
+      "build": "npx --yes node@18.18.0 ./node_modules/next/dist/bin/next build",
       "start": "next start",
       "lint": "next lint",
       "backend": "cd python_backend && python app.py",
