@@ -1,0 +1,156 @@
+# Project Architecture and Component Interactions
+
+## Overview
+
+This project is a full-stack web application designed to help users generate Large Language Model (LLM) prompts based on code from local projects. It consists of a Next.js frontend (React/TypeScript) and a Flask backend (Python). Communication between the frontend and backend happens via a REST API. State management on the frontend is handled by Zustand, and UI components are built using shadcn/ui on top of Radix UI primitives.
+
+## Core Components
+
+1.  **Frontend (Next.js)**: Responsible for the user interface, user interactions, state management, and communication with the backend API.
+2.  **Backend (Flask)**: Provides a REST API for file system operations (browsing, reading), data persistence (todos, exclusions, selection groups), and potentially interacting with external services (like LLMs via OpenRouter).
+3.  **API Layer**: Defines the contract between the frontend and backend using RESTful principles over HTTP.
+
+## Frontend Architecture (`./`)
+
+### 1. Routing (`pages/`)
+
+*   **`pages/_app.tsx`**: The root component.
+    *   Imports global styles (`styles/globals.css`).
+    *   Wraps all pages with the global `ErrorBoundary` (`components/ErrorBoundary.tsx`).
+    *   Sets up global configurations (like enforcing dark mode).
+    *   Does **not** directly manage application state but provides the structure where stateful components live.
+*   **`pages/index.tsx`**: The main application page.
+    *   Uses the central logic hook `useHomePageLogic` (`lib/hooks/useHomePageLogic.ts`) to manage state and interactions for the entire page.
+    *   Renders the main layout components: `HeaderView` and `MainLayoutView` (`views/layout/`).
+    *   Renders the `FolderPickerView` (`views/FolderPickerView.tsx`) directly.
+    *   Renders the Settings modal (`Dialog` from `components/ui/dialog.tsx`) controlled by state from `useHomePageLogic`.
+    *   Connects user actions (like selecting a path via `FolderPickerView`) to state updates managed by `useHomePageLogic`.
+
+### 2. UI Components (`components/` and `views/`)
+
+*   **`components/ui/`**: Contains base UI primitives (Button, Input, Card, Dialog, etc.). These are highly reusable and generally stateless or manage minimal internal state. They are imported and used extensively by `views/` and sometimes directly in `pages/`.
+*   **`components/ErrorBoundary.tsx`**: Wraps major sections or the entire app (`_app.tsx`) to catch React rendering errors. Uses `Alert` from `components/ui/alert.tsx`.
+*   **`views/`**: Represent larger UI sections or features.
+    *   **`views/layout/`**: Defines the overall page structure.
+        *   `HeaderView.tsx`: Displays the top navigation bar, title, and action buttons (Theme toggle removed, Settings, GitHub, Auto-Select). Interacts with `useHomePageLogic` (via props) for actions like showing settings or triggering auto-select.
+        *   `MainLayoutView.tsx`: Organizes the main content area into left and right panels. Acts as a container passing props down to `LeftPanelView` and `RightPanelView`.
+        *   `LeftPanelView.tsx`: Contains the tabbed interface (`Tabs` from `components/ui/tabs.tsx`) for Files, Options, and Tasks. Renders `FileTreeView`, `SelectedFilesListView`, `SelectionGroupsView`, `ExclusionsManagerView`, `LocalExclusionsManagerView`, and `TodoListView` based on the active tab and project state. Manages file search input and action buttons (Refresh, Select All, etc.).
+        *   `RightPanelView.tsx`: Displays the `InstructionsInputView`, `CopyButtonView`, and stats card.
+        *   `WelcomeView.tsx`: (Potentially unused after refactor) A simple welcome message card.
+    *   **Feature Views (`views/*.tsx`)**:
+        *   `FileTreeView.tsx`: Displays the project file structure. Uses `Checkbox` (`components/ui/checkbox.tsx`), icons (`lucide-react`), and virtualization (`react-window`, `react-virtualized-auto-sizer`). Interacts with `useProjectStore` (via props from `LeftPanelView`) to display the tree and update selected files.
+        *   `SelectedFilesListView.tsx`: Shows the list of currently selected files/folders. Uses `useProjectStore` and `useExclusionStore` to get data. Renders `CodemapPreviewModal`. Interacts with `useCodemapExtractor` hook.
+        *   `FolderPickerView.tsx`: Allows users to input or browse for a project path. Uses `Input`, `Button` (`components/ui/`), and renders `FolderBrowserView`. Interacts with `useProjectStore` or `onPathSelected` prop.
+        *   `FolderBrowserView.tsx`: A modal dialog (`Dialog` from `components/ui/dialog.tsx`) for navigating the file system via backend API calls (`/api/select_drives`, `/api/browse_folders`). Uses `fetch` directly or via `apiService.ts`.
+        *   `InstructionsInputView.tsx`: Provides text areas for meta and main prompts. Uses `Textarea`, `Button`, `Select`, `Progress` (`components/ui/`). Interacts with `usePromptStore` and `usePromptService` (via `usePromptServiceHooks.ts`) for loading/saving/refining prompts. Uses `useUndoRedo` hook for main instructions input.
+        *   `CopyButtonView.tsx`: Generates the final prompt string based on state from `usePromptStore`, `useProjectStore`, `useExclusionStore` and copies it to the clipboard. Uses `useProjectService` to ensure latest file content.
+        *   `ExclusionsManagerView.tsx`, `LocalExclusionsManagerView.tsx`: UIs for managing global and project-specific exclusion lists. Interact with `useExclusionStore` and `useExclusionService`.
+        *   `SelectionGroupsView.tsx`: Allows saving/loading sets of selected files. Interacts with `useSelectionGroupStore` and `useSelectionGroupServiceHooks.ts`. Uses `useProjectStore` for file tree context.
+        *   `TodoListView.tsx`: Displays and manages project-specific tasks. Interacts with `useTodoStore` and `useTodoService`.
+        *   `CodemapPreviewModal.tsx`: A dialog to display the extracted code symbols (classes, functions). Uses `react-window` for virtualization. Receives data as props.
+
+### 3. State Management (`stores/`)
+
+*   Uses **Zustand** for global state. Each store manages a specific domain:
+    *   `useAppStore`: General app state like loading flags, global errors, and settings (e.g., `codemapFilterEmpty`). Theme state removed.
+    *   `useProjectStore`: Manages the core project state: `projectPath`, `fileTree`, `selectedFilePaths`, loaded `filesData`, loading states, search term.
+    *   `usePromptStore`: Holds `metaPrompt`, `mainInstructions`, list of saved meta prompt files, and related loading/saving states.
+    *   `useExclusionStore`: Stores `globalExclusions`, `localExclusions`, `extensionFilters`, and related loading/saving states.
+    *   `useSelectionGroupStore`: Manages saved selection groups per project, persisting to localStorage and syncing via service hooks.
+    *   `useTodoStore`: Manages the list of `todos` for the current project, filter state, and loading/adding states.
+    *   `useSettingStore`: Manages user-specific settings like the `openrouterApiKey`, persisting to localStorage.
+*   Components and hooks access state via Zustand hooks (e.g., `useProjectStore(...)`). Actions defined within the stores are used to update the state.
+
+### 4. Logic and Side Effects (`lib/hooks/` and `services/`)
+
+*   **`lib/hooks/`**:
+    *   `useHomePageLogic.ts`: A central hook used by `pages/index.tsx`. It orchestrates fetching initial data (exclusions, prompts, todos), loading project trees and file contents based on `projectPath` changes, managing UI state (active tab, settings modal), and providing event handlers (refresh, select all, save API key) to the page component. It consumes multiple stores and service hooks.
+    *   `useDebounce.ts`: Generic hook to debounce values (used for search input).
+    *   `useUndoRedo.ts`: Hook to add undo/redo functionality to state values (used in `InstructionsInputView`).
+*   **`services/`**: Handles communication with the backend API.
+    *   `apiService.ts`: Provides a centralized `fetchApi` function that wraps `fetch`. It handles setting the base URL, content type headers, parsing JSON responses, and setting the global error state in `useAppStore` if an API call fails.
+    *   `*ServiceHooks.ts` (e.g., `projectServiceHooks.ts`, `todoServiceHooks.ts`): These hooks provide functions to interact with specific backend API endpoints (e.g., `loadProjectTree`, `addTodo`). They use `fetchApi` for the actual request and often interact with the corresponding Zustand store to update state (e.g., setting loading flags, storing fetched data, updating lists optimistically).
+
+### 5. Utilities (`lib/`)
+
+*   `lib/utils.ts`: Contains general utility functions, notably `cn` for merging Tailwind classes.
+*   `lib/fileFilters.ts`: Provides functions (`applyExtensionFilter`, `applySearchFilter`, `flattenTree`, `flattenFilePaths`) used by `useHomePageLogic` and potentially `FileTreeView` or `SelectedFilesListView` to filter and manipulate the `FileNode[]` tree structure based on user input (search terms, extension filters).
+
+## Backend Architecture (`python_backend/`)
+
+### 1. Application Entry Point (`app.py`)
+
+*   Initializes the Flask application (`create_app`).
+*   Loads environment variables (e.g., `OPENROUTER_API_KEY` via `dotenv`).
+*   Configures CORS to allow requests from the frontend origin.
+*   Registers all blueprints defined in the `controllers/` package using the dynamic discovery in `controllers/__init__.py`.
+*   Defines basic error handlers (404, 400, 500) that return standardized JSON error responses using `utils/response_utils.py`.
+*   Defines a simple `/health` check endpoint.
+*   Contains the `if __name__ == "__main__":` block to run the Flask development server.
+
+### 2. API Controllers (`controllers/`)
+
+*   Each file typically defines a Flask `Blueprint` for a specific resource or feature (e.g., `todos`, `projects`, `exclusions`).
+*   `__init__.py`: Dynamically discovers and collects all `Blueprint` instances from other files in the directory, making them available as `all_blueprints` for registration in `app.py`.
+*   Controller functions are decorated with `@blueprint.route(...)` to map HTTP methods and URL paths to Python functions.
+*   Responsibilities:
+    *   Parse incoming request data (query parameters, JSON body).
+    *   Validate input.
+    *   Instantiate and call appropriate methods in the `services/` layer.
+    *   Format responses (success or error) using `utils/response_utils.py` and return them as JSON.
+    *   Handle specific exceptions caught from the service layer and translate them into appropriate HTTP error responses.
+
+### 3. Business Logic (`services/`)
+
+*   Contains the core logic for each feature.
+*   Services are typically classes or modules that encapsulate operations related to a specific domain (e.g., `TodoService`, `ProjectService`, `ExclusionService`, `AutoselectService`, `CodemapService`).
+*   Interact with `repositories/` for data persistence (e.g., `TodoService` uses `FileStorageRepository` via its `_load_todos`/`_save_todos` methods).
+*   Interact with `utils/` for specific tasks (e.g., `ProjectService` uses `pathspec` logic, `CodemapService` uses `tree-sitter`).
+*   May interact with external APIs (e.g., `AutoselectService` and `PromptService` call the OpenRouter API using `httpx`).
+*   Perform data validation and transformation.
+*   Raise exceptions (e.g., `ValueError`, `IOError`, custom exceptions like `UpstreamError`) to be caught by the controllers.
+
+### 4. Data Persistence (`repositories/`)
+
+*   `file_storage.py`: A generic repository for reading and writing data to the file system.
+    *   Provides methods like `read_json`, `write_json`, `read_text`, `write_text`, `read_lines`, `write_lines`, `list_files`.
+    *   Handles basic file system operations like creating directories (`_ensure_dir`).
+    *   Used by various services (`TodoService`, `ExclusionService`, `MetapromptService`, `SelectionGroupService`) to manage their respective data files (e.g., `todos.json`, `ignoreDirs.txt`, `.codetoprompt/localExclusions.json`, meta prompt `.txt` files).
+
+### 5. Data Models (`models/`)
+
+*   Defines data structures used within the backend.
+    *   `todo_model.py`: Contains an `InMemoryTodoDB` class (likely legacy or for fallback/testing). The primary persistence is now file-based via `TodoService` and `FileStorageRepository`.
+    *   `autoselect_request.py`: Defines a `dataclass` (`AutoSelectRequest`) for validating and structuring the request payload for the `/api/autoselect` endpoint.
+
+### 6. Utilities (`utils/`)
+
+*   `response_utils.py`: Provides helper functions (`success_response`, `error_response`) to create standardized JSON responses for the API controllers.
+*   `path_utils.py`: Contains functions for platform-independent path operations, like listing drives (`list_logical_drives`) and subfolders (`list_subfolders`), and ensuring directories exist (`ensure_subdir`). Used by controllers (`drives_controller`, `resolve_folder_controller`) and services (`selection_group_service`).
+
+## Communication Flow (Example: Loading Project Tree)
+
+1.  **User Action**: User selects a project path in `FolderPickerView`.
+2.  **Frontend State Update**: `FolderPickerView` calls `onPathSelected` prop, which triggers `handlePathSelected` in `useHomePageLogic`. This calls `setProjectPath` in `useProjectStore`.
+3.  **Effect Trigger**: `useEffect` in `useHomePageLogic` detects the `projectPath` change and calls `loadProjectTree` from `useProjectService`.
+4.  **Service Hook Call**: `loadProjectTree` in `projectServiceHooks.ts` sets `isLoadingTree` in `useProjectStore` to `true`.
+5.  **API Call**: `loadProjectTree` calls `fetchApi` (`apiService.ts`) targeting the backend endpoint `/api/projects/tree?rootDir=...`.
+6.  **Backend Request Handling**: Flask routes the request to `api_project_tree` in `project_controller.py`.
+7.  **Backend Service Call**: The controller validates `rootDir` and calls `get_project_tree` in `ProjectService`.
+8.  **Backend Logic**: `ProjectService` fetches global exclusions (`ExclusionService` -> `FileStorageRepository` -> `ignoreDirs.txt`) and local exclusions (`ExclusionService` -> `FileStorageRepository` -> `.codetoprompt/localExclusions.json`). It then walks the directory structure (`_walk`), applying exclusions using `pathspec`, and builds the `FileNode[]` tree structure.
+9.  **Backend Response**: `ProjectService` returns the tree. The controller wraps it in a success response using `success_response` (`response_utils.py`) and returns it as JSON.
+10. **API Response Handling**: `fetchApi` receives the response, checks status, parses JSON, and returns the `data` field (the `FileNode[]` array). If there was an error, it sets the error state in `useAppStore`.
+11. **Service Hook Update**: `loadProjectTree` receives the tree data (or `null` on error).
+12. **Frontend State Update**: `loadProjectTree` calls `setFileTree` in `useProjectStore` with the received data and sets `isLoadingTree` to `false`.
+13. **UI Re-render**: Components subscribed to `fileTree` or `isLoadingTree` (like `FileTreeView` via `LeftPanelView`) re-render with the new data/state.
+
+## Configuration and Scripts
+
+*   **`.env.local`**: Stores the backend API URL (`NEXT_PUBLIC_API_URL`) for the frontend. Read by `next.config.js` and `start.js`.
+*   **`ports.ini`**: Custom configuration file defining frontend and backend ports. Read by `start.js` and `autotest.js`.
+*   **`start.js`**: Orchestration script to find free ports based on `ports.ini`, ensure the Python venv exists and dependencies are installed, write the correct API URL to `.env.local`, and start both the Flask backend and Next.js frontend development servers concurrently.
+*   **`start.bat` / `start.sh`**: Simple wrappers to execute `node start.js`.
+*   **`postinstall.js`**: Runs automatically after `npm install`. Attempts to find Python, create the venv, and install Python dependencies.
+*   **`autotest.js`**: Script to run integration tests against the running frontend and backend APIs, checking key endpoints. Reads ports from `ports.ini`.
+*   **`next.config.js`**: Configures Next.js build behavior, ESLint/TypeScript settings, environment variables, and API rewrites (though direct API calls using `NEXT_PUBLIC_API_URL` seem to be the primary method).
+*   **`ignoreDirs.txt`**: Contains default patterns/directories excluded by the `ProjectService` when building the file tree globally.
