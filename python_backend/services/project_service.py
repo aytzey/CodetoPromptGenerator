@@ -1,113 +1,68 @@
-# services/project_service.py
+# python_backend/services/project_service.py
 # ────────────────────────────────────────────────────────────────────────────
 """
-Project‑related operations:
+Project‑related operations
+==========================
 
-• Recursive file‑tree that honours ignore patterns in **ignoreDirs.txt**
-• Batch file‑content loader with **tiktoken**‑based token counts
-• Utility helpers for drive / folder picker
+*   Build a recursive **file tree** that honours ignore rules (see *ignoreDirs.txt*).
+*   Fetch **file contents in bulk** and attach a *token count* (tiktoken or regex).
+*   Provide small utility helpers required by various controllers (drive list, path resolution, …).
 
-⚡ CPU‑optimisations (2025‑04‑17)
-────────────────────────────────
-* Skip directory symlinks to avoid infinite loops.
-* Track visited inodes to prevent path cycles even without symlinks.
-* Hard depth‑limit (env `CTP_MAX_TREE_DEPTH`, default 25).
-* Token‑count guard for very large files (env `CTP_TOKEN_SIZE_LIMIT`,
-  default 200 000 chars) – returns **‑1** when skipped.
-
-SOLID ✦
--------
-* **S**RP – path / token / ignore logic is encapsulated here.
-* **O**CP – new ignore rules or tokenisers can be added without touching
-  callers.
+The implementation is **pure** (no Flask, no globals) so it can be unit‑tested in isolation
+and reused by other frameworks.
 """
-
 from __future__ import annotations
 
-import os
 import logging
+import os
 import re
-from typing import List, Dict, Any, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
-import pathspec               # ← gitignore‑style matcher
+import pathspec  # git‑wildmatch implementation
+
 from repositories.file_storage import FileStorageRepository
 from services.exclusion_service import ExclusionService
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Tokeniser initialisation (unchanged)
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# Optional tiktoken – falls back to cheap regex splitter if missing
+# ─────────────────────────────────────────────────────────────────────────────
 try:
-    import tiktoken            # type: ignore
+    import tiktoken  # type: ignore
+
     _ENC = tiktoken.get_encoding("cl100k_base")
-except Exception:              # pragma: no cover
+except Exception:  # pragma: no cover – CI might not have wheels
     _ENC = None
-    logger.info("tiktoken unavailable – falling back to regex token counter.")
+    logger.info("tiktoken unavailable; falling back to regex token counter.")
 
 # ---------------------------------------------------------------------------
-# Tunables – overridable via environment for power users
+# Tunables (override via environment)
 # ---------------------------------------------------------------------------
-_SAFE_MAX_DEPTH: int = int(os.getenv("CTP_MAX_TREE_DEPTH", "50"))
-_TOKEN_COUNT_SIZE_LIMIT: int = int(os.getenv("CTP_TOKEN_SIZE_LIMIT", "2000000"))
+_MAX_TREE_DEPTH: int = int(os.getenv("CTP_MAX_TREE_DEPTH", "50"))
+_TOKEN_SIZE_LIMIT: int = int(os.getenv("CTP_TOKEN_SIZE_LIMIT", "2000000"))  # 2 MB
 
 
 class ProjectService:
-    """
-    High‑level, stateless service class.
-    All expensive objects (pathspec, tiktoken encoder) are created once per
-    *get_project_tree* call so we keep memory usage low.
-    """
+    """Stateless helper class – create **one instance per request**."""
 
-    def __init__(
-        self,
-        storage_repo: FileStorageRepository,
-        exclusion_service: ExclusionService,
-    ) -> None:
-        self._storage_repo = storage_repo
-        self._exclusion_service = exclusion_service
+    # ------------------------------------------------------------------ init
+    def __init__(self, storage_repo: FileStorageRepository, exclusion_service: ExclusionService) -> None:
+        self._storage = storage_repo
+        self._excl = exclusion_service
 
     # ────────────────────────────────────────────────────────────────────────
-    # Internal helpers
+    # 0 · misc helpers
     # ────────────────────────────────────────────────────────────────────────
     @staticmethod
     def _norm(path: str) -> str:
-        """
-        Normalise to forward slashes **without** stripping leading dots.
-
-            ".git"       → **unchanged**
-            "./foo/bar"  → "foo/bar"
-            ".\\foo\\bar"→ "foo/bar"
-        """
+        """Normalise to forward slashes and strip leading "./" or ".\\"."""
         p = os.path.normpath(path).replace("\\", "/")
         if p.startswith("./"):
             p = p[2:]
         return p
 
-    # ------------------------------------------------------------------ .gitignore
-    @staticmethod
-    def _expand_simple_pattern(p: str) -> List[str]:
-        """Expand `"dir"` → `["dir", "dir/**"]` to match dir and its children."""
-        return [p, f"{p}/**"]
-
-    def _make_pathspec(self, patterns: List[str]) -> pathspec.PathSpec:
-        """Compile ignore patterns into a *gitwildmatch* PathSpec."""
-        cleaned = [p.strip() for p in patterns if p.strip()]
-        compiled_lines: List[str] = []
-
-        for p in cleaned:
-            if any(ch in p for ch in "*?[]!"):        # already a glob
-                compiled_lines.append(p)
-            else:                                     # plain folder / file
-                compiled_lines.extend(self._expand_simple_pattern(p))
-
-        try:
-            return pathspec.PathSpec.from_lines("gitwildmatch", compiled_lines)
-        except Exception as e:                        # pragma: no cover
-            logger.warning("Invalid ignore pattern detected – ignoring it: %s", e)
-            return pathspec.PathSpec.from_lines("gitwildmatch", [])
-
-    # ------------------------------------------------------------------ tokeniser
+    # -------------------------------------------- token counter
     @staticmethod
     def _regex_token_count(text: str) -> int:
         tokens = re.split(r"\s+|([,.;:!?(){}\[\]<>\"'])", text.strip())
@@ -118,216 +73,177 @@ class ProjectService:
             return self._regex_token_count(text)
         try:
             return len(_ENC.encode(text))
-        except Exception:                      # pragma: no cover
+        except Exception:
             return self._regex_token_count(text)
 
+    # public helper used by *token_count_controller*
+    def estimate_token_count(self, text: str) -> int:  # noqa: D401 – simple wrapper
+        """Return a quick token estimate for *text*."""
+        return self._token_count(text)
+
     # ────────────────────────────────────────────────────────────────────────
-    # Public API – used by controllers
+    # 1 · project tree – BFS with depth / cycle guards (unchanged)
     # ────────────────────────────────────────────────────────────────────────
-    # 1. File tree ------------------------------------------------------------
+    def _expand_simple_pattern(self, p: str) -> List[str]:
+        return [p, f"{p}/**"]
+
+    def _make_pathspec(self, patterns: List[str]) -> pathspec.PathSpec:
+        cleaned: List[str] = [pat.strip() for pat in patterns if pat.strip()]
+        lines: List[str] = []
+        for pat in cleaned:
+            if any(ch in pat for ch in "*?[]!"):
+                lines.append(pat)
+            else:
+                lines.extend(self._expand_simple_pattern(pat))
+        return pathspec.PathSpec.from_lines("gitwildmatch", lines)
+
     def _walk(
         self,
         cur_dir: str,
         base_dir: str,
         spec: pathspec.PathSpec,
-        out: list[dict],
+        out: List[Dict[str, Any]],
         depth: int = 0,
-        visited_inodes: Optional[Set[int]] = None,
+        visited: Optional[Set[int]] = None,
     ) -> None:
-        """
-        Depth‑first traversal with **cycle & depth guards**.
-
-        * Skips directory symlinks entirely (`follow_symlinks=False`).
-        * Keeps a set of visited inode numbers to cut cycles even without
-          symlinks (rare but possible on some filesystems).
-        """
-        if visited_inodes is None:
-            visited_inodes = set()
-
-        if depth > _SAFE_MAX_DEPTH:
-            logger.warning("Max traversal depth (%s) exceeded at %s – pruning subtree.",
-                           _SAFE_MAX_DEPTH, cur_dir)
+        if visited is None:
+            visited = set()
+        if depth > _MAX_TREE_DEPTH:
+            logger.warning("Max depth (%s) exceeded at %s – pruning", _MAX_TREE_DEPTH, cur_dir)
             return
-
         try:
-            with os.scandir(cur_dir) as scandir_it:
-                for entry in scandir_it:
+            with os.scandir(cur_dir) as it:
+                for entry in it:
                     rel_path = self._norm(os.path.relpath(entry.path, base_dir))
-
                     if spec.match_file(rel_path):
-                        continue  # Honour global/project ignore rules
-
-                    # Skip directory symlinks – avoids most infinite loops
-                    is_dir = entry.is_dir(follow_symlinks=False)
-                    if not is_dir and entry.is_symlink():
-                        # Treat as regular file; we still include it
-                        pass
+                        continue
 
                     node: Dict[str, Any] = {
                         "name": entry.name,
                         "relativePath": rel_path,
                         "absolutePath": self._norm(entry.path),
-                        "type": "directory" if is_dir else "file",
+                        "type": "directory" if entry.is_dir(follow_symlinks=False) else "file",
                     }
 
-                    if is_dir:
+                    if node["type"] == "directory":
                         inode = entry.inode()
-                        if inode in visited_inodes:
-                            logger.debug("Cycle detected – already visited %s (inode %s). Skipping.",
-                                         entry.path, inode)
+                        if inode in visited:
                             continue
-                        visited_inodes.add(inode)
-
+                        visited.add(inode)
                         node["children"] = []
-                        self._walk(
-                            entry.path,
-                            base_dir,
-                            spec,
-                            node["children"],
-                            depth + 1,
-                            visited_inodes,
-                        )
-
+                        self._walk(entry.path, base_dir, spec, node["children"], depth + 1, visited)
                     out.append(node)
         except PermissionError:
-            logger.warning("Permission denied while reading %s", cur_dir)
+            logger.debug("Permission denied while scanning %s", cur_dir)
         except FileNotFoundError:
-            logger.warning("Directory vanished while scanning: %s", cur_dir)
-        except Exception as e:                  # pragma: no cover
-            logger.error("Error scanning %s – %s", cur_dir, e)
+            logger.debug("Directory vanished while scanning: %s", cur_dir)
 
-    def get_project_tree(self, root_dir: str) -> List[dict]:
-        """Build a recursive tree starting at *root_dir* with safety guards."""
+    def get_project_tree(self, root_dir: str) -> List[Dict[str, Any]]:
         if not root_dir or not os.path.isdir(root_dir):
             raise ValueError("Invalid root directory.")
-
         root_dir = os.path.abspath(root_dir)
-        patterns = self._exclusion_service.get_global_exclusions()
-        spec = self._make_pathspec(patterns)
-
-        tree: List[dict] = []
+        ignore = self._excl.get_global_exclusions()
+        spec = self._make_pathspec(ignore)
+        tree: List[Dict[str, Any]] = []
         self._walk(root_dir, root_dir, spec, tree)
-
-        # sort: dirs first then files, alphabetically
         tree.sort(key=lambda n: (n["type"] != "directory", n["name"].lower()))
         return tree
 
-    # 2. Batch file content ----------------------------------------------------
-    def get_files_content(
-        self, base_dir: str, relative_paths: List[str]
-    ) -> List[Dict[str, Any]]:
-        """Return contents + token counts for *relative_paths* under *base_dir*.
+    # ────────────────────────────────────────────────────────────────────────
+    # 2 · bulk file‑content loader (robust path resolution)
+    # ────────────────────────────────────────────────────────────────────────
+    def _candidate_paths(self, base_dir: str, raw: str) -> List[str]:
+        """Return possible absolute file paths for *raw* given *base_dir*."""
+        base_dir_abs = os.path.abspath(base_dir)
+        raw_abs = os.path.abspath(raw)
+        candidates = [raw_abs]
 
-        Robustness goals
-        ----------------
-        * Accept both **relative** *and* **absolute** paths in *relative_paths*.
-        * Tolerate callers that already include *base_dir* inside each path.
-        * Cope with the backend running from *python_backend/* by considering
-        the current working directory as another search root.
-        """
+        # If *raw* is relative, join with base_dir
+        if not os.path.isabs(raw):
+            candidates.append(os.path.join(base_dir_abs, raw))
+        else:
+            # *raw* might already include base_dir twice – try trimming
+            if raw_abs.startswith(base_dir_abs):
+                rel = os.path.relpath(raw_abs, base_dir_abs)
+                candidates.append(os.path.join(base_dir_abs, rel))
+
+        # Also try to interpret *raw* relative to CWD (helps in some CI setups)
+        candidates.append(os.path.abspath(os.path.join(os.getcwd(), raw)))
+
+        # de‑duplicate while preserving order
+        seen: Set[str] = set()
+        uniq: List[str] = []
+        for c in candidates:
+            if c not in seen:
+                seen.add(c)
+                uniq.append(c)
+        return uniq
+
+    def get_files_content(self, base_dir: str, relative_paths: List[str]) -> List[Dict[str, Any]]:  # noqa: C901
         if not base_dir or not os.path.isdir(base_dir):
             raise ValueError("Invalid base directory.")
         if not isinstance(relative_paths, list):
             raise ValueError("`paths` must be a list.")
 
-        # Canonical absolute path for the supplied *base_dir*
-        base_dir_abs = os.path.abspath(base_dir)
-
         results: List[Dict[str, Any]] = []
-
         for raw in relative_paths:
-            raw = str(raw)  # guard against non‑string entries
-
-            # ----------------------------------------------------------------
-            # Build **candidate locations** (ordered by likelihood)
-            # ----------------------------------------------------------------
-            candidates: List[str] = []
-
-            # 1) Caller gave an *absolute* path → trust it first
-            if os.path.isabs(raw):
-                candidates.append(os.path.abspath(raw))
-            else:
-                # 2) Standard – treat it as relative to *base_dir*
-                candidates.append(os.path.join(base_dir_abs, raw))
-
-            # 3) Raw path relative to the backend's CWD (python_backend)
-            candidates.append(os.path.abspath(raw))
-
-            # 4) Sometimes callers erroneously include *base_dir* already –
-            #    Joining again would duplicate, so check as‑is.
-            if not os.path.isabs(raw):
-                maybe_prefixed = os.path.join(base_dir_abs, os.path.normpath("/" + raw).lstrip(os.sep))
-                candidates.append(maybe_prefixed)
-
-            # De‑duplicate while preserving order
-            deduped: List[str] = []
-            seen: Set[str] = set()
-            for cand in candidates:
-                if cand not in seen:
-                    deduped.append(cand)
-                    seen.add(cand)
-
-            chosen_path: Optional[str] = next((p for p in deduped if os.path.isfile(p)), None)
-
-            # Prepare response shell
             info: Dict[str, Any] = {
-                "path": raw,  # echo the original request element
+                "path": self._norm(raw),
                 "content": "",
                 "tokenCount": 0,
             }
 
-            if chosen_path is None:
+            chosen: Optional[str] = None
+            for cand in self._candidate_paths(base_dir, raw):
+                if os.path.isfile(cand):
+                    chosen = cand
+                    break
+
+            if chosen is None:  # Not found at all
                 info["content"] = f"File not found on server: {raw}"
                 results.append(info)
                 continue
 
-            # ------------------------------------------------------------ read
+            # --- read file & compute token count --------------------------------
             try:
-                content = self._storage_repo.read_text(chosen_path) or ""
+                content = self._storage.read_text(chosen) or ""
                 info["content"] = content
-
-                if len(content) > _TOKEN_COUNT_SIZE_LIMIT:
-                    info["tokenCount"] = -1  # skip excessively large files
-                    logger.debug("Token count skipped for %s (>%s chars)", chosen_path, _TOKEN_COUNT_SIZE_LIMIT)
+                if len(content) > _TOKEN_SIZE_LIMIT:
+                    info["tokenCount"] = -1
                 else:
                     info["tokenCount"] = self._token_count(content)
             except Exception as exc:  # pragma: no cover
-                logger.error("Failed reading %s – %s", chosen_path, exc)
+                logger.error("Error reading %s – %s", chosen, exc)
                 info["content"] = f"Error reading file: {raw}"
-
             results.append(info)
-
         return results
 
-    # 3. Utility helpers -------------------------------------------------------
+    # ────────────────────────────────────────────────────────────────────────
+    # 3 · tiny utilities (unchanged from previous revision)
+    # ────────────────────────────────────────────────────────────────────────
+    def resolve_folder_path(self, folder_name: str) -> str:
+        if not folder_name:
+            raise ValueError("folderName cannot be empty.")
+        if os.path.isabs(folder_name) and os.path.isdir(folder_name):
+            return self._norm(os.path.abspath(folder_name))
+        cwd = os.getcwd()
+        for up in (cwd, os.path.dirname(cwd), os.path.dirname(os.path.dirname(cwd))):
+            candidate = os.path.join(up, folder_name)
+            if os.path.isdir(candidate):
+                return self._norm(os.path.abspath(candidate))
+        return self._norm(os.path.abspath(folder_name))
+
     def get_available_drives(self) -> List[Dict[str, str]]:
-        """(unchanged – kept for other controllers if needed)"""
-        drives = []
+        drives: List[Dict[str, str]] = []
         if os.name == "nt":
             import string
             from ctypes import windll
+
             bitmask = windll.kernel32.GetLogicalDrives()
             for letter in string.ascii_uppercase:
                 if bitmask & (1 << (ord(letter) - ord("A"))):
                     drives.append({"name": f"{letter}:\\", "path": f"{letter}:\\"})
         else:
             drives.append({"name": "/ (Root)", "path": "/"})
-            home = self._norm(os.path.expanduser("~"))
-            drives.append({"name": "~ (Home)", "path": home})
+            drives.append({"name": "~ (Home)", "path": self._norm(os.path.expanduser("~"))})
         return drives
-
-    def resolve_folder_path(self, folder_name: str) -> str:
-        """(unchanged utility – see previous refactor)"""
-        if not folder_name:
-            raise ValueError("folderName cannot be empty.")
-
-        if os.path.isabs(folder_name) and os.path.isdir(folder_name):
-            return self._norm(os.path.abspath(folder_name))
-
-        cwd = os.getcwd()
-        for up in (cwd, os.path.dirname(cwd), os.path.dirname(os.path.dirname(cwd))):
-            candidate = os.path.join(up, folder_name)
-            if os.path.isdir(candidate):
-                return self._norm(os.path.abspath(candidate))
-
-        return self._norm(os.path.abspath(folder_name))
