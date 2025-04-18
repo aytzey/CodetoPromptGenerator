@@ -1,7 +1,7 @@
-// File: views/InstructionsInputView.tsx
+// views/InstructionsInputView.tsx
 // REFACTOR / OVERWRITE
-import React from 'react'; // Removed unused useEffect
-import { Save, RefreshCw, FileText, Download, Edit3, XCircle, Loader2 } from 'lucide-react'; // Added Loader2
+import React, { useEffect } from 'react'; // Removed unused useState
+import { Save, RefreshCw, FileText, Download, Edit3, XCircle, Loader2, Undo, Redo } from 'lucide-react'; // Added Undo, Redo
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -14,9 +14,7 @@ import { Progress } from "@/components/ui/progress";
 // Import Store and Service Hook
 import { usePromptStore } from '@/stores/usePromptStore';
 import { usePromptService } from '@/services/promptServiceHooks';
-
-// Removed props interface
-// interface InstructionsInputProps { ... }
+import { useUndoRedo } from '@/lib/hooks/useUndoRedo'; // Import the new hook
 
 const MAX_CHARS = 1000; // Consider making this configurable
 
@@ -24,7 +22,7 @@ const InstructionsInputView: React.FC = () => {
   // Get state from Zustand store
   const {
     metaPrompt, setMetaPrompt,
-    mainInstructions, setMainInstructions,
+    mainInstructions, setMainInstructions, // Keep store getter/setter
     metaPromptFiles, selectedMetaFile, setSelectedMetaFile,
     newMetaFileName, setNewMetaFileName,
     isLoadingMetaList, isLoadingMetaContent, isSavingMeta
@@ -33,9 +31,21 @@ const InstructionsInputView: React.FC = () => {
   // Get actions from service hook
   const { fetchMetaPromptList, loadMetaPrompt, saveMetaPrompt } = usePromptService();
 
+  // --- Undo/Redo Hook for Main Instructions ---
+  const {
+    currentValue: currentMainInstructions,
+    updateCurrentValue: updateMainInstructionsValue,
+    undo: undoMainInstructions,
+    redo: redoMainInstructions,
+    canUndo: canUndoMain,
+    canRedo: canRedoMain,
+  } = useUndoRedo(mainInstructions, setMainInstructions, { debounceMs: 0 }); // Instant history updates
+  // --- End Undo/Redo Hook ---
+
   // Calculate character counts and percentages
   const metaCount = metaPrompt.length;
-  const mainCount = mainInstructions.length;
+  // Use the immediate value from the hook for character count
+  const mainCount = currentMainInstructions.length;
   const metaPercentage = Math.min(100, (metaCount / MAX_CHARS) * 100);
   const mainPercentage = Math.min(100, (mainCount / MAX_CHARS) * 100);
 
@@ -51,23 +61,66 @@ const InstructionsInputView: React.FC = () => {
     return "text-gray-500 dark:text-gray-400";
   };
 
-  // Clear functions now use setters from the store
+  // Clear functions now use setters from the store or hook
   function clearMetaPrompt() {
     setMetaPrompt('');
   }
 
   function clearMainInstructions() {
-    setMainInstructions('');
+    // Use the hook's update function to clear and record history
+    updateMainInstructionsValue('');
   }
 
   // Handler for Select change
   const handleSelectChange = (value: string) => {
       setSelectedMetaFile(value === "none" ? "" : value);
-      // Optionally auto-load when selected? Or keep explicit Load button? Keep explicit for now.
-      // if (value !== "none") {
-      //   loadMetaPrompt();
-      // }
+      // Automatically load the selected prompt
+      if (value !== "none") {
+          // Need to trigger loadMetaPrompt after state update
+          // Use useEffect in the component or adjust loadMetaPrompt logic
+          // For simplicity, let's assume loadMetaPrompt uses the latest state from store
+          // Or pass the value directly if the hook supports it
+          // This requires loadMetaPrompt to be adjusted or called differently
+          // Let's defer this auto-load for now and rely on the Load button
+      }
   };
+
+  // --- KeyDown Handler for Undo/Redo ---
+  const handleMainInstructionsKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Check for platform-specific modifier key (Cmd on Mac, Ctrl elsewhere)
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    const modKey = isMac ? e.metaKey : e.ctrlKey;
+
+    const isUndo = modKey && e.key === 'z' && !e.shiftKey;
+    // Redo: Cmd/Ctrl + Shift + Z OR Cmd/Ctrl + Y
+    const isRedo = modKey && (e.key === 'y' || (e.key === 'z' && e.shiftKey));
+
+    if (isUndo) {
+      e.preventDefault(); // Prevent default browser undo/focus behavior
+      undoMainInstructions();
+    } else if (isRedo) {
+      e.preventDefault(); // Prevent default browser redo behavior
+      redoMainInstructions();
+    }
+    // Allow other key combinations to pass through
+  };
+  // --- End KeyDown Handler ---
+
+  // Effect to load meta prompt content when selectedMetaFile changes
+  useEffect(() => {
+    if (selectedMetaFile) {
+      loadMetaPrompt();
+    } else {
+      // Optionally clear meta prompt if "None" is selected
+      // setMetaPrompt(''); // Decide if this is desired behavior
+    }
+  }, [selectedMetaFile, loadMetaPrompt]); // Add loadMetaPrompt dependency
+
+  // Effect to load the list of meta prompts on initial mount
+  useEffect(() => {
+    fetchMetaPromptList();
+  }, [fetchMetaPromptList]);
+
 
   return (
     <div className="space-y-5">
@@ -104,20 +157,8 @@ const InstructionsInputView: React.FC = () => {
             </SelectContent>
           </Select>
 
-          <TooltipProvider delayDuration={100}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                 <Button
-                  onClick={loadMetaPrompt}
-                  className="bg-cyan-500 hover:bg-cyan-600 text-white w-[80px]" // Fixed width
-                  disabled={!selectedMetaFile || isLoadingMetaContent || isLoadingMetaList}
-                 >
-                   {isLoadingMetaContent ? <Loader2 size={16} className="animate-spin" /> : <><Download className="mr-1 h-4 w-4" /> Load</>}
-                 </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top"><p>Load the selected prompt file</p></TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          {/* Removed Load button as it now loads automatically on select */}
+          {/* <TooltipProvider delayDuration={100}> ... </TooltipProvider> */}
 
           <TooltipProvider delayDuration={100}>
             <Tooltip>
@@ -148,7 +189,7 @@ const InstructionsInputView: React.FC = () => {
               type="text"
               value={newMetaFileName}
               onChange={e => setNewMetaFileName(e.target.value)}
-              placeholder="new_prompt_name.txt"
+              placeholder={selectedMetaFile || "new_prompt_name.txt"} // Show selected file as placeholder
               className="pl-9 h-9 bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 focus:ring-1 focus:ring-indigo-500 focus:border-transparent text-sm"
               disabled={isSavingMeta}
             />
@@ -183,7 +224,7 @@ const InstructionsInputView: React.FC = () => {
         <Textarea
           id="meta-prompt-area"
           value={metaPrompt}
-          onChange={e => setMetaPrompt(e.target.value)}
+          onChange={e => setMetaPrompt(e.target.value)} // Standard handling for meta prompt
           className="min-h-[80px] bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 focus:ring-1 focus:ring-indigo-500 focus:border-transparent resize-y text-sm"
           placeholder="Enter meta prompt instructions (e.g., persona, response format)..."
           disabled={isLoadingMetaContent || isSavingMeta}
@@ -204,20 +245,44 @@ const InstructionsInputView: React.FC = () => {
           <Label htmlFor="main-instructions-area" className="text-sm font-medium text-gray-700 dark:text-gray-300">
             Main Instructions:
           </Label>
-          <span className={`text-xs font-mono ${getCounterColor(mainCount)}`}>
-            {mainCount} / {MAX_CHARS}
-          </span>
+          {/* Undo/Redo Buttons */}
+          <div className="flex items-center gap-1">
+             <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 disabled:opacity-50" onClick={undoMainInstructions} disabled={!canUndoMain}>
+                      <Undo size={14} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom"><p>Undo (Ctrl+Z)</p></TooltipContent>
+                </Tooltip>
+             </TooltipProvider>
+             <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 disabled:opacity-50" onClick={redoMainInstructions} disabled={!canRedoMain}>
+                      <Redo size={14} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom"><p>Redo (Ctrl+Y)</p></TooltipContent>
+                </Tooltip>
+             </TooltipProvider>
+             <span className={`text-xs font-mono ${getCounterColor(mainCount)} ml-2`}>
+                {mainCount} / {MAX_CHARS}
+             </span>
+          </div>
         </div>
         <Textarea
           id="main-instructions-area"
-          value={mainInstructions}
-          onChange={e => setMainInstructions(e.target.value)}
+          value={currentMainInstructions} // Use value from hook
+          onChange={e => updateMainInstructionsValue(e.target.value)} // Use update function from hook
+          onKeyDown={handleMainInstructionsKeyDown} // Add keydown listener
           className="min-h-[120px] bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 focus:ring-1 focus:ring-indigo-500 focus:border-transparent resize-y text-sm"
           placeholder="Enter your main instructions for the task..."
            disabled={isLoadingMetaContent || isSavingMeta} // Disable if related actions are happening
         />
         <Progress value={mainPercentage} className={`h-1 ${getProgressColor(mainCount)}`} />
-         {mainInstructions && (
+         {currentMainInstructions && ( // Check hook's value
           <div className="flex justify-end -mt-1">
             <Button variant="ghost" size="sm" className="text-xs h-7 text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-200 hover:bg-rose-50 dark:hover:bg-rose-900/50" onClick={clearMainInstructions} disabled={isLoadingMetaContent || isSavingMeta}>
               <XCircle className="mr-1 h-3.5 w-3.5" /> Clear
@@ -229,4 +294,4 @@ const InstructionsInputView: React.FC = () => {
   );
 };
 
-export default InstructionsInputView; // Consider React.memo if props were complex, but not needed now
+export default InstructionsInputView;
