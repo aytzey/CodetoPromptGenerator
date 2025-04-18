@@ -1,4 +1,4 @@
-// File: views/ExclusionsManagerView.tsx
+// FILE: views/ExclusionsManagerView.tsx
 // REFACTOR / OVERWRITE
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
@@ -74,7 +74,7 @@ const ExclusionsManagerView: React.FC = () => {
   };
 
   // Common exclusion suggestions
-  const suggestions = ['node_modules', '.git', '.next', 'dist', 'build', 'coverage', '.DS_Store', '__pycache__', 'venv'];
+  const suggestions = ['node_modules', '.git', '.next', 'dist', 'build', 'coverage', '.DS_Store', '__pycache__', 'venv', '*.log', '*.tmp']; // Added *.log, *.tmp
   const currentList = isEditing ? localExclusionsEdit : globalExclusions;
 
   return (
@@ -152,7 +152,7 @@ const ExclusionsManagerView: React.FC = () => {
              <AlertTriangle size={20} className="mb-1 opacity-50" />
             <p className="text-xs text-center italic">
               No global exclusions defined.
-              {isEditing && <><br />Add directories like &apos;node_modules&apos; or &apos;.git&apos;.</>}
+              {isEditing && <><br />Add directories (e.g. node_modules) or patterns (e.g. *.log).</>}
             </p>
           </div>
         ) : isEditing ? (
@@ -193,7 +193,7 @@ const ExclusionsManagerView: React.FC = () => {
                     <Input
                         value={newExclusion}
                         onChange={(e) => setNewExclusion(e.target.value)}
-                        placeholder="Add directory or pattern (e.g. node_modules, *.log)"
+                        placeholder="Add directory (e.g. node_modules) or pattern (e.g. *.log)" // Updated placeholder
                         className="h-9 pr-8 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-600 focus:ring-1 focus:ring-indigo-500 focus:border-transparent text-sm"
                         onKeyDown={handleKeyDown}
                         disabled={isSavingGlobal}
@@ -229,7 +229,7 @@ const ExclusionsManagerView: React.FC = () => {
         )}
 
       <div className="text-xs text-gray-500 dark:text-gray-400 pt-1">
-        These paths (relative to project root) will be excluded globally. Saved in <code>ignoreDirs.txt</code>.
+        These paths/patterns (relative to project root) will be excluded globally. Saved in <code>ignoreDirs.txt</code>.
       </div>
     </Card>
   );

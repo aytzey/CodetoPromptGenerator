@@ -1,4 +1,4 @@
-# python_backend/services/project_service.py
+# FILE: python_backend/services/project_service.py
 # ────────────────────────────────────────────────────────────────────────────
 """
 Project‑related operations
@@ -10,6 +10,9 @@ Project‑related operations
 
 The implementation is **pure** (no Flask, no globals) so it can be unit‑tested in isolation
 and reused by other frameworks.
+
+**MODIFIED (vNext):** `get_project_tree` now accepts `project_path` to load and apply
+                   project-specific exclusions alongside global ones.
 """
 from __future__ import annotations
 
@@ -82,19 +85,29 @@ class ProjectService:
         return self._token_count(text)
 
     # ────────────────────────────────────────────────────────────────────────
-    # 1 · project tree – BFS with depth / cycle guards (unchanged)
+    # 1 · project tree – BFS with depth / cycle guards
     # ────────────────────────────────────────────────────────────────────────
     def _expand_simple_pattern(self, p: str) -> List[str]:
-        return [p, f"{p}/**"]
+        """Expands a simple directory name into patterns matching the dir and its contents."""
+        # Avoid expanding wildcard patterns
+        if any(ch in p for ch in "*?[]!"):
+            return [p]
+        # Expand directory names
+        return [p.rstrip('/'), f"{p.rstrip('/')}/**"]
 
     def _make_pathspec(self, patterns: List[str]) -> pathspec.PathSpec:
+        """Creates a pathspec object from a list of patterns."""
         cleaned: List[str] = [pat.strip() for pat in patterns if pat.strip()]
         lines: List[str] = []
         for pat in cleaned:
+            # pathspec handles wildcards like *.log directly.
+            # We only need to expand simple directory names.
             if any(ch in pat for ch in "*?[]!"):
                 lines.append(pat)
             else:
+                # Assume it's a directory name, expand it
                 lines.extend(self._expand_simple_pattern(pat))
+        logger.debug(f"Creating pathspec from lines: {lines}")
         return pathspec.PathSpec.from_lines("gitwildmatch", lines)
 
     def _walk(
@@ -106,6 +119,7 @@ class ProjectService:
         depth: int = 0,
         visited: Optional[Set[int]] = None,
     ) -> None:
+        """Recursive walk function to build the file tree."""
         if visited is None:
             visited = set()
         if depth > _MAX_TREE_DEPTH:
@@ -114,38 +128,74 @@ class ProjectService:
         try:
             with os.scandir(cur_dir) as it:
                 for entry in it:
-                    rel_path = self._norm(os.path.relpath(entry.path, base_dir))
-                    if spec.match_file(rel_path):
-                        continue
-
-                    node: Dict[str, Any] = {
-                        "name": entry.name,
-                        "relativePath": rel_path,
-                        "absolutePath": self._norm(entry.path),
-                        "type": "directory" if entry.is_dir(follow_symlinks=False) else "file",
-                    }
-
-                    if node["type"] == "directory":
-                        inode = entry.inode()
-                        if inode in visited:
+                    try:
+                        # Check if entry path exists and handle potential race conditions or broken links
+                        if not os.path.exists(entry.path):
+                            logger.debug(f"Skipping non-existent entry: {entry.path}")
                             continue
-                        visited.add(inode)
-                        node["children"] = []
-                        self._walk(entry.path, base_dir, spec, node["children"], depth + 1, visited)
-                    out.append(node)
+
+                        rel_path = self._norm(os.path.relpath(entry.path, base_dir))
+
+                        # Apply pathspec matching
+                        if spec.match_file(rel_path):
+                            logger.debug(f"Excluding '{rel_path}' based on spec")
+                            continue
+
+                        is_dir = entry.is_dir(follow_symlinks=False)
+                        node: Dict[str, Any] = {
+                            "name": entry.name,
+                            "relativePath": rel_path,
+                            "absolutePath": self._norm(entry.path),
+                            "type": "directory" if is_dir else "file",
+                        }
+
+                        if node["type"] == "directory":
+                            inode = entry.inode()
+                            if inode in visited:
+                                logger.debug(f"Skipping visited directory (inode cycle): {entry.path}")
+                                continue
+                            visited.add(inode)
+                            node["children"] = []
+                            self._walk(entry.path, base_dir, spec, node["children"], depth + 1, visited)
+                            # Prune empty directories after walking children
+                            if not node["children"]:
+                                continue # Don't add empty directories to the output tree
+                        out.append(node)
+                    except OSError as e:
+                         logger.warning(f"OS error processing entry {entry.name} in {cur_dir}: {e}")
+                    except Exception as e:
+                         logger.error(f"Unexpected error processing entry {entry.name} in {cur_dir}: {e}")
+
         except PermissionError:
-            logger.debug("Permission denied while scanning %s", cur_dir)
+            logger.warning("Permission denied while scanning %s", cur_dir)
         except FileNotFoundError:
-            logger.debug("Directory vanished while scanning: %s", cur_dir)
+            logger.warning("Directory vanished while scanning: %s", cur_dir)
+        except OSError as e:
+            logger.error(f"OS error scanning directory {cur_dir}: {e}")
+
 
     def get_project_tree(self, root_dir: str) -> List[Dict[str, Any]]:
+        """
+        Builds the project file tree, applying both global and project-specific exclusions.
+        """
         if not root_dir or not os.path.isdir(root_dir):
             raise ValueError("Invalid root directory.")
         root_dir = os.path.abspath(root_dir)
-        ignore = self._excl.get_global_exclusions()
-        spec = self._make_pathspec(ignore)
+
+        # Fetch both global and local exclusions
+        global_ignore = self._excl.get_global_exclusions()
+        local_ignore = self._excl.get_local_exclusions(root_dir) # Pass project path
+        combined_ignore = list(set(global_ignore + local_ignore)) # Combine and deduplicate
+
+        logger.info(f"Building tree for '{root_dir}' with combined exclusions: {combined_ignore}")
+
+        # Create pathspec from combined list
+        spec = self._make_pathspec(combined_ignore)
+
         tree: List[Dict[str, Any]] = []
         self._walk(root_dir, root_dir, spec, tree)
+
+        # Sort top-level entries (directories first, then alphabetically)
         tree.sort(key=lambda n: (n["type"] != "directory", n["name"].lower()))
         return tree
 
@@ -174,9 +224,10 @@ class ProjectService:
         seen: Set[str] = set()
         uniq: List[str] = []
         for c in candidates:
-            if c not in seen:
-                seen.add(c)
-                uniq.append(c)
+            norm_c = os.path.normpath(c)
+            if norm_c not in seen:
+                seen.add(norm_c)
+                uniq.append(norm_c)
         return uniq
 
     def get_files_content(self, base_dir: str, relative_paths: List[str]) -> List[Dict[str, Any]]:  # noqa: C901
@@ -186,37 +237,72 @@ class ProjectService:
             raise ValueError("`paths` must be a list.")
 
         results: List[Dict[str, Any]] = []
-        for raw in relative_paths:
+        base_dir_abs = os.path.abspath(base_dir)
+
+        for raw_rel_path in relative_paths:
+            norm_rel_path = self._norm(raw_rel_path)
             info: Dict[str, Any] = {
-                "path": self._norm(raw),
+                "path": norm_rel_path,
                 "content": "",
                 "tokenCount": 0,
             }
 
-            chosen: Optional[str] = None
-            for cand in self._candidate_paths(base_dir, raw):
-                if os.path.isfile(cand):
-                    chosen = cand
-                    break
+            # Construct the expected absolute path based on base_dir and normalized relative path
+            expected_abs_path = os.path.normpath(os.path.join(base_dir_abs, norm_rel_path))
 
-            if chosen is None:  # Not found at all
-                info["content"] = f"File not found on server: {raw}"
+            # Check if the expected path exists and is a file
+            if os.path.isfile(expected_abs_path):
+                chosen = expected_abs_path
+            else:
+                # Fallback: Check other candidate paths only if the primary one fails
+                chosen = None
+                for cand in self._candidate_paths(base_dir, raw_rel_path):
+                    if os.path.isfile(cand):
+                        # Ensure the found candidate is within the base_dir to prevent accessing unintended files
+                        if os.path.commonpath([base_dir_abs, cand]) == base_dir_abs:
+                             chosen = cand
+                             logger.warning(f"Resolved '{raw_rel_path}' to candidate '{chosen}' instead of expected '{expected_abs_path}'")
+                             break
+                        else:
+                             logger.warning(f"Candidate path '{cand}' for '{raw_rel_path}' is outside base directory '{base_dir_abs}'. Skipping.")
+
+
+            if chosen is None:  # Not found or not a file or outside base_dir
+                logger.warning(f"File not found or invalid for relative path: '{norm_rel_path}' (expected: '{expected_abs_path}')")
+                info["content"] = f"File not found on server: {norm_rel_path}"
                 results.append(info)
                 continue
 
             # --- read file & compute token count --------------------------------
             try:
-                content = self._storage.read_text(chosen) or ""
-                info["content"] = content
-                if len(content) > _TOKEN_SIZE_LIMIT:
-                    info["tokenCount"] = -1
+                # Check file size before reading
+                file_size = os.path.getsize(chosen)
+                if file_size > _TOKEN_SIZE_LIMIT * 2: # Heuristic: Check raw size against token limit * avg bytes/token
+                     logger.warning(f"File '{chosen}' is too large ({file_size} bytes), skipping content read.")
+                     info["content"] = f"File too large to process: {norm_rel_path}"
+                     info["tokenCount"] = -1 # Indicate skipped due to size
+                     results.append(info)
+                     continue
+
+                content = self._storage.read_text(chosen)
+                if content is None:
+                     info["content"] = f"Error reading file content: {norm_rel_path}"
+                     logger.error(f"Storage read_text returned None for existing file: {chosen}")
                 else:
-                    info["tokenCount"] = self._token_count(content)
+                    info["content"] = content
+                    # Estimate tokens, handle potential large content again if needed
+                    if len(content) > _TOKEN_SIZE_LIMIT:
+                        info["tokenCount"] = -1 # Mark as too large based on content length
+                        logger.warning(f"Content length of '{chosen}' ({len(content)}) exceeds limit ({_TOKEN_SIZE_LIMIT}).")
+                    else:
+                        info["tokenCount"] = self._token_count(content)
+
             except Exception as exc:  # pragma: no cover
                 logger.error("Error reading %s – %s", chosen, exc)
-                info["content"] = f"Error reading file: {raw}"
+                info["content"] = f"Error reading file: {norm_rel_path}"
             results.append(info)
         return results
+
 
     # ────────────────────────────────────────────────────────────────────────
     # 3 · tiny utilities (unchanged from previous revision)
@@ -231,7 +317,15 @@ class ProjectService:
             candidate = os.path.join(up, folder_name)
             if os.path.isdir(candidate):
                 return self._norm(os.path.abspath(candidate))
+        # Fallback: try resolving relative to CWD if not found elsewhere
+        candidate_cwd = os.path.join(cwd, folder_name)
+        if os.path.isdir(candidate_cwd):
+             return self._norm(os.path.abspath(candidate_cwd))
+
+        # If still not found, return the normalized absolute path attempt
+        # This might point to a non-existent location, caller should handle
         return self._norm(os.path.abspath(folder_name))
+
 
     def get_available_drives(self) -> List[Dict[str, str]]:
         drives: List[Dict[str, str]] = []
@@ -246,4 +340,23 @@ class ProjectService:
         else:
             drives.append({"name": "/ (Root)", "path": "/"})
             drives.append({"name": "~ (Home)", "path": self._norm(os.path.expanduser("~"))})
-        return drives
+            # Add common mount points if they exist
+            for mount_point in ["/mnt", "/media"]:
+                 if os.path.isdir(mount_point):
+                     try:
+                         for item in os.listdir(mount_point):
+                             item_path = os.path.join(mount_point, item)
+                             if os.path.isdir(item_path):
+                                 drives.append({"name": f"{mount_point}/{item}", "path": self._norm(item_path)})
+                     except OSError as e:
+                         logger.warning(f"Could not list directory {mount_point}: {e}")
+
+        # De-duplicate paths just in case
+        seen_paths = set()
+        unique_drives = []
+        for drive in drives:
+            if drive["path"] not in seen_paths:
+                unique_drives.append(drive)
+                seen_paths.add(drive["path"])
+
+        return unique_drives

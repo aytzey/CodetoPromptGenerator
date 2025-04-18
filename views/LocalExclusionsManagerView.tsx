@@ -1,4 +1,4 @@
-// views/LocalExclusionsManagerView.tsx
+// FILE: views/LocalExclusionsManagerView.tsx
 /**
  * Project‑specific exclusion manager
  * ───────────────────────────────────
@@ -8,6 +8,7 @@
  * • No direct fetch calls – the service deals with I/O and global
  *   error handling.                                                    SOLID – DIP
  * • Inline validation, loading / saving spinners and keyboard UX.
+ * • **MODIFIED (vNext):** Updated placeholder text.
  */
 
 import React, { useEffect, useState, useMemo } from "react";
@@ -30,7 +31,7 @@ import { useProjectStore }         from "@/stores/useProjectStore";
 import { useExclusionService }     from "@/services/exclusionServiceHooks";
 
 const COMMON_HINTS = [
-  "package‑lock.json", "yarn.lock", ".env", "README.md", "LICENSE",
+  "package‑lock.json", "yarn.lock", ".env", "README.md", "LICENSE", "*.log", "*.tmp", "*.bak", "*.swp" // Added wildcards
 ];
 
 export default function LocalExclusionsManagerView() {
@@ -97,7 +98,7 @@ export default function LocalExclusionsManagerView() {
         )}
       </div>
       <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-1">
-        Skipped by “Select All”. Stored per‑project on the backend.
+        Skipped by “Select All” in this project. Use patterns like <code>*.log</code> or specific files/folders.
       </p>
 
       {/* error (component‑local) */}
@@ -111,7 +112,7 @@ export default function LocalExclusionsManagerView() {
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Input
-            placeholder="e.g. package‑lock.json"
+            placeholder="e.g. *.test.js or config/secrets.json" // Updated placeholder
             value={draft}
             disabled={isSavingLocal}
             onChange={e => setDraft(e.target.value)}
@@ -162,7 +163,7 @@ export default function LocalExclusionsManagerView() {
         ) : listEmpty ? (
           <div className="flex flex-col items-center justify-center h-full py-4 text-gray-500 dark:text-gray-400 text-xs">
             <AlertTriangle size={18} className="mb-1"/>
-            No exclusions yet.
+            No project-specific exclusions yet.
           </div>
         ) : (
           <ul className="p-2 space-y-1.5">

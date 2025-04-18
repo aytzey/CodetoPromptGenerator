@@ -1,21 +1,44 @@
-// File: stores/useProjectStore.ts
+// FILE: stores/useProjectStore.ts
 import { create } from "zustand";
-import { FileNode } from "@/lib/fileFilters";
+import { FileNode } from "@/lib/fileFilters"; // Assuming FileNode is defined here or in types
 
 /* ──────────────────────────────────────────────────────────── *
  *                        Helpers                               *
  * ──────────────────────────────────────────────────────────── */
 
-/** Set‐eşitliği (sıra gözetmez) */
+/** Set equality (order-independent) */
 const sameSet = (a: string[], b: string[]): boolean => {
   if (a.length !== b.length) return false;
   const S = new Set(a);
   return b.every((p) => S.has(p));
 };
 
-/** Sıralı & sığ eşitlik (referans veya ===) */
+/** Shallow array equality (reference or ===) */
 const arraysShallowEqual = <T>(a: T[], b: T[]): boolean =>
   a.length === b.length && a.every((v, i) => v === b[i]);
+
+/**
+ * Checks if a file path matches any exclusion pattern.
+ * Handles direct matches and *.ext wildcards.
+ */
+const isExcluded = (filePath: string, exclusionPatterns: Set<string>): boolean => {
+  if (exclusionPatterns.has(filePath)) {
+    return true; // Direct match
+  }
+  // Check wildcard patterns (*.ext)
+  for (const pattern of exclusionPatterns) {
+    if (pattern.startsWith('*.')) {
+      const extension = pattern.substring(1); // Includes the dot, e.g., ".log"
+      if (filePath.toLowerCase().endsWith(extension.toLowerCase())) {
+        return true;
+      }
+    }
+    // Add other pattern types here if needed (e.g., dir/**)
+    // For now, only handle direct match and *.ext
+  }
+  return false;
+};
+
 
 /* ──────────────────────────────────────────────────────────── *
  *                        Types                                 *
@@ -44,9 +67,9 @@ interface ProjectState {
     descendants: string[]
   ): void;
 
-  /** bulk‑select honouring exclusions */
+  /** bulk‑select honouring exclusions (including *.ext) */
   selectAllFiles(
-    allPaths: string[],
+    allPaths: string[], // Should be file paths only for selection
     globalExclusions: Set<string>,
     localExclusions: Set<string>
   ): void;
@@ -76,15 +99,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   /* ───── basic path ───── */
   projectPath: "",
   setProjectPath: (path) => {
+    const normalizedPath = path.replace(/\\/g, '/'); // Normalize slashes
     set({
-      projectPath: path,
+      projectPath: normalizedPath,
       selectedFilePaths: [],
       filesData: [],
       fileTree: [],
       fileSearchTerm: "",
     });
     if (typeof window !== "undefined")
-      localStorage.setItem("lastProjectPath", path);
+      localStorage.setItem("lastProjectPath", normalizedPath);
   },
 
   /* ───── tree ───── */
@@ -97,25 +121,46 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   /* ───── selection ───── */
   selectedFilePaths: [],
   setSelectedFilePaths: (paths) => {
-    if (sameSet(paths, get().selectedFilePaths)) return; // identical
-    set({ selectedFilePaths: paths });
+    const normalizedPaths = paths.map(p => p.replace(/\\/g, '/')); // Normalize slashes
+    if (sameSet(normalizedPaths, get().selectedFilePaths)) return; // identical
+    set({ selectedFilePaths: normalizedPaths });
   },
 
   toggleFilePathSelection: (path, isSel, descendants) => {
+    const normalizedPath = path.replace(/\\/g, '/');
+    const normalizedDescendants = descendants.map(d => d.replace(/\\/g, '/'));
     const cur = new Set(get().selectedFilePaths);
-    (isSel ? descendants : []).forEach((p) => cur.add(p));
-    (!isSel ? descendants : []).forEach((p) => cur.delete(p));
+
+    // If selecting, add the path itself (if it's a file) and all descendants
+    // If deselecting, remove the path itself and all descendants
+    const pathsToModify = [normalizedPath, ...normalizedDescendants];
+
+    pathsToModify.forEach((p) => {
+        if (isSel) {
+            cur.add(p);
+        } else {
+            cur.delete(p);
+        }
+    });
+
     const next = Array.from(cur);
     if (!sameSet(next, get().selectedFilePaths)) {
       set({ selectedFilePaths: next });
     }
   },
 
-  /** honours global & local exclusions */
-  selectAllFiles: (all, gSet, lSet) => {
-    const files = all.filter((p) => !gSet.has(p) && !lSet.has(p));
-    if (sameSet(files, get().selectedFilePaths)) return;
-    set({ selectedFilePaths: files });
+  /** honours global & local exclusions, including *.ext patterns */
+  selectAllFiles: (allFilePaths, gSet, lSet) => {
+    const combinedExclusions = new Set([...gSet, ...lSet]);
+    // Filter the provided file paths based on the combined exclusions
+    const filesToSelect = allFilePaths.filter(
+      (filePath) => !isExcluded(filePath, combinedExclusions)
+    );
+
+    const normalizedFilesToSelect = filesToSelect.map(p => p.replace(/\\/g, '/'));
+
+    if (sameSet(normalizedFilesToSelect, get().selectedFilePaths)) return;
+    set({ selectedFilePaths: normalizedFilesToSelect });
   },
 
   deselectAllFiles: () => {
@@ -127,18 +172,21 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   /* ───── file contents ───── */
   filesData: [],
   setFilesData: (data) => {
-    // hızlı kontrol: aynı referans veya aynı uzunluk & her path eşleşiyor
+    const normalizedData = data.map(f => ({ ...f, path: f.path.replace(/\\/g, '/') }));
     const prev = get().filesData;
     const eq =
-      prev === data ||
-      (prev.length === data.length &&
-        prev.every((f, i) => f.path === data[i].path && f.tokenCount === data[i].tokenCount));
+      prev === normalizedData ||
+      (prev.length === normalizedData.length &&
+        prev.every((f, i) => f.path === normalizedData[i].path && f.tokenCount === normalizedData[i].tokenCount));
     if (eq) return;
-    set({ filesData: data });
+    set({ filesData: normalizedData });
   },
 
-  addFilesData: (data) =>
-    set((state) => ({ filesData: [...state.filesData, ...data] })),
+  addFilesData: (data) => {
+     const normalizedData = data.map(f => ({ ...f, path: f.path.replace(/\\/g, '/') }));
+     set((state) => ({ filesData: [...state.filesData, ...normalizedData] }));
+  },
+
 
   /* ───── flags ───── */
   isLoadingTree: false,
