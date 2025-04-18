@@ -6,6 +6,12 @@
  * itself) so downstream code never tries to “read” a folder as a file.
  *
  * exposes collapseAll()/expandAll() via ref
+ *
+ * FIX (Bug Report Fix): Checkbox state and interaction for empty/filtered folders.
+ *   - Introduced `collectSelectableFileDescendants` to get only file paths.
+ *   - Checkbox state (`checked`, `partial`) now based solely on selectable files.
+ *   - Checkbox is disabled (`isDisabled`) if a folder contains no selectable files.
+ *   - `toggleSelection` now uses `collectSelectableFileDescendants`.
  */
 
 import React, {
@@ -22,17 +28,20 @@ import { Badge } from "@/components/ui/badge";
 import {
   TooltipProvider, Tooltip, TooltipTrigger, TooltipContent,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils"; // Ensure cn is imported
 import type { FileNode } from "@/types";
 
 /* ─────────── helpers ─────────── */
+
 /**
- * Collect **file** descendants only.
- * A directory path itself is deliberately **excluded** so that the
- * selection list never contains folder entries.
+ * Recursively collect relative paths of *files* only within a node's subtree.
+ * Directories themselves are excluded from the result.
  */
-const collectDesc = (node: FileNode): string[] => {
-  if (node.type === "file" || !node.children) return [node.relativePath];
-  return node.children.flatMap(collectDesc);
+const collectSelectableFileDescendants = (node: FileNode): string[] => {
+  if (node.type === 'file') return [node.relativePath];
+  if (!node.children) return []; // Empty directory or file without children array
+  // Recursively collect files from children
+  return node.children.flatMap(collectSelectableFileDescendants);
 };
 
 /* ─────────── public interface ─────────── */
@@ -114,26 +123,35 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
   const selectedSet = useMemo(() => new Set(selectedFiles), [selectedFiles]);
 
   const toggleSelection = (n: FileNode) => {
-    const paths = collectDesc(n);
-    const next  = new Set(selectedSet);
-    const everySelected = paths.every(p => next.has(p));
-    paths.forEach(p => (everySelected ? next.delete(p) : next.add(p)));
+    const pathsToToggle = collectSelectableFileDescendants(n); // Use the file-only helper
+    if (pathsToToggle.length === 0) return; // Do nothing if no files to toggle
+
+    const next = new Set(selectedSet);
+    // Determine if *all* selectable files under this node are currently selected
+    const allCurrentlySelected = pathsToToggle.every(p => next.has(p));
+
+    // If all are selected, deselect them. Otherwise, select them.
+    pathsToToggle.forEach(p => (allCurrentlySelected ? next.delete(p) : next.add(p)));
     onSelectFiles(Array.from(next));
   };
 
   /* — render row — */
   const RowRenderer = ({ index, style }: ListChildComponentProps) => {
     const { node, depth } = rows[index];
-    const isDir   = node.type === "directory";
-    const desc    = collectDesc(node);
-    const checked = desc.every(p => selectedSet.has(p));
-    const partial = !checked && desc.some(p => selectedSet.has(p));
+    const isDir = node.type === "directory";
+
+    // Calculate checkbox state based *only* on selectable files
+    const selectableFiles = useMemo(() => collectSelectableFileDescendants(node), [node]);
+    const isEmpty = selectableFiles.length === 0;
+    const checked = !isEmpty && selectableFiles.every(p => selectedSet.has(p));
+    const partial = !isEmpty && !checked && selectableFiles.some(p => selectedSet.has(p));
+    const isDisabled = isEmpty; // Disable checkbox if no selectable files underneath
 
     return (
       <div
         style={{ ...style, paddingLeft: depth * 1.2 + "rem" }}
         className={`flex items-center pr-3 ${
-          checked
+          checked && !isDisabled // Only apply background if checked and not disabled (i.e., not an empty folder)
             ? "bg-indigo-50 dark:bg-indigo-950/30"
             : "hover:bg-gray-50 dark:hover:bg-gray-800/50"
         }`}
@@ -151,35 +169,40 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
             )}
           </button>
         ) : (
-          <span className="mr-5" />
+          <span className="mr-5" /> // Placeholder for alignment
         )}
 
         {/* checkbox */}
         <Checkbox
           id={`chk-${node.absolutePath}`}
-          checked={checked}
+          checked={checked} // 'checked' is now correctly calculated based on selectable files
+          // Use data-state for indeterminate visual style, Radix handles this well
           data-state={partial ? "indeterminate" : checked ? "checked" : "unchecked"}
           onCheckedChange={() => toggleSelection(node)}
-          className="data-[state=checked]:bg-indigo-500 data-[state=indeterminate]:bg-indigo-300 dark:data-[state=indeterminate]:bg-indigo-700"
+          disabled={isDisabled} // Add the disabled state
+          className={cn(
+            "data-[state=checked]:bg-indigo-500 data-[state=indeterminate]:bg-indigo-300 dark:data-[state=indeterminate]:bg-indigo-700",
+            isDisabled && "opacity-50 cursor-not-allowed border-gray-300 dark:border-gray-600" // Add styling for disabled state
+          )}
         />
 
         {/* icon + name */}
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span
-                className={`
-                  ml-2 truncate text-sm flex items-center gap-1
-                  ${
-                    isDir
-                      ? "text-amber-600 dark:text-amber-400"
-                      : "text-teal-600 dark:text-teal-400"
-                  }
-                `}
+              <label // Use label for better accessibility with checkbox
+                htmlFor={`chk-${node.absolutePath}`}
+                className={cn(
+                  `ml-2 truncate text-sm flex items-center gap-1 cursor-pointer`,
+                  isDir
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-teal-600 dark:text-teal-400",
+                  isDisabled && "text-gray-400 dark:text-gray-500" // Dim text if disabled
+                )}
               >
                 {isDir ? <Folder size={14} /> : <File size={14} />}
                 {node.name}
-              </span>
+              </label>
             </TooltipTrigger>
             <TooltipContent
               side="right"
@@ -208,6 +231,7 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
     <div className="flex flex-col items-center justify-center h-full py-8 text-gray-400">
       <Folder size={40} className="mb-2 opacity-50" />
       <p>No files to display</p>
+      {tree.length > 0 && <p className="text-xs mt-1">(Check filters?)</p>}
     </div>
   ) : (
     <div className="h-[350px]">
@@ -227,5 +251,7 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
     </div>
   );
 });
+
+FileTreeView.displayName = 'FileTreeView'; // Add display name for forwardRef
 
 export default React.memo(FileTreeView);
