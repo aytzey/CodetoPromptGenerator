@@ -1,5 +1,5 @@
 // File: pages/index.tsx
-// REFACTORED - Significantly smaller
+// REFACTORED - Simplified index page, removed WelcomeView logic
 import React from "react";
 import Head from "next/head";
 import { Loader2, Folder, KeyRound, PlusCircle } from "lucide-react";
@@ -9,7 +9,7 @@ import { useHomePageLogic } from "@/lib/hooks/useHomePageLogic";
 
 // Import Layout Components
 import HeaderView from "@/views/layout/HeaderView";
-import WelcomeView from "@/views/layout/WelcomeView";
+// import WelcomeView from "@/views/layout/WelcomeView"; // Removed
 import MainLayoutView from "@/views/layout/MainLayoutView";
 
 // Import Standalone Views used directly
@@ -35,10 +35,10 @@ export default function Home() {
   // Get all state and handlers from the custom hook
   const {
     isClient,
-    showWelcome,
+    // showWelcome, // Removed
     projectPath,
     isLoadingTree,
-    darkMode,
+    // darkMode, // Removed
     isSelecting,
     activeTab,
     filteredTree,
@@ -50,8 +50,8 @@ export default function Home() {
     showSettings,
     apiKeyDraft,
     handlePathSelected,
-    handleDismissWelcome,
-    toggleDark,
+    // handleDismissWelcome, // Removed
+    // toggleDark, // Removed
     autoSelect,
     setShowSettings,
     saveApiKey,
@@ -67,6 +67,7 @@ export default function Home() {
   } = useHomePageLogic();
 
   return (
+    // The 'dark' class is applied globally in _app.tsx
     <div className="min-h-screen">
       <Head>
         <title>Code → Prompt Generator</title>
@@ -77,10 +78,10 @@ export default function Home() {
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
-      {/* Use HeaderView Component */}
+      {/* Use HeaderView Component - Removed darkMode and toggleDark props */}
       <HeaderView
-        darkMode={darkMode}
-        toggleDark={toggleDark}
+        // darkMode={darkMode} // Removed
+        // toggleDark={toggleDark} // Removed
         onShowSettings={() => setShowSettings(true)}
         onAutoSelect={autoSelect}
         isSelecting={isSelecting}
@@ -90,10 +91,10 @@ export default function Home() {
       {/* Main Content Area */}
       <main className="container mx-auto px-4 sm:px-6 pt-6 pb-10">
         {/* Project Picker - Always Visible */}
-        <Card className="mb-6">
-          <CardHeader className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 py-3 px-4">
+        <Card className="mb-6"> {/* Card component uses dark theme styles via globals.css */}
+          <CardHeader className="py-3 px-4 border-b"> {/* Uses dark border from globals.css */}
             <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Folder size={16} className="text-indigo-500" />
+              <Folder size={16} className="text-indigo-400" /> {/* Adjusted color for dark */}
               Project Selection
             </CardTitle>
           </CardHeader>
@@ -106,14 +107,14 @@ export default function Home() {
           </CardContent>
         </Card>
 
-        {/* Conditional Rendering: Loading, Welcome, or Main Layout */}
+        {/* Conditional Rendering: Loading or Main Layout */}
         {!isClient ? (
           <div className="flex justify-center items-center py-10">
             <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
           </div>
-        ) : showWelcome && !projectPath ? (
-          <WelcomeView onDismiss={handleDismissWelcome} />
         ) : (
+          // Always render MainLayoutView if client is ready
+          // The view itself can handle the "no project selected" state internally
           <MainLayoutView
             // Pass all necessary props down
             activeTab={activeTab}
@@ -135,19 +136,21 @@ export default function Home() {
             totalTokens={totalTokens}
           />
         )}
+        {/* Removed WelcomeView logic */}
 
         {/* Footer */}
-        <footer className="mt-12 border-t pt-6 text-center text-xs text-gray-500 dark:text-gray-400">
+        <footer className="mt-12 border-t pt-6 text-center text-xs text-gray-400"> {/* Uses dark border/text from globals.css */}
           Code to Prompt Generator © {new Date().getFullYear()} Aytzey
         </footer>
       </main>
 
       {/* Settings Modal */}
       <Dialog open={showSettings} onOpenChange={setShowSettings}>
+        {/* DialogContent relies on dark class from html via globals.css */}
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <KeyRound size={18} className="text-indigo-500" />
+              <KeyRound size={18} className="text-indigo-400" /> {/* Adjusted color for dark */}
               OpenRouter Settings
             </DialogTitle>
           </DialogHeader>
@@ -162,7 +165,7 @@ export default function Home() {
               value={apiKeyDraft}
               onChange={(e) => setApiKeyDraft(e.target.value)}
             />
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-400"> {/* Uses dark text from globals.css */}
               Stored locally in your browser (never sent to our server).
             </p>
           </div>

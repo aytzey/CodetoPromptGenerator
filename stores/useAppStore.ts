@@ -2,8 +2,9 @@
 import { create } from "zustand";
 
 interface AppState {
-  darkMode: boolean;
-  toggleDarkMode(): void;
+  // Removed darkMode and toggleDarkMode
+  // darkMode: boolean;
+  // toggleDarkMode(): void;
 
   /** Global error banner (set via fetchApi) */
   error: string | null;
@@ -24,9 +25,9 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  /* theme */
-  darkMode: true,
-  toggleDarkMode: () => set((s) => ({ darkMode: !s.darkMode })),
+  /* theme - REMOVED */
+  // darkMode: true, // Default removed
+  // toggleDarkMode: () => set((s) => ({ darkMode: !s.darkMode })), // Action removed
 
   /* error handling */
   error: null,

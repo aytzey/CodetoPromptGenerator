@@ -4,21 +4,23 @@ import type { AppProps } from "next/app";
 import Head from "next/head";
 import { useEffect } from "react";
 
-import { useAppStore } from "@/stores/useAppStore";
+// Removed useAppStore import as darkMode state is no longer needed here
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 export default function MyApp({ Component, pageProps }: AppProps) {
-  const darkMode = useAppStore((s) => s.darkMode);
-
-  /* dark‑mode class toggle */
+  // Always apply dark theme on client mount
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", darkMode);
-  }, [darkMode]);
+    document.documentElement.classList.add('dark');
+    // Optional: Remove 'light' if it might exist from previous logic or SSR attempts
+    // document.documentElement.classList.remove('light');
+    // Ensure color scheme preference is set for browser UI consistency
+    document.documentElement.style.colorScheme = 'dark';
+  }, []);
 
   return (
     <>
       <Head>
-        <title>Code → Prompt Generator</title>
+        <title>Code → Prompt Generator</title>
         <meta name="description" content="Generate finely‑tuned LLM prompts straight from your code base." />
         <link rel="icon" href="/favicon.ico" />
       </Head>
