@@ -212,92 +212,92 @@ class ProjectService:
         tree.sort(key=lambda n: (n["type"] != "directory", n["name"].lower()))
         return tree
 
-# 2. Batch file content ----------------------------------------------------
-def get_files_content(
-    self, base_dir: str, relative_paths: List[str]
-) -> List[Dict[str, Any]]:
-    """Return contents + token counts for *relative_paths* under *base_dir*.
+    # 2. Batch file content ----------------------------------------------------
+    def get_files_content(
+        self, base_dir: str, relative_paths: List[str]
+    ) -> List[Dict[str, Any]]:
+        """Return contents + token counts for *relative_paths* under *base_dir*.
 
-    Robustness goals
-    ----------------
-    * Accept both **relative** *and* **absolute** paths in *relative_paths*.
-    * Tolerate callers that already include *base_dir* inside each path.
-    * Cope with the backend running from *python_backend/* by considering
-      the current working directory as another search root.
-    """
-    if not base_dir or not os.path.isdir(base_dir):
-        raise ValueError("Invalid base directory.")
-    if not isinstance(relative_paths, list):
-        raise ValueError("`paths` must be a list.")
+        Robustness goals
+        ----------------
+        * Accept both **relative** *and* **absolute** paths in *relative_paths*.
+        * Tolerate callers that already include *base_dir* inside each path.
+        * Cope with the backend running from *python_backend/* by considering
+        the current working directory as another search root.
+        """
+        if not base_dir or not os.path.isdir(base_dir):
+            raise ValueError("Invalid base directory.")
+        if not isinstance(relative_paths, list):
+            raise ValueError("`paths` must be a list.")
 
-    # Canonical absolute path for the supplied *base_dir*
-    base_dir_abs = os.path.abspath(base_dir)
+        # Canonical absolute path for the supplied *base_dir*
+        base_dir_abs = os.path.abspath(base_dir)
 
-    results: List[Dict[str, Any]] = []
+        results: List[Dict[str, Any]] = []
 
-    for raw in relative_paths:
-        raw = str(raw)  # guard against non‑string entries
+        for raw in relative_paths:
+            raw = str(raw)  # guard against non‑string entries
 
-        # ----------------------------------------------------------------
-        # Build **candidate locations** (ordered by likelihood)
-        # ----------------------------------------------------------------
-        candidates: List[str] = []
+            # ----------------------------------------------------------------
+            # Build **candidate locations** (ordered by likelihood)
+            # ----------------------------------------------------------------
+            candidates: List[str] = []
 
-        # 1) Caller gave an *absolute* path → trust it first
-        if os.path.isabs(raw):
-            candidates.append(os.path.abspath(raw))
-        else:
-            # 2) Standard – treat it as relative to *base_dir*
-            candidates.append(os.path.join(base_dir_abs, raw))
-
-        # 3) Raw path relative to the backend's CWD (python_backend)
-        candidates.append(os.path.abspath(raw))
-
-        # 4) Sometimes callers erroneously include *base_dir* already –
-        #    Joining again would duplicate, so check as‑is.
-        if not os.path.isabs(raw):
-            maybe_prefixed = os.path.join(base_dir_abs, os.path.normpath("/" + raw).lstrip(os.sep))
-            candidates.append(maybe_prefixed)
-
-        # De‑duplicate while preserving order
-        deduped: List[str] = []
-        seen: Set[str] = set()
-        for cand in candidates:
-            if cand not in seen:
-                deduped.append(cand)
-                seen.add(cand)
-
-        chosen_path: Optional[str] = next((p for p in deduped if os.path.isfile(p)), None)
-
-        # Prepare response shell
-        info: Dict[str, Any] = {
-            "path": raw,  # echo the original request element
-            "content": "",
-            "tokenCount": 0,
-        }
-
-        if chosen_path is None:
-            info["content"] = f"File not found on server: {raw}"
-            results.append(info)
-            continue
-
-        # ------------------------------------------------------------ read
-        try:
-            content = self._storage_repo.read_text(chosen_path) or ""
-            info["content"] = content
-
-            if len(content) > _TOKEN_COUNT_SIZE_LIMIT:
-                info["tokenCount"] = -1  # skip excessively large files
-                logger.debug("Token count skipped for %s (>%s chars)", chosen_path, _TOKEN_COUNT_SIZE_LIMIT)
+            # 1) Caller gave an *absolute* path → trust it first
+            if os.path.isabs(raw):
+                candidates.append(os.path.abspath(raw))
             else:
-                info["tokenCount"] = self._token_count(content)
-        except Exception as exc:  # pragma: no cover
-            logger.error("Failed reading %s – %s", chosen_path, exc)
-            info["content"] = f"Error reading file: {raw}"
+                # 2) Standard – treat it as relative to *base_dir*
+                candidates.append(os.path.join(base_dir_abs, raw))
 
-        results.append(info)
+            # 3) Raw path relative to the backend's CWD (python_backend)
+            candidates.append(os.path.abspath(raw))
 
-    return results
+            # 4) Sometimes callers erroneously include *base_dir* already –
+            #    Joining again would duplicate, so check as‑is.
+            if not os.path.isabs(raw):
+                maybe_prefixed = os.path.join(base_dir_abs, os.path.normpath("/" + raw).lstrip(os.sep))
+                candidates.append(maybe_prefixed)
+
+            # De‑duplicate while preserving order
+            deduped: List[str] = []
+            seen: Set[str] = set()
+            for cand in candidates:
+                if cand not in seen:
+                    deduped.append(cand)
+                    seen.add(cand)
+
+            chosen_path: Optional[str] = next((p for p in deduped if os.path.isfile(p)), None)
+
+            # Prepare response shell
+            info: Dict[str, Any] = {
+                "path": raw,  # echo the original request element
+                "content": "",
+                "tokenCount": 0,
+            }
+
+            if chosen_path is None:
+                info["content"] = f"File not found on server: {raw}"
+                results.append(info)
+                continue
+
+            # ------------------------------------------------------------ read
+            try:
+                content = self._storage_repo.read_text(chosen_path) or ""
+                info["content"] = content
+
+                if len(content) > _TOKEN_COUNT_SIZE_LIMIT:
+                    info["tokenCount"] = -1  # skip excessively large files
+                    logger.debug("Token count skipped for %s (>%s chars)", chosen_path, _TOKEN_COUNT_SIZE_LIMIT)
+                else:
+                    info["tokenCount"] = self._token_count(content)
+            except Exception as exc:  # pragma: no cover
+                logger.error("Failed reading %s – %s", chosen_path, exc)
+                info["content"] = f"Error reading file: {raw}"
+
+            results.append(info)
+
+        return results
 
     # 3. Utility helpers -------------------------------------------------------
     def get_available_drives(self) -> List[Dict[str, str]]:
