@@ -1,7 +1,7 @@
-// views/InstructionsInputView.tsx
-// REFACTOR / OVERWRITE
-import React, { useEffect } from 'react'; // Removed unused useState
-import { Save, RefreshCw, FileText, Download, Edit3, XCircle, Loader2, Undo, Redo } from 'lucide-react'; // Added Undo, Redo
+// FILE: views/InstructionsInputView.tsx
+// FULL FILE - Added Refine Prompt Button and Logic
+import React, { useEffect, useState } from 'react'; // Added useState
+import { Save, RefreshCw, FileText, Download, Edit3, XCircle, Loader2, Undo, Redo, Sparkles } from 'lucide-react'; // Added Sparkles
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -29,7 +29,8 @@ const InstructionsInputView: React.FC = () => {
   } = usePromptStore();
 
   // Get actions from service hook
-  const { fetchMetaPromptList, loadMetaPrompt, saveMetaPrompt } = usePromptService();
+  const { fetchMetaPromptList, loadMetaPrompt, saveMetaPrompt, useRefinePrompt } = usePromptService();
+  const { refinePrompt, isRefining } = useRefinePrompt(); // Get refine function and loading state
 
   // --- Undo/Redo Hook for Main Instructions ---
   const {
@@ -74,15 +75,7 @@ const InstructionsInputView: React.FC = () => {
   // Handler for Select change
   const handleSelectChange = (value: string) => {
       setSelectedMetaFile(value === "none" ? "" : value);
-      // Automatically load the selected prompt
-      if (value !== "none") {
-          // Need to trigger loadMetaPrompt after state update
-          // Use useEffect in the component or adjust loadMetaPrompt logic
-          // For simplicity, let's assume loadMetaPrompt uses the latest state from store
-          // Or pass the value directly if the hook supports it
-          // This requires loadMetaPrompt to be adjusted or called differently
-          // Let's defer this auto-load for now and rely on the Load button
-      }
+      // Auto-load handled by useEffect below
   };
 
   // --- KeyDown Handler for Undo/Redo ---
@@ -105,6 +98,21 @@ const InstructionsInputView: React.FC = () => {
     // Allow other key combinations to pass through
   };
   // --- End KeyDown Handler ---
+
+  // --- Refine Prompt Handler ---
+  const handleRefinePrompt = async () => {
+    if (!currentMainInstructions.trim() || isRefining) return;
+
+    const refinedText = await refinePrompt(currentMainInstructions);
+
+    if (refinedText !== null) {
+      // Update the text area using the undo/redo hook's setter
+      // This ensures the refined text is added to the undo history.
+      updateMainInstructionsValue(refinedText);
+    }
+    // Error handling is managed by the service hook/fetchApi
+  };
+  // --- End Refine Prompt Handler ---
 
   // Effect to load meta prompt content when selectedMetaFile changes
   useEffect(() => {
@@ -156,9 +164,6 @@ const InstructionsInputView: React.FC = () => {
               ))}
             </SelectContent>
           </Select>
-
-          {/* Removed Load button as it now loads automatically on select */}
-          {/* <TooltipProvider delayDuration={100}> ... </TooltipProvider> */}
 
           <TooltipProvider delayDuration={100}>
             <Tooltip>
@@ -245,8 +250,25 @@ const InstructionsInputView: React.FC = () => {
           <Label htmlFor="main-instructions-area" className="text-sm font-medium text-gray-700 dark:text-gray-300">
             Main Instructions:
           </Label>
-          {/* Undo/Redo Buttons */}
+          {/* Undo/Redo/Refine Buttons */}
           <div className="flex items-center gap-1">
+             {/* Refine Button */}
+             <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost" size="icon"
+                      className="h-6 w-6 text-purple-500 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-200 disabled:opacity-50"
+                      onClick={handleRefinePrompt}
+                      disabled={!currentMainInstructions.trim() || isRefining || isLoadingMetaContent || isSavingMeta}
+                    >
+                      {isRefining ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom"><p>Refine prompt with AI (Gemma)</p></TooltipContent>
+                </Tooltip>
+             </TooltipProvider>
+             {/* Undo Button */}
              <TooltipProvider delayDuration={150}>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -257,6 +279,7 @@ const InstructionsInputView: React.FC = () => {
                   <TooltipContent side="bottom"><p>Undo (Ctrl+Z)</p></TooltipContent>
                 </Tooltip>
              </TooltipProvider>
+             {/* Redo Button */}
              <TooltipProvider delayDuration={150}>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -267,6 +290,7 @@ const InstructionsInputView: React.FC = () => {
                   <TooltipContent side="bottom"><p>Redo (Ctrl+Y)</p></TooltipContent>
                 </Tooltip>
              </TooltipProvider>
+             {/* Character Count */}
              <span className={`text-xs font-mono ${getCounterColor(mainCount)} ml-2`}>
                 {mainCount} / {MAX_CHARS}
              </span>
@@ -279,12 +303,12 @@ const InstructionsInputView: React.FC = () => {
           onKeyDown={handleMainInstructionsKeyDown} // Add keydown listener
           className="min-h-[120px] bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 focus:ring-1 focus:ring-indigo-500 focus:border-transparent resize-y text-sm"
           placeholder="Enter your main instructions for the task..."
-           disabled={isLoadingMetaContent || isSavingMeta} // Disable if related actions are happening
+           disabled={isLoadingMetaContent || isSavingMeta || isRefining} // Disable if related actions are happening
         />
         <Progress value={mainPercentage} className={`h-1 ${getProgressColor(mainCount)}`} />
          {currentMainInstructions && ( // Check hook's value
           <div className="flex justify-end -mt-1">
-            <Button variant="ghost" size="sm" className="text-xs h-7 text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-200 hover:bg-rose-50 dark:hover:bg-rose-900/50" onClick={clearMainInstructions} disabled={isLoadingMetaContent || isSavingMeta}>
+            <Button variant="ghost" size="sm" className="text-xs h-7 text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-200 hover:bg-rose-50 dark:hover:bg-rose-900/50" onClick={clearMainInstructions} disabled={isLoadingMetaContent || isSavingMeta || isRefining}>
               <XCircle className="mr-1 h-3.5 w-3.5" /> Clear
             </Button>
           </div>

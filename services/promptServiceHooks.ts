@@ -1,9 +1,14 @@
-// File: services/promptServiceHooks.ts
-// NEW FILE
-import { useCallback } from 'react';
+// FILE: services/promptServiceHooks.ts
+// FULL FILE - Verified useRefinePrompt function
+import { useCallback, useState } from 'react'; // Added useState
 import { usePromptStore } from '@/stores/usePromptStore';
 import { useAppStore } from '@/stores/useAppStore';
 import { fetchApi } from './apiService';
+
+// Type for the refine API response
+interface RefinePromptResponse {
+    refinedPrompt: string;
+}
 
 export function usePromptService() {
     const {
@@ -73,5 +78,46 @@ export function usePromptService() {
         setIsSavingMeta(false);
     }, [setError, setIsSavingMeta, setNewMetaFileName, fetchMetaPromptList]); // Dependencies
 
-    return { fetchMetaPromptList, loadMetaPrompt, saveMetaPrompt };
+    // --- NEW FUNCTION for Prompt Refinement ---
+    const useRefinePrompt = () => {
+        const [isRefining, setIsRefining] = useState(false);
+        const { setError } = useAppStore(); // Get setError from the app store
+
+        const refinePrompt = useCallback(async (textToRefine: string): Promise<string | null> => {
+            if (!textToRefine.trim()) {
+                setError("Cannot refine empty text.");
+                return null;
+            }
+
+            setIsRefining(true);
+            setError(null); // Clear previous errors
+
+            const result = await fetchApi<RefinePromptResponse>(`/api/prompt/refine`, {
+                method: 'POST',
+                body: JSON.stringify({ text: textToRefine }),
+            });
+
+            setIsRefining(false);
+
+            if (result) {
+                // Ensure the response structure matches before accessing refinedPrompt
+                if (typeof result === 'object' && result !== null && 'refinedPrompt' in result) {
+                    return result.refinedPrompt;
+                } else {
+                    console.error("Unexpected response structure from /api/prompt/refine:", result);
+                    setError("Received unexpected data format from refinement service.");
+                    return null;
+                }
+            } else {
+                // Error is handled globally by fetchApi, but we return null to indicate failure
+                return null;
+            }
+        }, [setError]); // Add setError dependency
+
+        return { refinePrompt, isRefining };
+    };
+    // --- END NEW FUNCTION ---
+
+
+    return { fetchMetaPromptList, loadMetaPrompt, saveMetaPrompt, useRefinePrompt };
 }
