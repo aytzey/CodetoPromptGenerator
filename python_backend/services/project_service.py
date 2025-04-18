@@ -212,7 +212,7 @@ class ProjectService:
         tree.sort(key=lambda n: (n["type"] != "directory", n["name"].lower()))
         return tree
 
-     # 2. Batch file content ----------------------------------------------------
+    # 2. Batch file content ----------------------------------------------------
     def get_files_content(
         self, base_dir: str, relative_paths: List[str]
     ) -> List[Dict[str, Any]]:
@@ -221,11 +221,10 @@ class ProjectService:
 
             [{ "path": <str>, "content": <str>, "tokenCount": <int> }, … ]
 
-        * Accepts **relative** or **absolute** paths.
-        * Falls back to a second resolution strategy if the first lookup fails.
-          This guards against edge‑cases such as:
-              – paths that already include *base_dir* by accident
-              – mixed path‑separators on Windows runners
+        Robust path‑resolution strategy that works even when the caller passes
+        *absolute* paths, *mixed* separators (Windows runners) or paths that
+        already include the *base_dir* prefix.  We iterate through multiple
+        candidates and pick the first existing file.
         """
         if not base_dir or not os.path.isdir(base_dir):
             raise ValueError("Invalid base directory.")
@@ -234,29 +233,43 @@ class ProjectService:
 
         base_dir = os.path.abspath(base_dir)
         results: List[Dict[str, Any]] = []
+        cwd      = os.getcwd()
 
         for raw in relative_paths:
-            is_abs = os.path.isabs(raw)
+            # Build a *deduplicated* candidate list – order matters.
+            candidates: List[str] = []
+            if os.path.isabs(raw):
+                candidates.append(raw)
+                # If abs path starts with base_dir, also include the trimmed version
+                try:
+                    rel_to_base = os.path.relpath(raw, base_dir)
+                    if not rel_to_base.startswith(".."):
+                        candidates.append(os.path.join(base_dir, rel_to_base))
+                except Exception:
+                    pass
+            else:
+                candidates.append(os.path.join(base_dir, raw))
+                candidates.append(os.path.abspath(raw))           # relative to CWD
 
-            # ---- candidate 1 (the "normal" resolution) ----------------------
-            rel_norm  = self._norm(raw if not is_abs else os.path.relpath(raw, base_dir))
-            full_path = os.path.abspath(raw) if is_abs else os.path.join(base_dir, rel_norm)
+            # Normalise & de‑dup
+            uniq: List[str] = []
+            seen: Set[str] = set()
+            for c in candidates:
+                p = os.path.abspath(c)
+                if p not in seen:
+                    seen.add(p)
+                    uniq.append(p)
 
-            # ---- candidate 2 (defensive fallback) ---------------------------
-            # The autograder occasionally sends *absolute* paths even while
-            # still providing a relative `baseDir`.  When the above join()
-            # doesn’t yield a file, try the raw path verbatim.
-            alt_path = os.path.abspath(raw)
+            chosen_path: Optional[str] = None
+            for cand in uniq:
+                if os.path.isfile(cand):
+                    chosen_path = cand
+                    break
 
-            chosen_path = None
-            if os.path.isfile(full_path):
-                chosen_path = full_path
-            elif os.path.isfile(alt_path):
-                chosen_path = alt_path
+            rel_display = self._norm(raw if not os.path.isabs(raw) else os.path.relpath(chosen_path or raw, base_dir))
+            info: Dict[str, Any] = {"path": rel_display, "content": "", "tokenCount": 0}
 
-            info: Dict[str, Any] = {"path": rel_norm, "content": "", "tokenCount": 0}
-
-            if chosen_path is None:                       # still not found
+            if chosen_path is None:
                 info["content"] = f"File not found on server: {raw}"
                 results.append(info)
                 continue
@@ -280,7 +293,6 @@ class ProjectService:
             results.append(info)
 
         return results
-
 
     # 3. Utility helpers -------------------------------------------------------
     def get_available_drives(self) -> List[Dict[str, str]]:
