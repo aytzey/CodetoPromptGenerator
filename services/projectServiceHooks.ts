@@ -1,14 +1,5 @@
-// services/projectServiceHooks.ts
-/**
- * Authoritative loader for:
- *   • project tree  (GET /projects/tree)
- *   • file contents (POST /projects/files)
- *
- * Now avoids an infinite refresh loop by only
- * updating selectedFilePaths *iff* the list
- * actually changed.
- */
-
+// File: services/projectServiceHooks.ts
+// FULL FILE – Correction applied
 import { useCallback } from 'react';
 import { useProjectStore } from '@/stores/useProjectStore';
 import { fetchApi } from './apiService';
@@ -22,7 +13,7 @@ const sameSet = (a: string[], b: string[]) => {
 };
 
 export function useProjectService() {
-  const st = useProjectStore; // ✅ stable reference, but included in deps for eslint
+  const st = useProjectStore; // stable reference
 
   /* ─────── tree ─────── */
   const loadProjectTree = useCallback(async () => {
@@ -35,7 +26,7 @@ export function useProjectService() {
     );
     st.getState().setIsLoadingTree(false);
     st.getState().setFileTree(tree ?? []);
-  }, [st]);          // 🟢 added `st` to dependency array
+  }, [st]); // Dependency on stable store reference
 
   /* ─── selected file‑contents ─── */
   const loadSelectedFileContents = useCallback(async () => {
@@ -58,18 +49,23 @@ export function useProjectService() {
       body : JSON.stringify({ baseDir: projectPath, paths: pathsToFetch }),
     });
     st.getState().setIsLoadingContents(false);
-    if (!res) return;                          // error already surfaced
+    if (!res) return; // error already surfaced
 
-    /* 🔎 Keep only non‑empty files */
+    /* 🔎 Keep only non‑empty files and update the filesData store */
     const valid = res.filter(f => (f.tokenCount ?? 0) > 0);
     st.getState().setFilesData(valid);
 
-    /* 🛑 Update selection only if it truly differs */
-    const keep = valid.map(f => f.path);
-    if (!sameSet(keep, selectedFilePaths)) {
-      st.getState().setSelectedFilePaths(keep);
-    }
-  }, [st]);          // 🟢 added `st` to dependency array
+    /*
+     * 🛑 FIX: REMOVED THE BLOCK BELOW TO PREVENT INFINITE LOOP
+     * Loading content should not implicitly change the selection.
+     * The selection should only change via user interaction or explicit features (like auto-select).
+     */
+    // const keep = valid.map(f => f.path);
+    // if (!sameSet(keep, selectedFilePaths)) {
+    //   st.getState().setSelectedFilePaths(keep); // <-- THIS CAUSED THE LOOP
+    // }
+
+  }, [st]); // Dependency on stable store reference
 
   return { loadProjectTree, loadSelectedFileContents };
 }
