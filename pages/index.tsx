@@ -1,6 +1,6 @@
 // File: pages/index.tsx
 // FULL FILE – 2025‑04‑17
-// 🔧 FIX: fetch local exclusions immediately when a project is selected
+// 🔧 FIX: Prevent UI flash on refresh by delaying main content render until client mount.
 // ──────────────────────────────────────────────────────────────────────
 
 import React, {
@@ -39,6 +39,7 @@ import {
   ChevronsDown,
   KeyRound,
   PlusCircle,
+  Loader2, // Added for loading state
 } from "lucide-react";
 
 import { useSelectionGroupStore } from "@/stores/useSelectionGroupStore";
@@ -168,7 +169,15 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [apiKeyDraft, setApiKeyDraft] = useState<string>("");
 
+  /* ✨ FIX: State to prevent UI flash on hydration */
+  const [isClient, setIsClient] = useState(false);
+
   /* ————————————————— lifecycle ————————————————— */
+  /* ✨ FIX: Set isClient to true only after mounting */
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   /* ① initial load */
   useEffect(() => {
     fetchGlobalExclusions();
@@ -179,11 +188,13 @@ export default function Home() {
   /* ② respond to projectPath change */
   useEffect(() => {
     if (projectPath) {
-      setShowWelcome(false);
+      setShowWelcome(false); // Still hide welcome if project is selected
       loadProjectTree();
       loadTodos();
       fetchLocalExclusions();                                   // ← NEW: load project‑specific exclusions
     } else {
+      // Reset welcome state if project path is cleared
+      setShowWelcome(true);
       useProjectStore.setState({
         fileTree: [],
         selectedFilePaths: [],
@@ -396,7 +407,7 @@ export default function Home() {
 
       {/* ────────────── MAIN ────────────── */}
       <main className="container mx-auto px-4 sm:px-6 pt-6 pb-10">
-        {/* project picker */}
+        {/* project picker - always visible */}
         <Card className="mb-6">
           <CardHeader className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 py-3 px-4">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -413,8 +424,14 @@ export default function Home() {
           </CardContent>
         </Card>
 
-        {/* welcome */}
-        {showWelcome && !projectPath ? (
+        {/* ✨ FIX: Conditional rendering based on client-side readiness */}
+        {!isClient ? (
+          // Render a placeholder or nothing during SSR/hydration mismatch phase
+          <div className="flex justify-center items-center py-10">
+            <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
+          </div>
+        ) : showWelcome && !projectPath ? (
+          // Render Welcome message only on client and if conditions met
           <Card className="mt-6 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 border-indigo-100 dark:border-indigo-900/40 shadow-lg overflow-hidden">
             <CardContent className="p-6 md:p-8 flex flex-col items-center text-center">
               <Rocket size={48} className="text-indigo-500 mb-4" />
@@ -428,13 +445,14 @@ export default function Home() {
               <Button
                 variant="outline"
                 className="mt-6"
-                onClick={() => setShowWelcome(false)}
+                onClick={() => setShowWelcome(false)} // Allow dismissing manually too
               >
                 Dismiss
               </Button>
             </CardContent>
           </Card>
         ) : (
+          // Render main grid only on client and if Welcome is not shown
           /* GRID */
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* LEFT – Tabs */}
@@ -595,14 +613,14 @@ export default function Home() {
                 <TabsContent value="options" className="mt-4 space-y-5">
                   <ExclusionsManagerView />
                   {projectPath && (
-                    <LocalExclusionsManagerView projectPath={projectPath} />
+                    <LocalExclusionsManagerView /> // Removed projectPath prop as it's read from store now
                   )}
                 </TabsContent>
 
                 {/* TASKS TAB */}
                 <TabsContent value="tasks" className="mt-4">
                   {projectPath ? (
-                    <TodoListView />
+                    <TodoListView /> // Removed projectPath prop
                   ) : (
                     <div className="p-6 border border-dashed text-center text-gray-500 dark:text-gray-400 rounded-lg">
                       <ListChecks size={32} className="mx-auto mb-2 opacity-50" />
@@ -668,6 +686,7 @@ export default function Home() {
               </Card>
             </div>
           </div>
+          /* END GRID */
         )}
 
         {/* footer */}
