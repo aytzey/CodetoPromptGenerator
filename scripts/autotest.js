@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // scripts/autotest.js
 
 /**
@@ -6,14 +5,18 @@
  * ---------------------------------------------------
  * This script performs checks on the Python backend (Flask) and
  * the Next.js frontend to ensure they satisfy project requirements.
+ *
+ * FIX (2025-04-19): Corrected assertion logic in the POST /api/projects/files test.
+ *                   It now checks for the specific error message prefix instead of
+ *                   just the substring "File not found" within the actual file content.
  */
 const fs = require('fs');
 const path = require('path');
 const { EOL } = require('os');
 
 // --- Helper Functions --- (Copied from start.js)
-function parseIni(iniContent) { /* ... same as in start.js ... */ }
-function getPortConfig() { /* ... same as in start.js ... */ }
+function parseIni(iniContent) { /* ... same as before ... */ }
+function getPortConfig() { /* ... same as before ... */ }
 // --- End Helper Functions ---
 
 // --- Main Test Logic ---
@@ -108,17 +111,20 @@ function getPortConfig() { /* ... same as in start.js ... */ }
   });
 
   await runTest("Backend: GET /api/projects/tree returns valid structure for known directory", async () => {
-    const testDir = __dirname; // Using the scripts directory itself
+    // Use project root directory for a more comprehensive test
+    const testDir = path.dirname(__dirname); // Project root
     const url = `${BACKEND_BASE_URL}/api/projects/tree?rootDir=${encodeURIComponent(testDir)}`; // Use dynamic URL
     const resp = await fetch(url);
-    if (!resp.ok) throw new Error("Expected HTTP 200 but got " + resp.status);
+    if (!resp.ok) throw new Error("Expected HTTP 200 but got " + resp.status + " " + await resp.text());
     const data = await resp.json();
     if (!data.success) throw new Error("Expected success=true in response");
     if (!Array.isArray(data.data)) throw new Error("Expected data to be an array of FileNode objects");
+    // Add a basic check for content
+    if (data.data.length === 0) throw new Error("Expected non-empty file tree for project root");
   });
 
    await runTest("Backend: POST /api/projects/files fetches file contents with correct tokenCount", async () => {
-    const baseDir = path.dirname(__dirname); // Project root might be better? Let's use scripts dir parent
+    const baseDir = path.dirname(__dirname); // Project root
     const relativePaths = ["scripts/autotest.js"]; // Relative to project root
     const resp = await fetch(`${BACKEND_BASE_URL}/api/projects/files`, { // Use dynamic URL
       method: "POST",
@@ -132,7 +138,14 @@ function getPortConfig() { /* ... same as in start.js ... */ }
     if (!Array.isArray(data.data) || data.data.length !== 1) throw new Error("Expected data to be an array of length 1");
     const fileItem = data.data[0];
     if (!fileItem.content || fileItem.tokenCount < 1) throw new Error("File content or tokenCount missing/invalid");
-    if(fileItem.content.includes("File not found")) throw new Error("Backend reported file not found unexpectedly.");
+
+    // --- CORRECTED ASSERTION ---
+    // Check if the content *starts with* the specific error message, not just includes "File not found"
+    const fileNotFoundPrefix = "File not found on server:";
+    if (typeof fileItem.content === 'string' && fileItem.content.startsWith(fileNotFoundPrefix)) {
+        throw new Error(`Backend reported file not found unexpectedly. Content: "${fileItem.content.substring(0, 100)}..."`);
+    }
+    // --- END CORRECTION ---
   });
 
   await runTest("Backend: POST /api/projects/files returns 'File not found' for invalid path", async () => {
@@ -146,7 +159,11 @@ function getPortConfig() { /* ... same as in start.js ... */ }
     const data = await resp.json();
     if (!data.success) throw new Error("Expected success=true in response");
     if (!Array.isArray(data.data) || data.data.length !== 1) throw new Error("Expected exactly one file result");
-    if (!data.data[0].content.includes("File not found on server")) throw new Error("Expected a 'File not found' message");
+    // Check for the specific error message prefix
+    const fileNotFoundPrefix = "File not found on server:";
+    if (!data.data[0].content || !data.data[0].content.startsWith(fileNotFoundPrefix)) {
+        throw new Error(`Expected a '${fileNotFoundPrefix}' message, got: "${data.data[0].content?.substring(0,100)}..."`);
+    }
   });
 
   // --- Frontend Checks ---
@@ -211,8 +228,8 @@ function parseIni(iniContent) {
 function getPortConfig() {
     const PORTS_INI_PATH = path.join(__dirname,'..', 'ports.ini'); // Relative path from scripts dir
     const defaults = {
-        frontendPort: '3000',
-        backendPort: '5000',
+        frontendPort: '3010',
+        backendPort: '5010',
         protocol: 'http',
         host: '127.0.0.1'
     };
