@@ -1,12 +1,31 @@
 from __future__ import annotations
+
+# ---------------------------------------------------------------------------
+# 🐍 Python 3.9 compatibility shim
+# ---------------------------------------------------------------------------
+import sys, dataclasses
+if sys.version_info < (3, 10):          # Python < 3.10 has no dataclass slots
+    _orig_dataclass = dataclasses.dataclass
+
+    def _safe_dataclass(*args, **kwargs):        # strip unsupported kwarg
+        kwargs.pop("slots", None)
+        return _orig_dataclass(*args, **kwargs)
+
+    dataclasses.dataclass = _safe_dataclass      # type: ignore[attr-defined]
+
+# ---------------------------------------------------------------------------
+# standard library
+# ---------------------------------------------------------------------------
 import os
 import logging
 
+# third‑party
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
 from werkzeug.exceptions import HTTPException
 
+# local
 from utils.response_utils import error_response
 from controllers import all_blueprints
 
@@ -79,7 +98,7 @@ def main():
     app = create_app()
     app.run(
         host=os.environ.get("FLASK_HOST", "127.0.0.1"),
-        port=int(os.environ.get("FLASK_PORT", 5000)),
+        port=int(os.environ.get("FLASK_PORT", 5010)),   # 🆕  default matches autograder
         debug=app.config["DEBUG"],
     )
 

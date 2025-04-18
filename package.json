@@ -5,7 +5,7 @@
     "scripts": {
       "dev": "next dev",
       "build": "npx --yes node@18.18.0 ./node_modules/next/dist/bin/next build",
-      "start": "next start",
+      "start": "npx --yes node@18.18.0 ./node_modules/next/dist/bin/next start -p 3010",
       "lint": "next lint",
       "backend": "cd python_backend && python app.py",
       "start:dev": "node start.js",
