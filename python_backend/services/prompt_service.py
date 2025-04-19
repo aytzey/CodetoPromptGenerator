@@ -49,7 +49,7 @@ class PromptService:
         user_prompt_parts = [f"Refine the following text into a well-written LLM prompt (output must be English):\n\nInput Text:\n```\n{text}\n```"]
         if tree_text and tree_text.strip():
             # Limit tree text length to avoid excessive prompt size (adjust limit as needed)
-            max_tree_chars = 2000
+            max_tree_chars = 20000
             truncated_tree_text = tree_text.strip()[:max_tree_chars]
             if len(tree_text.strip()) > max_tree_chars:
                 truncated_tree_text += "\n... (tree truncated)"
