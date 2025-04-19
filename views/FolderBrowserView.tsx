@@ -1,9 +1,5 @@
-// views/FolderBrowserView.tsx  — PATCH #2
-// --------------------------------------------------
-// • Guards against `path` being undefined when the backend
-//   answers 403 / 5xx, preventing the “path is undefined” crash
-// • Gracefully surfaces 4xx/5xx responses in the UI
-// • No behavioural change when the backend is healthy
+// views/FolderBrowserView.tsx
+// FIX: Clear search input when browsing into a new folder.
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -74,7 +70,7 @@ export default function FolderBrowserView({
   const [parentPath, setParentPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(''); // State for search input
 
   /* -------------- effects --------------- */
   useEffect(() => {
@@ -112,6 +108,7 @@ export default function FolderBrowserView({
   async function browse(dir: string) {
     try {
       setLoading(true);
+      setSearch(''); // <<< FIX: Clear search term when browsing
       const j = await fetchJson(
         `${API}/api/browse_folders?path=${encodeURIComponent(dir)}`
       );
@@ -131,6 +128,7 @@ export default function FolderBrowserView({
   }
 
   /* -------------- derived --------------- */
+  // Filter folders based on the search state
   const filtered = folders.filter(f =>
     f.name.toLowerCase().includes(search.toLowerCase())
   );
@@ -196,13 +194,14 @@ export default function FolderBrowserView({
                 )}
               </div>
 
+              {/* Search Input */}
               <div className="relative w-56">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
                   className="pl-7 h-8"
                   placeholder="Search…"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
+                  value={search} // Controlled input
+                  onChange={e => setSearch(e.target.value)} // Update search state
                 />
               </div>
             </div>
@@ -219,10 +218,10 @@ export default function FolderBrowserView({
                   <Loader2 className="animate-spin text-indigo-500 mb-3" />
                   <p>Loading…</p>
                 </div>
-              ) : filtered.length === 0 ? (
+              ) : filtered.length === 0 ? ( // Use filtered list here
                 <div className="flex flex-col items-center py-12 text-gray-500">
                   <Folder size={32} className="mb-3 opacity-50" />
-                  <p>No folders</p>
+                  <p>{search ? 'No matching folders found' : 'No folders'}</p>
                 </div>
               ) : (
                 <Table>
@@ -233,11 +232,12 @@ export default function FolderBrowserView({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
+                    {/* Render the filtered list */}
                     {filtered.map(f => (
                       <TableRow
                         key={f.path}
                         className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
-                        onClick={() => browse(f.path)}
+                        onClick={() => browse(f.path)} // Clicking calls browse
                       >
                         <TableCell className="font-medium flex items-center gap-2">
                           <Folder size={14} className="text-amber-500" /> {f.name}
