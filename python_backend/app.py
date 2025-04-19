@@ -22,12 +22,17 @@ import logging
 # third‑party
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from dotenv import load_dotenv
+from dotenv import load_dotenv # <-- Import load_dotenv
 from werkzeug.exceptions import HTTPException
 
 # local
 from utils.response_utils import error_response
 from controllers import all_blueprints
+
+# --- Load environment variables from .env file ---
+# This should be called as early as possible
+load_dotenv()
+# -------------------------------------------------
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 def create_app(test_config=None):
     """Create and configure the Flask application."""
-    load_dotenv()
+    # load_dotenv() # Moved to top level for earlier access
 
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_mapping(
@@ -69,7 +74,9 @@ def create_app(test_config=None):
 
     @app.errorhandler(400)
     def bad_request_error(e):
-        return error_response("Bad Request", str(e), 400)
+        # If the exception has a description attribute (like Werkzeug exceptions), use it
+        description = getattr(e, 'description', str(e))
+        return error_response("Bad Request", description, 400)
 
     @app.errorhandler(405)
     def method_not_allowed_error(_):
@@ -78,7 +85,9 @@ def create_app(test_config=None):
     @app.errorhandler(Exception)
     def handle_exception(e):
         if isinstance(e, HTTPException):
-            return e
+            # Use the description from the HTTPException if available
+            description = getattr(e, 'description', str(e))
+            return error_response(e.name, description, e.code)
         logger.exception("Unhandled exception")
         return error_response("Internal Server Error", str(e), 500)
 
@@ -91,6 +100,9 @@ def create_app(test_config=None):
         return jsonify({"status": "healthy"}), 200
 
     logger.info("Flask application initialized successfully.")
+    logger.info(f"Debug mode: {app.config['DEBUG']}")
+    # Log the API key presence (but not the key itself!)
+    logger.info(f"OpenRouter API Key Loaded: {'Yes' if os.getenv('OPENROUTER_API_KEY') else 'No'}")
     return app
 
 
@@ -98,7 +110,7 @@ def main():
     app = create_app()
     app.run(
         host=os.environ.get("FLASK_HOST", "127.0.0.1"),
-        port=int(os.environ.get("FLASK_PORT", 5010)),   # 🆕  default matches autograder
+        port=int(os.environ.get("FLASK_PORT", 5010)),
         debug=app.config["DEBUG"],
     )
 

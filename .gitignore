@@ -8,3 +8,6 @@ sample_project/meta_prompts/
 .gitignore
 my-offline-llm-tool@1.0.0
 next
+
+# .env
+python_backend/.env

@@ -6,6 +6,7 @@ Gemma‑3‑27B‑IT + Structured Outputs
 • Removes ```json fences (and any markdown) before JSON‑parsing
 • Accepts object → {selected:[...]} *or* bare array
 • Legacy line parser now strips quotes even when a trailing comma is present
+• Reads API Key and Model from environment variables.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import json
 import logging
 import pathlib
 import re
+import os # <-- Import os
 from typing import Dict, List, Set, Tuple
 
 import httpx
@@ -25,9 +27,11 @@ logger = logging.getLogger(__name__)
 
 class AutoselectService:
     _URL   = "https://openrouter.ai/api/v1/chat/completions"
-    _MODEL = "google/gemma-3-27b-it:free"
+    # Default model if not set in environment
+    _DEFAULT_MODEL = "google/gemma-3-27b-it:free"
 
     class UpstreamError(RuntimeError): ...
+    class ConfigError(RuntimeError): ... # For missing config
 
     _SCHEMA: Dict = {
         "name": "selected_paths",
@@ -46,19 +50,38 @@ class AutoselectService:
         },
     }
 
+    def __init__(self):
+        # Load config from environment variables during initialization
+        self.api_key = os.getenv("OPENROUTER_API_KEY")
+        self.model = os.getenv("AUTOSELECT_MODEL", self._DEFAULT_MODEL)
+
+        if not self.api_key:
+            logger.error("OPENROUTER_API_KEY environment variable is not set.")
+            # Raise configuration error immediately if key is missing
+            # Alternatively, could check in the method call, but failing early is often better.
+            # raise self.ConfigError("Server mis-configuration: OPENROUTER_API_KEY is not set.")
+            # Let's check in the method instead to allow service instantiation even if key is missing initially
+
+        logger.info(f"AutoselectService initialized with model: {self.model}")
+
+
     # ──────────────────────────────────────────────────────────
     # Public
     # ──────────────────────────────────────────────────────────
     def autoselect_paths(
         self,
         request_obj: AutoSelectRequest,
-        api_key: str,
+        # api_key: str, # <-- No longer passed as argument
         *,
         timeout: float = 20.0,
     ) -> Tuple[List[str], str]:
 
+        # Check for API key here, before making the call
+        if not self.api_key:
+            raise self.ConfigError("Server mis-configuration: OPENROUTER_API_KEY is not set.")
+
         payload = {
-            "model": self._MODEL,
+            "model": self.model, # Use model from environment
             "messages": [
                 {
                     "role": "system",
@@ -74,25 +97,29 @@ class AutoselectService:
             "response_format": {"type": "json_schema", "json_schema": self._SCHEMA},
             "structured_outputs": True,
         }
-        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        headers = {
+            "Authorization": f"Bearer {self.api_key}", # Use API key from environment
+            "Content-Type": "application/json"
+        }
 
         try:
             with httpx.Client(timeout=timeout) as client:
                 rsp = client.post(self._URL, json=payload, headers=headers)
         except httpx.HTTPError as exc:
-            logger.error("Transport error: %s", exc)
+            logger.error("Transport error calling OpenRouter for autoselect: %s", exc)
             raise self.UpstreamError("OpenRouter unreachable") from exc
 
         if rsp.status_code != 200:
-            logger.warning("OpenRouter %s → %.200s", rsp.status_code, rsp.text)
+            logger.warning("OpenRouter autoselect error %s → %.200s", rsp.status_code, rsp.text)
             raise self.UpstreamError(f"Upstream HTTP {rsp.status_code}")
 
         try:
             raw = rsp.json()["choices"][0]["message"]["content"]
         except Exception as exc:
+            logger.error("Failed to parse OpenRouter autoselect response: %s", exc)
             raise self.UpstreamError("Malformed upstream JSON") from exc
 
-        logger.debug("↩ OpenRouter (trimmed) : %s", raw[:350].replace("\n", " ⏎ "))
+        logger.debug("↩ OpenRouter Autoselect (trimmed) : %s", raw[:350].replace("\n", " ⏎ "))
 
         # ① Try to parse JSON (object or array) after stripping fences
         parsed = self._extract_json(raw)
@@ -164,12 +191,20 @@ class AutoselectService:
         out:  List[str] = []
 
         for itm in items:
+            if not isinstance(itm, str): # Added type check for safety
+                logger.warning(f"Skipping non-string item in autoselect results: {itm}")
+                continue
             norm = self._norm(itm)
             key  = norm.lower()
             if key in seen:
                 continue
-            seen.add(key)
-            out.append(allow_map.get(key, norm))
+            # Ensure the selected path actually exists in the provided treePaths
+            if key in allow_map:
+                seen.add(key)
+                out.append(allow_map[key])
+            else:
+                 logger.debug(f"Autoselect proposed path not in original tree: '{itm}' (normalized: '{norm}')")
+
 
         return out
 
