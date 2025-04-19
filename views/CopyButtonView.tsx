@@ -1,5 +1,6 @@
-// File: views/CopyButtonView.tsx
+// FILE: views/CopyButtonView.tsx
 // REFACTOR #2 – Prompt‑format overhaul for superior LLM results
+// UPDATED: Import generateTextualTree from new utility file
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import {
   Copy, CheckCircle, ClipboardCopy, FileCode, Loader2,
@@ -16,6 +17,7 @@ import {
   Tooltip, TooltipProvider, TooltipTrigger, TooltipContent,
 } from '@/components/ui/tooltip';
 import { cn }                from '@/lib/utils';
+import { generateTextualTree } from '@/lib/treeUtils'; // Import from new location
 import type { FileNode, FileData } from '@/types';
 
 /* ════════════════════════════════════════════════════════════════ */
@@ -51,9 +53,8 @@ function extToLang(path: string): string {
 
 /** render a file‑tree as indented list; fenced to freeze whitespace */
 function renderTree(tree: string) {
-  return `\`\`\`text
-${tree.trimEnd()}
-\`\`\``;
+  // Only render if tree is not empty
+  return tree.trim() ? `\`\`\`text\n${tree.trimEnd()}\n\`\`\`` : '';
 }
 
 /** render each file as ```lang path … ``` block */
@@ -61,9 +62,7 @@ function renderFiles(data: FileData[]) {
   return data
     .map(f => {
       const lang = extToLang(f.path);
-      return `\`\`\`${lang} ${f.path}
-${f.content.trimEnd()}
-\`\`\``;
+      return `\`\`\`${lang} ${f.path}\n${f.content.trimEnd()}\n\`\`\``;
     })
     .join('\n\n');
 }
@@ -84,8 +83,9 @@ function buildPrompt(
     parts.push(`<|USER|>\n${user.trim()}\n<|END|>`);
   }
   const ctx: string[] = [];
-  if (treeTxt.trim()) {
-    ctx.push(`# PROJECT TREE\n${renderTree(treeTxt)}`);
+  const renderedTree = renderTree(treeTxt); // Render the tree
+  if (renderedTree) { // Check if the rendered tree is not empty
+    ctx.push(`# PROJECT TREE\n${renderedTree}`);
   }
   if (files.length) {
     ctx.push(`# SOURCE FILES\n${renderFiles(files)}`);
@@ -96,38 +96,7 @@ function buildPrompt(
   return parts.join('\n\n');
 }
 
-/** replicate the exclusion + extension filtering from existing logic */
-function generateTextualTree(
-  tree: FileNode[],
-  globalExcludes: string[],
-  filterExt: string[],
-  depth = 0,
-): string {
-  const indent   = '  '.repeat(depth);
-  const excludes = new Set(globalExcludes);
-
-  return tree
-    .filter(n => {
-      const segs = n.relativePath.split('/');
-      return !segs.some(s => excludes.has(s)) && !excludes.has(n.relativePath);
-    })
-    .filter(n => {
-      if (filterExt.length === 0) return true;
-      if (n.type === 'directory') return true;
-      const lower = n.name.toLowerCase();
-      return filterExt.some(e => lower.endsWith(e.toLowerCase()));
-    })
-    .map(n => {
-      const icon = n.type === 'directory' ? '📁' : '📄';
-      const line = `${indent}${icon} ${n.name}`;
-      if (n.type === 'directory' && n.children) {
-        const sub = generateTextualTree(n.children, globalExcludes, filterExt, depth + 1);
-        return `${line}\n${sub}`;
-      }
-      return line;
-    })
-    .join('\n');
-}
+// Removed generateTextualTree from here, it's now imported
 
 /* ════════════════════════════════════════════════════════════════ */
 /* 🔸 REACT COMPONENT                                              */
@@ -174,6 +143,7 @@ const CopyButtonView: React.FC = () => {
       const liveFiles = fresh.filesData.filter(fd => fresh.selectedFilePaths.includes(fd.path));
 
       /* 2️⃣ (b)uild final string */
+      // Use the imported utility function
       const treeTxt = generateTextualTree(
         fileTree,
         globalExclusions,
@@ -198,7 +168,7 @@ const CopyButtonView: React.FC = () => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch (err) {
-      /* eslint‑disable-next-line no-alert */
+      /* eslint‑disable-next‑line no-alert */
       alert(`Copy failed: ${(err as Error).message}`);
       console.error(err);
     } finally {

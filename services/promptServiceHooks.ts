@@ -1,6 +1,6 @@
 // FILE: services/promptServiceHooks.ts
-// FULL FILE - Verified useRefinePrompt function
-import { useCallback, useState } from 'react'; // Added useState
+// FULL FILE - Updated useRefinePrompt function
+import { useCallback, useState } from 'react';
 import { usePromptStore } from '@/stores/usePromptStore';
 import { useAppStore } from '@/stores/useAppStore';
 import { fetchApi } from './apiService';
@@ -25,13 +25,12 @@ export function usePromptService() {
         if (result) {
             setMetaPromptFiles(result);
         } else {
-            setMetaPromptFiles([]); // Clear list on failure
+            setMetaPromptFiles([]);
         }
         setIsLoadingMetaList(false);
     }, [setIsLoadingMetaList, setMetaPromptFiles, setError]);
 
     const loadMetaPrompt = useCallback(async () => {
-        // Get latest selected file from store
         const currentSelectedFile = usePromptStore.getState().selectedMetaFile;
         if (!currentSelectedFile) return;
 
@@ -43,13 +42,12 @@ export function usePromptService() {
         if (result) {
             setMetaPrompt(result.content ?? '');
         } else {
-            setMetaPrompt(''); // Clear prompt on failure
+            setMetaPrompt('');
         }
         setIsLoadingMetaContent(false);
-    }, [setMetaPrompt, setIsLoadingMetaContent, setError]); // Dependency on store state is implicit via getState()
+    }, [setMetaPrompt, setIsLoadingMetaContent, setError]);
 
     const saveMetaPrompt = useCallback(async () => {
-        // Get latest state from store
         const currentMetaPrompt = usePromptStore.getState().metaPrompt;
         const currentSelectedFile = usePromptStore.getState().selectedMetaFile;
         const currentNewFileName = usePromptStore.getState().newMetaFileName;
@@ -68,39 +66,39 @@ export function usePromptService() {
         });
 
         if (result) {
-            // Optionally show success message from backend?
-            // alert(result.message || `Meta prompt saved as ${fileName}`);
             console.log(result.message || `Meta prompt saved as ${fileName}`);
-            setNewMetaFileName(''); // Clear input field
-            await fetchMetaPromptList(); // Refresh list after saving
+            setNewMetaFileName('');
+            await fetchMetaPromptList();
         }
-        // Error handling is done by fetchApi
         setIsSavingMeta(false);
-    }, [setError, setIsSavingMeta, setNewMetaFileName, fetchMetaPromptList]); // Dependencies
+    }, [setError, setIsSavingMeta, setNewMetaFileName, fetchMetaPromptList]);
 
-    // --- NEW FUNCTION for Prompt Refinement ---
+    // --- UPDATED FUNCTION for Prompt Refinement ---
     const useRefinePrompt = () => {
         const [isRefining, setIsRefining] = useState(false);
-        const { setError } = useAppStore(); // Get setError from the app store
+        const { setError } = useAppStore();
 
-        const refinePrompt = useCallback(async (textToRefine: string): Promise<string | null> => {
+        // Updated signature to accept optional treeText
+        const refinePrompt = useCallback(async (textToRefine: string, treeText?: string): Promise<string | null> => {
             if (!textToRefine.trim()) {
                 setError("Cannot refine empty text.");
                 return null;
             }
 
             setIsRefining(true);
-            setError(null); // Clear previous errors
+            setError(null);
+
+            // Include treeText in the request body if provided
+            const body = { text: textToRefine, treeText: treeText };
 
             const result = await fetchApi<RefinePromptResponse>(`/api/prompt/refine`, {
                 method: 'POST',
-                body: JSON.stringify({ text: textToRefine }),
+                body: JSON.stringify(body), // Send updated body
             });
 
             setIsRefining(false);
 
             if (result) {
-                // Ensure the response structure matches before accessing refinedPrompt
                 if (typeof result === 'object' && result !== null && 'refinedPrompt' in result) {
                     return result.refinedPrompt;
                 } else {
@@ -109,14 +107,13 @@ export function usePromptService() {
                     return null;
                 }
             } else {
-                // Error is handled globally by fetchApi, but we return null to indicate failure
                 return null;
             }
-        }, [setError]); // Add setError dependency
+        }, [setError]);
 
         return { refinePrompt, isRefining };
     };
-    // --- END NEW FUNCTION ---
+    // --- END UPDATED FUNCTION ---
 
 
     return { fetchMetaPromptList, loadMetaPrompt, saveMetaPrompt, useRefinePrompt };

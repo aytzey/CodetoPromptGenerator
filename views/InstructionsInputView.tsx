@@ -1,7 +1,8 @@
 // FILE: views/InstructionsInputView.tsx
 // FULL FILE - Added Refine Prompt Button and Logic
-import React, { useEffect, useState } from 'react'; // Added useState
-import { Save, RefreshCw, FileText, Download, Edit3, XCircle, Loader2, Undo, Redo, Sparkles } from 'lucide-react'; // Added Sparkles
+// UPDATED: Send file tree context to refine prompt
+import React, { useEffect, useState } from 'react';
+import { Save, RefreshCw, FileText, Download, Edit3, XCircle, Loader2, Undo, Redo, Sparkles } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -11,28 +12,33 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
 
-// Import Store and Service Hook
+// Import Stores and Service Hook
 import { usePromptStore } from '@/stores/usePromptStore';
+import { useProjectStore } from '@/stores/useProjectStore'; // Import project store
+import { useExclusionStore } from '@/stores/useExclusionStore'; // Import exclusion store
 import { usePromptService } from '@/services/promptServiceHooks';
-import { useUndoRedo } from '@/lib/hooks/useUndoRedo'; // Import the new hook
+import { useUndoRedo } from '@/lib/hooks/useUndoRedo';
+import { generateTextualTree } from '@/lib/treeUtils'; // Import tree utility
 
-const MAX_CHARS = 1000; // Consider making this configurable
+const MAX_CHARS = 1000;
 
 const InstructionsInputView: React.FC = () => {
-  // Get state from Zustand store
+  // Get state from Zustand stores
   const {
     metaPrompt, setMetaPrompt,
-    mainInstructions, setMainInstructions, // Keep store getter/setter
+    mainInstructions, setMainInstructions,
     metaPromptFiles, selectedMetaFile, setSelectedMetaFile,
     newMetaFileName, setNewMetaFileName,
     isLoadingMetaList, isLoadingMetaContent, isSavingMeta
   } = usePromptStore();
+  const { fileTree } = useProjectStore(); // Get file tree
+  const { globalExclusions, extensionFilters } = useExclusionStore(); // Get exclusions/filters
 
   // Get actions from service hook
   const { fetchMetaPromptList, loadMetaPrompt, saveMetaPrompt, useRefinePrompt } = usePromptService();
-  const { refinePrompt, isRefining } = useRefinePrompt(); // Get refine function and loading state
+  const { refinePrompt, isRefining } = useRefinePrompt();
 
-  // --- Undo/Redo Hook for Main Instructions ---
+  // Undo/Redo Hook for Main Instructions
   const {
     currentValue: currentMainInstructions,
     updateCurrentValue: updateMainInstructionsValue,
@@ -40,12 +46,10 @@ const InstructionsInputView: React.FC = () => {
     redo: redoMainInstructions,
     canUndo: canUndoMain,
     canRedo: canRedoMain,
-  } = useUndoRedo(mainInstructions, setMainInstructions, { debounceMs: 0 }); // Instant history updates
-  // --- End Undo/Redo Hook ---
+  } = useUndoRedo(mainInstructions, setMainInstructions, { debounceMs: 0 });
 
   // Calculate character counts and percentages
   const metaCount = metaPrompt.length;
-  // Use the immediate value from the hook for character count
   const mainCount = currentMainInstructions.length;
   const metaPercentage = Math.min(100, (metaCount / MAX_CHARS) * 100);
   const mainPercentage = Math.min(100, (mainCount / MAX_CHARS) * 100);
@@ -62,69 +66,58 @@ const InstructionsInputView: React.FC = () => {
     return "text-gray-500 dark:text-gray-400";
   };
 
-  // Clear functions now use setters from the store or hook
   function clearMetaPrompt() {
     setMetaPrompt('');
   }
 
   function clearMainInstructions() {
-    // Use the hook's update function to clear and record history
     updateMainInstructionsValue('');
   }
 
-  // Handler for Select change
   const handleSelectChange = (value: string) => {
       setSelectedMetaFile(value === "none" ? "" : value);
-      // Auto-load handled by useEffect below
   };
 
-  // --- KeyDown Handler for Undo/Redo ---
   const handleMainInstructionsKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Check for platform-specific modifier key (Cmd on Mac, Ctrl elsewhere)
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
     const modKey = isMac ? e.metaKey : e.ctrlKey;
-
     const isUndo = modKey && e.key === 'z' && !e.shiftKey;
-    // Redo: Cmd/Ctrl + Shift + Z OR Cmd/Ctrl + Y
     const isRedo = modKey && (e.key === 'y' || (e.key === 'z' && e.shiftKey));
 
     if (isUndo) {
-      e.preventDefault(); // Prevent default browser undo/focus behavior
+      e.preventDefault();
       undoMainInstructions();
     } else if (isRedo) {
-      e.preventDefault(); // Prevent default browser redo behavior
+      e.preventDefault();
       redoMainInstructions();
     }
-    // Allow other key combinations to pass through
   };
-  // --- End KeyDown Handler ---
 
-  // --- Refine Prompt Handler ---
+  // Refine Prompt Handler - UPDATED
   const handleRefinePrompt = async () => {
     if (!currentMainInstructions.trim() || isRefining) return;
 
-    const refinedText = await refinePrompt(currentMainInstructions);
+    // Generate the textual tree representation
+    const treeText = generateTextualTree(
+      fileTree,
+      globalExclusions,
+      extensionFilters // Pass extension filters as well
+    );
+
+    // Call refinePrompt with both text and tree context
+    const refinedText = await refinePrompt(currentMainInstructions, treeText);
 
     if (refinedText !== null) {
-      // Update the text area using the undo/redo hook's setter
-      // This ensures the refined text is added to the undo history.
       updateMainInstructionsValue(refinedText);
     }
-    // Error handling is managed by the service hook/fetchApi
   };
-  // --- End Refine Prompt Handler ---
 
-  // Effect to load meta prompt content when selectedMetaFile changes
   useEffect(() => {
     if (selectedMetaFile) {
       loadMetaPrompt();
-    } else {
-      // Optionally clear meta prompt if "None" is selected
-      // setMetaPrompt(''); // Decide if this is desired behavior
     }
-  }, [selectedMetaFile, loadMetaPrompt]); // Add loadMetaPrompt dependency
+  }, [selectedMetaFile, loadMetaPrompt]);
 
-  // Effect to load the list of meta prompts on initial mount
   useEffect(() => {
     fetchMetaPromptList();
   }, [fetchMetaPromptList]);
@@ -194,7 +187,7 @@ const InstructionsInputView: React.FC = () => {
               type="text"
               value={newMetaFileName}
               onChange={e => setNewMetaFileName(e.target.value)}
-              placeholder={selectedMetaFile || "new_prompt_name.txt"} // Show selected file as placeholder
+              placeholder={selectedMetaFile || "new_prompt_name.txt"}
               className="pl-9 h-9 bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 focus:ring-1 focus:ring-indigo-500 focus:border-transparent text-sm"
               disabled={isSavingMeta}
             />
@@ -204,7 +197,7 @@ const InstructionsInputView: React.FC = () => {
               <TooltipTrigger asChild>
                  <Button
                   onClick={saveMetaPrompt}
-                  className="bg-teal-500 hover:bg-teal-600 text-white w-[80px]" // Fixed width
+                  className="bg-teal-500 hover:bg-teal-600 text-white w-[80px]"
                   disabled={!metaPrompt.trim() || isSavingMeta || isLoadingMetaContent}
                  >
                    {isSavingMeta ? <Loader2 size={16} className="animate-spin" /> : <><Save className="mr-1 h-4 w-4" /> Save</>}
@@ -229,7 +222,7 @@ const InstructionsInputView: React.FC = () => {
         <Textarea
           id="meta-prompt-area"
           value={metaPrompt}
-          onChange={e => setMetaPrompt(e.target.value)} // Standard handling for meta prompt
+          onChange={e => setMetaPrompt(e.target.value)}
           className="min-h-[80px] bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 focus:ring-1 focus:ring-indigo-500 focus:border-transparent resize-y text-sm"
           placeholder="Enter meta prompt instructions (e.g., persona, response format)..."
           disabled={isLoadingMetaContent || isSavingMeta}
@@ -250,7 +243,6 @@ const InstructionsInputView: React.FC = () => {
           <Label htmlFor="main-instructions-area" className="text-sm font-medium text-gray-700 dark:text-gray-300">
             Main Instructions:
           </Label>
-          {/* Undo/Redo/Refine Buttons */}
           <div className="flex items-center gap-1">
              {/* Refine Button */}
              <TooltipProvider delayDuration={150}>
@@ -260,12 +252,12 @@ const InstructionsInputView: React.FC = () => {
                       variant="ghost" size="icon"
                       className="h-6 w-6 text-purple-500 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-200 disabled:opacity-50"
                       onClick={handleRefinePrompt}
-                      disabled={!currentMainInstructions.trim() || isRefining || isLoadingMetaContent || isSavingMeta}
+                      disabled={!currentMainInstructions.trim() || isRefining || isLoadingMetaContent || isSavingMeta || fileTree.length === 0} // Disable if no tree
                     >
                       {isRefining ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom"><p>Refine prompt with AI (Gemma)</p></TooltipContent>
+                  <TooltipContent side="bottom"><p>Refine prompt with AI (uses file tree context)</p></TooltipContent>
                 </Tooltip>
              </TooltipProvider>
              {/* Undo Button */}
@@ -298,15 +290,15 @@ const InstructionsInputView: React.FC = () => {
         </div>
         <Textarea
           id="main-instructions-area"
-          value={currentMainInstructions} // Use value from hook
-          onChange={e => updateMainInstructionsValue(e.target.value)} // Use update function from hook
-          onKeyDown={handleMainInstructionsKeyDown} // Add keydown listener
+          value={currentMainInstructions}
+          onChange={e => updateMainInstructionsValue(e.target.value)}
+          onKeyDown={handleMainInstructionsKeyDown}
           className="min-h-[120px] bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 focus:ring-1 focus:ring-indigo-500 focus:border-transparent resize-y text-sm"
           placeholder="Enter your main instructions for the task..."
-           disabled={isLoadingMetaContent || isSavingMeta || isRefining} // Disable if related actions are happening
+           disabled={isLoadingMetaContent || isSavingMeta || isRefining}
         />
         <Progress value={mainPercentage} className={`h-1 ${getProgressColor(mainCount)}`} />
-         {currentMainInstructions && ( // Check hook's value
+         {currentMainInstructions && (
           <div className="flex justify-end -mt-1">
             <Button variant="ghost" size="sm" className="text-xs h-7 text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-200 hover:bg-rose-50 dark:hover:bg-rose-900/50" onClick={clearMainInstructions} disabled={isLoadingMetaContent || isSavingMeta || isRefining}>
               <XCircle className="mr-1 h-3.5 w-3.5" /> Clear
