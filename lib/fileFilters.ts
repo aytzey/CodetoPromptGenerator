@@ -2,6 +2,8 @@
 /**
  * A single file or directory node in the file tree.
  */
+
+import picomatch from 'picomatch' 
 export interface FileNode {
     name: string
     relativePath: string
@@ -116,4 +118,66 @@ export function flattenFilePaths(nodes: FileNode[]): string[] {
     }
   }
   return out;
+}
+
+
+// /**
+//  * Split an input like `"*.js,  src/**/*.test.ts "` into clean patterns.
+//  */
+export function parseWildcardInput(raw: string): string[] {
+  return raw
+    .split(/[,;\s]+/)             // comma / semicolon / whitespace
+    .map(p => p.trim())
+    .filter(Boolean)
+}
+
+/**
+ * Recursively keep nodes whose *relativePath* or *name* matches **any**
+ * glob in `patterns`.  Directories stay alive if **any** (hidden) child
+ * matches, so the resulting tree remains navigable.
+ */
+export function applyWildcardFilter(
+  nodes: FileNode[],
+  patterns: string[]
+): FileNode[] {
+  if (!patterns.length) return nodes
+
+  // Pre‑compile globs → matcher fns (picomatch is ~2 KiB, zero deps)
+  const matchers = patterns.map(p =>
+    picomatch(p, { nocase: true, dot: true }) // match “.” files too
+  )
+
+  const res: FileNode[] = []
+
+  for (const n of nodes) {
+    const isMatch =
+      matchers.some(m => m(n.relativePath) || m(n.name))
+
+    if (n.type === 'directory' && n.children?.length) {
+      const kids = applyWildcardFilter(n.children, patterns)
+      if (isMatch || kids.length) {
+        res.push({ ...n, children: kids })
+      }
+    } else if (isMatch) {
+      res.push({ ...n })
+    }
+  }
+  return res
+}
+
+/**
+ * Convenience – find a node by its *relativePath* inside a tree.
+ */
+export function findNodeByPath(
+  nodes: FileNode[],
+  relPath: string
+): FileNode | undefined {
+  for (const n of nodes) {
+    if (n.relativePath === relPath) return n
+    if (n.type === 'directory' && n.children) {
+      const hit = findNodeByPath(n.children, relPath)
+      if (hit) return hit
+    }
+  }
+  return undefined
 }

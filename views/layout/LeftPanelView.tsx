@@ -1,5 +1,5 @@
 // File: views/layout/LeftPanelView.tsx
-import React from "react";
+import React, { useMemo } from "react";
 import {
   FileCode,
   Settings,
@@ -37,6 +37,11 @@ import ExclusionsManagerView from "@/views/ExclusionsManagerView";
 import LocalExclusionsManagerView from "@/views/LocalExclusionsManagerView";
 import TodoListView from "@/views/TodoListView";
 
+import {
+  applyWildcardFilter,
+  parseWildcardInput,
+  applySearchFilter,
+} from "@/lib/fileFilters";
 import type { FileNode } from "@/types";
 
 interface LeftPanelViewProps {
@@ -50,12 +55,15 @@ interface LeftPanelViewProps {
   handleSelectAll: () => void;
   deselectAllFiles: () => void;
   treeRef: React.RefObject<FileTreeViewHandle>;
+  /** (Old) filtered tree — retained for backwards compatibility */
   filteredTree: FileNode[];
   selectedFilePaths: string[];
   setSelectedFilePaths: (paths: string[]) => void;
   selectedFileCount: number;
-  fileTree: FileNode[]; // Needed for SelectionGroupsView
+  /** Unfiltered, original project tree */
+  fileTree: FileNode[];
 }
+
 
 const LeftPanelView: React.FC<LeftPanelViewProps> = ({
   activeTab,
@@ -74,6 +82,21 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
   selectedFileCount,
   fileTree,
 }) => {
+
+
+  const effectiveTree = useMemo(() => {
+    const term = fileSearchTerm.trim();
+    if (!term) return fileTree;
+
+    const hasWildcard = /[*?\[\]]/.test(term);
+    if (hasWildcard) {
+      const patterns = parseWildcardInput(term);
+      return applyWildcardFilter(fileTree, patterns);
+    }
+    return applySearchFilter(fileTree, term.toLowerCase());
+  }, [fileTree, fileSearchTerm]);
+
+
   return (
     <Tabs
       value={activeTab}
@@ -196,24 +219,27 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
               </div>
             </div>
           </CardHeader>
-          
-          {/* File Tree content area */}
+                    {/* File Tree content area */}
           <CardContent className="p-3 bg-[rgba(22,23,46,0.5)]">
             {isLoadingTree ? (
+              /* loading state unchanged */
               <div className="flex items-center justify-center py-10 text-[rgb(140,143,170)]">
                 <RefreshCw size={24} className="animate-spin mr-3 text-[rgb(123,147,253)]" />
                 Loading tree…
               </div>
             ) : !projectPath ? (
+              /* no‑project state unchanged */
               <div className="flex flex-col items-center justify-center py-16 text-[rgb(140,143,170)]">
                 <LayoutGrid size={40} className="mb-3 opacity-40" />
                 <p className="text-center">Select a project folder above to begin</p>
               </div>
             ) : (
+              /* the tree */
               <div className="border border-[rgba(60,63,87,0.7)] rounded-md bg-[rgba(15,16,36,0.2)] backdrop-blur-sm">
                 <FileTreeView
                   ref={treeRef}
-                  tree={filteredTree}
+                  tree={effectiveTree}
+                  fullTree={fileTree}
                   selectedFiles={selectedFilePaths}
                   onSelectFiles={setSelectedFilePaths}
                 />
