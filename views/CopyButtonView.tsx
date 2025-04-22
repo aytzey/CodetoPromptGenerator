@@ -1,9 +1,7 @@
-// FILE: views/CopyButtonView.tsx
-// REFACTOR #2 – Prompt‑format overhaul for superior LLM results
-// UPDATED: Import generateTextualTree from new utility file
+// views/CopyButtonView.tsx
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import {
-  Copy, CheckCircle, ClipboardCopy, FileCode, Loader2,
+  Copy, CheckCircle, Loader2, BarChart2, FileText, Sparkles
 } from 'lucide-react';
 
 import { usePromptStore }   from '@/stores/usePromptStore';
@@ -17,11 +15,11 @@ import {
   Tooltip, TooltipProvider, TooltipTrigger, TooltipContent,
 } from '@/components/ui/tooltip';
 import { cn }                from '@/lib/utils';
-import { generateTextualTree } from '@/lib/treeUtils'; // Import from new location
-import type { FileNode, FileData } from '@/types';
+import { generateTextualTree } from '@/lib/treeUtils';
+import type { FileData } from '@/types';
 
 /* ════════════════════════════════════════════════════════════════ */
-/* 🔸 LOCAL HELPER UTILITIES                                       */
+/* 🔸 LOCAL HELPER UTILITIES                                       */
 /* ════════════════════════════════════════════════════════════════ */
 
 /** naive token approximation (kept for stats only) */
@@ -30,7 +28,7 @@ function estimateTokens(txt = '') {
   return txt.trim().split(/\s+/).length + (txt.match(/[.,;:!?(){}\[\]<>]/g) || []).length;
 }
 
-/** language‑id per file‑extension – extend as needed */
+/** language‑id per file‑extension – extend as needed */
 function extToLang(path: string): string {
   const ext = (path.split('.').pop() || '').toLowerCase();
   switch (ext) {
@@ -53,7 +51,6 @@ function extToLang(path: string): string {
 
 /** render a file‑tree as indented list; fenced to freeze whitespace */
 function renderTree(tree: string) {
-  // Only render if tree is not empty
   return tree.trim() ? `\`\`\`text\n${tree.trimEnd()}\n\`\`\`` : '';
 }
 
@@ -83,12 +80,12 @@ function buildPrompt(
     parts.push(`<|USER|>\n${user.trim()}\n<|END|>`);
   }
   const ctx: string[] = [];
-  const renderedTree = renderTree(treeTxt); // Render the tree
-  if (renderedTree) { // Check if the rendered tree is not empty
-    ctx.push(`# PROJECT TREE\n${renderedTree}`);
+  const renderedTree = renderTree(treeTxt);
+  if (renderedTree) {
+    ctx.push(`# PROJECT TREE\n${renderedTree}`);
   }
   if (files.length) {
-    ctx.push(`# SOURCE FILES\n${renderFiles(files)}`);
+    ctx.push(`# SOURCE FILES\n${renderFiles(files)}`);
   }
   if (ctx.length) {
     parts.push(`<|CODE_CONTEXT|>\n${ctx.join('\n\n')}\n<|END|>`);
@@ -96,10 +93,8 @@ function buildPrompt(
   return parts.join('\n\n');
 }
 
-// Removed generateTextualTree from here, it's now imported
-
 /* ════════════════════════════════════════════════════════════════ */
-/* 🔸 REACT COMPONENT                                              */
+/* 🔸 REACT COMPONENT                                              */
 /* ════════════════════════════════════════════════════════════════ */
 
 const CopyButtonView: React.FC = () => {
@@ -114,9 +109,10 @@ const CopyButtonView: React.FC = () => {
   const { loadSelectedFileContents } = useProjectService();
 
   /* —— local UI state —— */
-  const hiddenTA          = useRef<HTMLTextAreaElement>(null);
-  const [copied, setCopied]           = useState(false);
-  const [isBuilding, setIsBuilding]   = useState(false);
+  const hiddenTA = useRef<HTMLTextAreaElement>(null);
+  const [copied, setCopied] = useState(false);
+  const [isBuilding, setIsBuilding] = useState(false);
+  const [animateGlow, setAnimateGlow] = useState(false);
 
   /* —— derived stats —— */
   const { fileCount, tokenCount, charCount } = useMemo(() => {
@@ -137,13 +133,12 @@ const CopyButtonView: React.FC = () => {
   const handleCopy = async () => {
     setIsBuilding(true);
     try {
-      /* 1️⃣ ensure freshest content */
+      /* 1️⃣ ensure freshest content */
       await loadSelectedFileContents();
-      const fresh   = useProjectStore.getState();
+      const fresh = useProjectStore.getState();
       const liveFiles = fresh.filesData.filter(fd => fresh.selectedFilePaths.includes(fd.path));
 
-      /* 2️⃣ (b)uild final string */
-      // Use the imported utility function
+      /* 2️⃣ (b)uild final string */
       const treeTxt = generateTextualTree(
         fileTree,
         globalExclusions,
@@ -156,7 +151,7 @@ const CopyButtonView: React.FC = () => {
         liveFiles,
       );
 
-      /* 3️⃣ copy – Clipboard API first, fallback second */
+      /* 3️⃣ copy – Clipboard API first, fallback second */
       await navigator.clipboard.writeText(prompt).catch(() => {
         if (!hiddenTA.current) throw new Error('Hidden textarea missing');
         hiddenTA.current.value = prompt;
@@ -166,9 +161,10 @@ const CopyButtonView: React.FC = () => {
       });
 
       setCopied(true);
+      setAnimateGlow(true);
       setTimeout(() => setCopied(false), 2500);
+      setTimeout(() => setAnimateGlow(false), 1000);
     } catch (err) {
-      /* eslint‑disable-next‑line no-alert */
       alert(`Copy failed: ${(err as Error).message}`);
       console.error(err);
     } finally {
@@ -184,64 +180,83 @@ const CopyButtonView: React.FC = () => {
       {/* invisible textarea for fallback copy */}
       <textarea ref={hiddenTA} className="sr-only" aria-hidden="true" />
 
-      {/* stats row */}
+      {/* Enhanced stats row */}
       {(fileCount > 0 || tokenCount > 0) && (
-        <div className="flex justify-center flex-wrap gap-2 mb-4">
+        <div className="flex justify-center flex-wrap gap-3 mb-4">
           {fileCount > 0 && (
-            <Badge variant="outline">
-              <FileCode size={14} className="mr-1" />
+            <Badge className="bg-[rgba(123,147,253,0.1)] text-[rgb(123,147,253)] border border-[rgba(123,147,253,0.3)] py-1 px-3 flex items-center">
+              <FileText size={14} className="mr-1.5" />
               {fileCount} file{fileCount !== 1 && 's'}
             </Badge>
           )}
-          <Badge variant="outline">
+          <Badge className="bg-[rgba(80,250,123,0.1)] text-[rgb(80,250,123)] border border-[rgba(80,250,123,0.3)] py-1 px-3 flex items-center">
+            <BarChart2 size={14} className="mr-1.5" />
             {tokenCount.toLocaleString()} tokens
           </Badge>
           {charCount > 0 && (
-            <Badge variant="outline">
+            <Badge className="bg-[rgba(189,147,249,0.1)] text-[rgb(189,147,249)] border border-[rgba(189,147,249,0.3)] py-1 px-3 flex items-center">
+              <span className="mr-1.5 font-mono text-xs">{ '{' }</span>
               {charCount.toLocaleString()} chars
             </Badge>
           )}
         </div>
       )}
 
-      {/* copy button */}
+      {/* Enhanced copy button */}
       <TooltipProvider delayDuration={100}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button
-              onClick={handleCopy}
-              disabled={disabled}
-              className={cn(
-                'w-full h-12 flex items-center justify-center gap-2 transition',
-                copied ? 'bg-teal-600 hover:bg-teal-700' : 'bg-indigo-600 hover:bg-indigo-700',
-                disabled && 'opacity-50 cursor-not-allowed',
-              )}
-            >
-              {isBuilding || isLoadingContents ? (
-                <>
-                  <Loader2 size={18} className="animate-spin" />
-                  Building…
-                </>
-              ) : copied ? (
-                <>
-                  <CheckCircle size={18} />
-                  Copied!
-                </>
-              ) : (
-                <>
-                  <Copy size={18} />
-                  Copy Prompt
-                </>
-              )}
-            </Button>
+            <div className={cn(
+              "relative rounded-xl overflow-hidden",
+              animateGlow && "after:absolute after:inset-0 after:bg-[rgba(123,147,253,0.3)] after:animate-ping after:opacity-0"
+            )}>
+              <Button
+                onClick={handleCopy}
+                disabled={disabled}
+                className={cn(
+                  `relative w-full h-14 flex items-center justify-center gap-2 transition-all duration-300 text-lg font-medium rounded-xl`,
+                  copied 
+                    ? `bg-gradient-to-r from-[rgb(80,250,123)] to-[rgb(139,233,253)] text-[rgb(15,16,36)]` 
+                    : `bg-gradient-to-r from-[rgb(123,147,253)] to-[rgb(189,147,249)] text-white`,
+                  disabled && 'opacity-50 cursor-not-allowed',
+                  'shadow-[0_4px_20px_rgba(0,0,0,0.3)] hover:shadow-[0_6px_25px_rgba(0,0,0,0.4)] hover:-translate-y-0.5'
+                )}
+              >
+                {isBuilding || isLoadingContents ? (
+                  <>
+                    <div className="absolute inset-0 bg-gradient-to-r from-[rgba(15,16,36,0.2)] to-[rgba(15,16,36,0.4)] animate-pulse"></div>
+                    <Loader2 size={22} className="animate-spin" />
+                    <span>Generating Prompt...</span>
+                  </>
+                ) : copied ? (
+                  <>
+                    <CheckCircle size={22} strokeWidth={2.5} />
+                    <span>Copied Successfully!</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="absolute top-0 left-[-100%] w-full h-full bg-gradient-to-r from-transparent via-white to-transparent opacity-20 animate-[shimmer_2s_infinite]"></div>
+                    <Sparkles size={22} className="mr-1" />
+                    <span>Copy to Clipboard</span>
+                  </>
+                )}
+              </Button>
+            </div>
           </TooltipTrigger>
-          <TooltipContent side="bottom">
+          <TooltipContent side="bottom" className="bg-[rgba(15,16,36,0.95)] border border-[rgba(60,63,87,0.7)] shadow-xl backdrop-blur-lg">
             {ready
               ? 'Copy generated prompt to clipboard'
               : 'Select files or add instructions first'}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
+      
+      {/* Extra micro-info text */}
+      {ready && !copied && !isBuilding && !isLoadingContents && (
+        <div className="mt-3 text-center text-xs text-[rgb(140,143,170)] animate-fade-in">
+          <p>Your prompt will include {fileCount} files and project structure information</p>
+        </div>
+      )}
     </div>
   );
 };
