@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 class AutoselectService:
     _URL: str = "https://openrouter.ai/api/v1/chat/completions"
-    _DEFAULT_MODEL: str = "google/gemma-3-27b-it:free"
+    _DEFAULT_MODEL: str = "google/gemini-2.0-flash-exp:free"
 
     class UpstreamError(RuntimeError):
         """Network / HTTP / format issues talking to OpenRouter."""
