@@ -1,50 +1,25 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Enable React runtime checks during development
   reactStrictMode: true,
+  eslint: { dirs: ["pages","components","lib","services","stores","views","types","scripts"], ignoreDuringBuilds: true },
+  typescript: { ignoreBuildErrors: true },
 
-  /** 🧹 ESLint
-   * Runs on `npm run lint`.
-   * We allow production builds even if ESLint errors remain
-   * so that automated graders can complete.
-   */
-  eslint: {
-    dirs: [
-      'pages',
-      'components',
-      'lib',
-      'services',
-      'stores',
-      'views',
-      'types',
-      'scripts',
-    ],
-    ignoreDuringBuilds: true,
-  },
-
-  /** 📝 TypeScript
-   * Dangerous in production, but required here so CI can finish even if
-   * strict‑mode type errors are present. Keep `tsc --noEmit` in your
-   * workflow to prevent regressions.
-   */
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-
-  /** ↔ API reverse‑proxy */
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL}/api/:path*`,
-      },
+  // ⬇️  ADD: tell chokidar not to watch gigantic / irrelevant dirs
+  webpackDevMiddleware: (config) => {
+    config.watchOptions.ignored = [
+      "**/python_backend/venv/**",
+      "**/.codetoprompt/**",
+      "**/sample_project/meta_prompts/**",
+      "**/node_modules/**",
+      "**/externalLibs/**"
     ];
+    return config;
   },
 
-  /** 🔐 Expose variables at build‑time only */
-  env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+  async rewrites() {
+    return [{ source: "/api/:path*", destination: `${process.env.NEXT_PUBLIC_API_URL}/api/:path*` }];
   },
+  env: { NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL },
 };
 
 module.exports = nextConfig;
