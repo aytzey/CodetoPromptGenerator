@@ -12,7 +12,7 @@ class PromptService:
     """Handles interactions related to prompt generation/refinement."""
 
     _URL = "https://openrouter.ai/api/v1/chat/completions"
-    _DEFAULT_MODEL = "google/gemma-3-27b-it:free"
+    _DEFAULT_MODEL = "meta-llama/llama-4-maverick:free"
 
     class UpstreamError(RuntimeError): ...
     class ConfigError(RuntimeError): ...
@@ -43,6 +43,12 @@ class PromptService:
             "Focus on clarity, conciseness, and actionable instructions. Remove any conversational filler. "
             "If project structure context is provided, use it to enhance the clarity and relevance of the prompt. "
             "Return ONLY the refined prompt text, without any preamble or explanation."
+            "Rules:\n"
+            "  • Absolutely **NO file names or paths** may appear.\n"
+            "  • Remove chit-chat; keep only actionable content.\n"
+            "BAD:\n"
+            "  \"In utils/helpers.py, add ...\"   ✗ leaks filename\n"
+            "GOOD:\n"
         )
 
         # Build user prompt, including tree context if available
