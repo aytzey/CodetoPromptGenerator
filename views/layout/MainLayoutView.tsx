@@ -31,15 +31,16 @@ interface MainLayoutViewProps {
 const MainLayoutView: React.FC<MainLayoutViewProps> = (props) => {
   return (
     <div className="animate-fade-in">
-      {/* Main content container with grid layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-7 relative">
-        {/* Decorative background elements */}
-        <div className="absolute -z-10 top-20 left-1/4 w-96 h-96 bg-[rgba(123,147,253,0.05)] rounded-full blur-[120px]"></div>
-        <div className="absolute -z-10 bottom-0 right-1/3 w-80 h-80 bg-[rgba(189,147,249,0.05)] rounded-full blur-[100px]"></div>
+      {/* Main content container with enhanced grid layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 relative">
+        {/* Enhanced decorative background elements */}
+        <div className="absolute -z-10 top-1/4 left-1/4 w-[40rem] h-[40rem] bg-[rgba(var(--color-primary),0.025)] rounded-full blur-[150px] animate-pulse-slow"></div>
+        <div className="absolute -z-10 bottom-0 right-1/3 w-[35rem] h-[35rem] bg-[rgba(var(--color-tertiary),0.025)] rounded-full blur-[150px] animate-pulse-slow" style={{animationDelay: "1.5s"}}></div>
+        <div className="absolute -z-10 top-2/3 left-1/2 w-[25rem] h-[25rem] bg-[rgba(var(--color-secondary),0.02)] rounded-full blur-[120px] animate-pulse-slow" style={{animationDelay: "1s"}}></div>
         
         {/* Left Panel - Takes up 2 columns on large screens */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="panel animate-slide-up" style={{animationDelay: "0.1s"}}>
+        <div className="lg:col-span-2 space-y-8">
+          <div className="animate-slide-up" style={{animationDelay: "0.15s"}}>
             <LeftPanelView
               activeTab={props.activeTab}
               setActiveTab={props.setActiveTab}
@@ -61,14 +62,12 @@ const MainLayoutView: React.FC<MainLayoutViewProps> = (props) => {
         </div>
         
         {/* Right Panel - Takes up 1 column on large screens */}
-        <div className="space-y-6 animate-slide-up" style={{animationDelay: "0.2s"}}>
-          <div className="panel">
-            <RightPanelView
-              hasContent={props.hasContent}
-              selectedFileCount={props.selectedFileCount}
-              totalTokens={props.totalTokens}
-            />
-          </div>
+        <div className="space-y-8 animate-slide-up" style={{animationDelay: "0.3s"}}>
+          <RightPanelView
+            hasContent={props.hasContent}
+            selectedFileCount={props.selectedFileCount}
+            totalTokens={props.totalTokens}
+          />
         </div>
       </div>
     </div>

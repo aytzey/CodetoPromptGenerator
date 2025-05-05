@@ -1,8 +1,9 @@
 // components/ErrorBoundary.tsx
+// Minor change: Using alias path
 import React from "react";
 import { AlertCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button"; // Using alias
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Using alias
 
 /**
  * A reusable error boundary using react‑error‑boundary.
