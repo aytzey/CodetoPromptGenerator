@@ -1,8 +1,11 @@
+
+// next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   eslint: { dirs: ["pages","components","lib","services","stores","views","types","scripts"], ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
+  output: 'export', // Add this line for static export
 
   // ⬇️  ADD: tell chokidar not to watch gigantic / irrelevant dirs
   webpackDevMiddleware: (config) => {
@@ -15,11 +18,6 @@ const nextConfig = {
     ];
     return config;
   },
-
-  async rewrites() {
-    return [{ source: "/api/:path*", destination: `${process.env.NEXT_PUBLIC_API_URL}/api/:path*` }];
-  },
-  env: { NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL },
 };
 
 module.exports = nextConfig;

@@ -11,3 +11,5 @@ next
 
 # .env
 python_backend/.env
+out/_next/
+out/
