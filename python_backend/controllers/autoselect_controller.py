@@ -1,64 +1,70 @@
-"""
-controllers/autoselect_controller.py
-────────────────────────────────────
-Changes (2025‑04‑17)
-────────────────────
-✦  new query‑param **?debug=1** → returns raw LLM reply alongside selection
-✦  adapts to AutoselectService return signature (selected, raw)
-✦  Service now reads API key from environment, controller no longer fetches it.
-"""
+# python_backend/controllers/autoselect_controller.py
 from __future__ import annotations
 
 import logging
-import os # Keep os import if needed elsewhere, but not for API key here
-from http import HTTPStatus
+from typing import Any, Dict
+import json
 
 from flask import Blueprint, request
 
 from models.autoselect_request import AutoSelectRequest
-from services.autoselect_service import AutoselectService
+from services.autoselect_service import AutoselectService, ConfigError, UpstreamError
 from utils.response_utils import error_response, success_response
 
 logger = logging.getLogger(__name__)
 
-autoselect_bp = Blueprint("autoselect_bp", __name__, url_prefix="/api")
-# Instantiate service (it will load its own config)
-_service      = AutoselectService()
+_autosel = AutoselectService()
+autosel_bp = Blueprint("autoselect", __name__, url_prefix="/api")
+
+# ───────────────────────────────── helpers ──────────────────────────────────
+def _validate_payload(data: Dict[str, Any]) -> AutoSelectRequest:
+    """
+    Create an `AutoSelectRequest` instance.
+
+    * If the class is a Pydantic model (v1 or v2) we use its validation APIs.
+    * Otherwise we assume it’s a regular dataclass / plain class and call
+      the constructor directly (**data).
+    """
+    if hasattr(AutoSelectRequest, "model_validate"):          # Pydantic v2
+        return AutoSelectRequest.model_validate(data)         # type: ignore[attr-defined]
+    if hasattr(AutoSelectRequest, "parse_obj"):               # Pydantic v1
+        return AutoSelectRequest.parse_obj(data)              # type: ignore[attr-defined]
+    try:                                                      # plain dataclass
+        return AutoSelectRequest(**data)                      # type: ignore[arg-type]
+    except Exception as exc:
+        raise ValueError(f"Invalid payload: {exc}") from exc
 
 
-@autoselect_bp.post("/autoselect")
-@autoselect_bp.post("/codemapi/autoselect")  # legacy alias
+# ───────────────────────────────── endpoint ─────────────────────────────────
+@autosel_bp.post("/autoselect")
 def api_autoselect():
-    payload = request.get_json(silent=True) or {}
+    payload: Dict[str, Any] = request.get_json(silent=True) or {}
+    debug: bool = request.args.get("debug", "").lower() in {"1", "true", "yes"}
+
+    # ---------- validate ----------------------------------------------------
     try:
-        body = AutoSelectRequest.from_dict(payload)
-    except ValueError as exc:
-        return error_response(str(exc), status_code=HTTPStatus.BAD_REQUEST)
+        req = _validate_payload(payload)
+    except Exception as exc:
+        return error_response(str(exc), status_code=400)
 
-    # API key check is now handled within the service
-    # api_key = os.getenv("OPENROUTER_API_KEY") # No longer needed here
-    # if not api_key:
-    #     return error_response(
-    #         "Server mis‑configuration: environment variable 'OPENROUTER_API_KEY' is not set.",
-    #         status_code=HTTPStatus.BAD_REQUEST, # Should be 500 Internal Server Error
-    #     )
-
-    debug_requested = str(request.args.get("debug", "")).lower() in {"1", "true", "yes"}
-
+    # ---------- call service ------------------------------------------------
     try:
-        # Pass only the request object, service uses its configured key/model
-        selected, raw_reply = _service.autoselect_paths(body)
-        if debug_requested:
-            data = {"selected": selected, "rawReply": raw_reply}
-        else:
-            data = selected
-        return success_response(data=data, status_code=HTTPStatus.OK)
-    except AutoselectService.ConfigError as exc: # Catch config errors from service
-        logger.error(f"Autoselect configuration error: {exc}")
-        return error_response(str(exc), status_code=HTTPStatus.INTERNAL_SERVER_ERROR)
-    except AutoselectService.UpstreamError as exc:
-        logger.error(f"Autoselect upstream error: {exc}")
-        return error_response(str(exc), status_code=HTTPStatus.BAD_GATEWAY)
-    except Exception as exc:  # pragma: no cover
-        logger.exception("Unhandled error in /api/autoselect")
-        return error_response(str(exc), status_code=HTTPStatus.INTERNAL_SERVER_ERROR)
+        selected, raw_reply, dbg = _autosel.autoselect_paths(
+            req, return_debug=debug
+        )
+    except ConfigError as exc:
+        return error_response(str(exc), status_code=500)
+    except UpstreamError as exc:
+        return error_response(str(exc), status_code=502)
+    #---------- log response -----------------------------------------------
+    # if dbg:
+    #     pretty = json.dumps(dbg, indent=2, ensure_ascii=False)
+    #     logger.info("▶︎ Codemap summaries (%d files):\n%s", len(dbg), pretty)
+    resp: Dict[str, Any] = {
+        "selected": selected,
+        "llmRaw": raw_reply,
+    }
+    if debug and dbg is not None:
+        resp["codemap"] = dbg
+
+    return success_response(data=resp)

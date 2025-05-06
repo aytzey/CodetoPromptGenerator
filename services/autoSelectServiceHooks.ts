@@ -1,63 +1,68 @@
 // services/autoSelectServiceHooks.ts
-/**
- * Changes (2025‑04‑17)
- * ─────────────────────
- * ✓  Adds `?debug=1` query‑param.
- * ✓  Prints the raw OpenRouter reply to the console.
- * ✓  Works with both old (string[]) and new ({ selected, rawReply }) payloads.
- */
-
-import { useState, useCallback } from "react";
-import { useProjectStore } from "@/stores/useProjectStore";
-import { usePromptStore } from "@/stores/usePromptStore";
-import { flattenFilePaths } from "@/lib/fileFilters";
+import { useCallback, useState } from "react";
 import { fetchApi } from "./apiService";
 
-type DebugPayload = { selected: string[]; rawReply: string };
+import { useProjectStore } from "@/stores/useProjectStore";
+import { usePromptStore } from "@/stores/usePromptStore";
+
+import { flattenTree } from "@/lib/fileFilters";
+import type { AutoSelectRequest, AutoSelectResponse } from "@/types";
+
+/* ────────────────────────────────────────────────────────────────────────── *
+ *       Smart-Select  –  service hook (⇧-for-debug supported)                *
+ * ────────────────────────────────────────────────────────────────────────── */
 
 export function useAutoSelectService() {
-  const { projectPath, fileTree, setSelectedFilePaths } = useProjectStore();
-  const { mainInstructions } = usePromptStore();
+  /* ---- stores ---- */
+  const projectStore = useProjectStore;
+  const promptStore  = usePromptStore;
 
+  /* ---- local state ---- */
   const [isSelecting, setIsSelecting] = useState(false);
 
-  const autoSelect = useCallback(async () => {
-    if (!projectPath || !mainInstructions.trim()) {
-      alert("Please choose a project and enter main instructions first.");
-      return;
-    }
-    setIsSelecting(true);
+  /* ---- main action ---- */
+  const autoSelect = useCallback(
+    async (opts?: { debug?: boolean }) => {
+      const { projectPath, fileTree } = projectStore.getState();
+      if (!projectPath || isSelecting) return;
 
-    const body = {
-      projectPath,
-      instructions: mainInstructions,
-      treePaths: flattenFilePaths(fileTree),
-    };
+      const treePaths = flattenTree(fileTree); // <── FIX: use helper, not store fn
 
-    // add ?debug=1 to receive rawReply
-    const res = await fetchApi<string[] | DebugPayload>("/api/autoselect?debug=1", {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
+      const request: AutoSelectRequest = {
+        baseDir:     projectPath,
+        treePaths,                           // full project tree
+        instructions: promptStore.getState().mainInstructions,
+      };
 
-    if (!res) {
-      setIsSelecting(false);
-      return;
-    }
+      // const url = `/api/autoselect${opts?.debug ? "?debug=1" : ""}`;
+      const url = "/api/autoselect?debug=1";
+      try {
+        setIsSelecting(true);
 
-    if (Array.isArray(res)) {
-      // old schema
-      setSelectedFilePaths(res);
-    } else {
-      // new debug schema
-      console.groupCollapsed("%cOpenRouter ↩ raw reply", "color:#16a085;font-weight:bold");
-      console.log(res.rawReply);
-      console.groupEnd();
-      setSelectedFilePaths(res.selected);
-    }
+        const res = await fetchApi<AutoSelectResponse>(url, {
+          method: "POST",
+          body:   JSON.stringify(request),
+        });
+        if (!res) return;
 
-    setIsSelecting(false);
-  }, [projectPath, mainInstructions, fileTree, setSelectedFilePaths]);
+        // Update selected paths in the project store
+        projectStore.getState().setSelectedFilePaths(res.selected);
 
+        // Optional debug → pretty-print codemap
+        if (opts?.debug && res.codemap) {
+          console.groupCollapsed("🗺️ Codemap summaries");
+          Object.entries(res.codemap).forEach(([file, info]) =>
+            console.info(file, info),
+          );
+          console.groupEnd();
+        }
+      } finally {
+        setIsSelecting(false);
+      }
+    },
+    [isSelecting, projectStore, promptStore],
+  );
+
+  /* ---- public API ---- */
   return { autoSelect, isSelecting };
 }
