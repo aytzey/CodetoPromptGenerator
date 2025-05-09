@@ -24,7 +24,6 @@ import {
   Loader2, 
   AlertCircle, 
   Calendar, 
-  ArrowRight, 
   Flag, 
   AlignLeft, 
   Check, 
@@ -49,7 +48,9 @@ const KanbanEditModal: React.FC<KanbanEditModalProps> = ({
   const [priority, setPriority] = useState<KanbanPriority>('medium');
   const [dueDate, setDueDate] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [titleFocused, setTitleFocused] = useState(false);
 
+  // Reset form when item changes or modal opens/closes
   useEffect(() => {
     if (item) {
       setTitle(item.title);
@@ -66,6 +67,18 @@ const KanbanEditModal: React.FC<KanbanEditModalProps> = ({
       setError(null);
     }
   }, [item, isOpen]);
+
+  // Auto-focus title input when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      // Small delay for animation to complete
+      const timer = setTimeout(() => {
+        setTitleFocused(true);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+    setTitleFocused(false);
+  }, [isOpen]);
 
   const handleSave = async () => {
     if (!item) return;
@@ -108,6 +121,22 @@ const KanbanEditModal: React.FC<KanbanEditModalProps> = ({
     }
   };
 
+  // Handle keyboard shortcuts
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Save with Ctrl+Enter or Cmd+Enter
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      if (!isSaving && title.trim()) {
+        handleSave();
+      }
+    }
+    // Close with Escape
+    else if (e.key === 'Escape') {
+      e.preventDefault();
+      onClose();
+    }
+  };
+
   if (!isOpen || !item) return null;
 
   // Priority configuration for visual styling
@@ -131,7 +160,10 @@ const KanbanEditModal: React.FC<KanbanEditModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[520px] glass border-[rgba(var(--color-border),0.7)] text-[rgb(var(--color-text-primary))] shadow-xl animate-slide-up">
+      <DialogContent 
+        className="sm:max-w-[520px] glass border-[rgba(var(--color-border),0.7)] text-[rgb(var(--color-text-primary))] shadow-xl animate-slide-up"
+        onKeyDown={handleKeyDown}
+      >
         <DialogHeader className="pb-3 border-b border-[rgba(var(--color-border),0.5)]">
           <DialogTitle className="text-[rgb(var(--color-primary))] text-xl flex items-center gap-2">
             <Edit2 size={18} className="text-[rgb(var(--color-primary))]" />
@@ -143,7 +175,7 @@ const KanbanEditModal: React.FC<KanbanEditModalProps> = ({
         </DialogHeader>
         
         {error && (
-          <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-3 flex items-center text-rose-500 text-sm">
+          <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-3 flex items-center text-rose-500 text-sm animate-fade-in">
             <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0" />
             {error}
           </div>
@@ -162,8 +194,12 @@ const KanbanEditModal: React.FC<KanbanEditModalProps> = ({
                 setTitle(e.target.value);
                 if (error && e.target.value.trim()) setError(null);
               }}
-              className="h-10 bg-[rgba(var(--color-bg-secondary),0.8)] border-[rgba(var(--color-border),0.7)] focus-glow"
+              className={cn(
+                "h-10 bg-[rgba(var(--color-bg-secondary),0.8)] border-[rgba(var(--color-border),0.7)] focus-glow transition-all",
+                error && !title.trim() && "border-rose-500 bg-rose-500/5"
+              )}
               placeholder="Enter task title"
+              autoFocus={titleFocused}
             />
           </div>
           
@@ -236,6 +272,13 @@ const KanbanEditModal: React.FC<KanbanEditModalProps> = ({
               />
             </div>
           </div>
+          
+          {/* Keyboard shortcuts hint */}
+          <div className="text-xs text-[rgb(var(--color-text-muted))] mt-2 flex justify-end">
+            <span className="flex items-center gap-1 px-2 py-1 bg-[rgba(var(--color-bg-secondary),0.5)] rounded-md border border-[rgba(var(--color-border),0.3)]">
+              Press <kbd className="px-1.5 py-0.5 bg-[rgba(var(--color-bg-tertiary),0.8)] border border-[rgba(var(--color-border),0.7)] rounded text-[10px] font-mono">Ctrl</kbd>+<kbd className="px-1.5 py-0.5 bg-[rgba(var(--color-bg-tertiary),0.8)] border border-[rgba(var(--color-border),0.7)] rounded text-[10px] font-mono">Enter</kbd> to save
+            </span>
+          </div>
         </div>
         
         <DialogFooter className="pt-3 border-t border-[rgba(var(--color-border),0.5)] gap-2">
@@ -250,10 +293,16 @@ const KanbanEditModal: React.FC<KanbanEditModalProps> = ({
           <Button 
             onClick={handleSave} 
             disabled={isSaving || !title.trim()} 
-            className="min-w-[120px] bg-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary),0.9)] text-white flex items-center gap-1.5"
+            className={cn(
+              "min-w-[120px] bg-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary),0.9)] text-white flex items-center gap-1.5 transition-all",
+              isSaving && "opacity-90"
+            )}
           >
             {isSaving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Saving...
+              </>
             ) : (
               <>
                 <Check size={16} />

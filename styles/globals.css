@@ -517,3 +517,256 @@
 [data-next-indicator] {
   display: none !important;
 }
+
+/* Add these styles to styles/globals.css */
+
+/* Card highlight animation when moved between columns */
+@keyframes kanbanCardHighlight {
+  0% { box-shadow: 0 0 0 rgba(var(--color-primary), 0); }
+  50% { box-shadow: 0 0 20px rgba(var(--color-primary), 0.6); border-color: rgba(var(--color-primary), 0.8); }
+  100% { box-shadow: 0 0 0 rgba(var(--color-primary), 0); }
+}
+
+.kanban-card-highlight {
+  animation: kanbanCardHighlight 1s ease-in-out;
+}
+
+/* Column highlight animation when being dragged over */
+@keyframes kanbanColumnPulse {
+  0%, 100% { background-color: rgba(var(--color-bg-tertiary), 0.65); }
+  50% { background-color: rgba(var(--color-primary), 0.08); }
+}
+
+.kanban-column-highlight {
+  animation: kanbanColumnPulse 1.5s ease-in-out infinite;
+}
+
+/* Enhanced card transitions for smooth animations */
+.card-enter {
+  opacity: 0;
+  transform: scale(0.9) translateY(10px);
+}
+
+.card-enter-active {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  transition: opacity 300ms, transform 300ms;
+}
+
+.card-exit {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.card-exit-active {
+  opacity: 0;
+  transform: scale(0.9) translateY(-10px);
+  transition: opacity 300ms, transform 300ms;
+}
+
+/* Fluid drag animation helper */
+.smooth-drag {
+  transition: transform 0.1s cubic-bezier(0.2, 0, 0, 1);
+  will-change: transform;
+}
+
+/* Kanban board specific utilities */
+.kanban-title-highlight {
+  background: linear-gradient(
+    to right,
+    rgb(var(--color-primary)), 
+    rgb(var(--color-tertiary))
+  );
+  -webkit-background-clip: text;
+  color: transparent;
+  background-size: 200% 100%;
+  animation: gradientShift 8s ease infinite;
+}
+
+@keyframes gradientShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* Animated Loading Indicator */
+.loading-pulse {
+  position: relative;
+}
+
+.loading-pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 15px rgba(var(--color-primary), 0.5);
+  opacity: 0;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
+}
+
+/* Hover Effects */
+.hover-lift-sm {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hover-lift-sm:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* Focus Animation for Accessibility */
+@keyframes focusPulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(var(--color-primary), 0.2); }
+  50% { box-shadow: 0 0 0 4px rgba(var(--color-primary), 0.3); }
+}
+
+.focus-pulse:focus-visible {
+  outline: none;
+  animation: focusPulse 1.5s ease-in-out infinite;
+  border-color: rgba(var(--color-primary), 0.7);
+}
+
+/* Hardware acceleration hints for smoother animations */
+.hardware-accelerated {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+/* Add these to your globals.css file */
+
+/* ===== Drag and Drop Enhancements ===== */
+
+/* Prevent text selection during drag operations */
+.dragging-active {
+  user-select: none !important;
+  cursor: grabbing !important;
+}
+
+/* Card highlight animation when moved between columns - enhanced version */
+@keyframes kanbanCardHighlight {
+  0% { 
+    box-shadow: 0 0 0 rgba(var(--color-primary), 0); 
+    transform: translateY(0);
+  }
+  30% { 
+    box-shadow: 0 0 25px rgba(var(--color-primary), 0.7); 
+    border-color: rgba(var(--color-primary), 0.9);
+    transform: translateY(-2px);
+  }
+  100% { 
+    box-shadow: 0 0 0 rgba(var(--color-primary), 0); 
+    transform: translateY(0);
+  }
+}
+
+.kanban-card-highlight {
+  animation: kanbanCardHighlight 0.9s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Column highlight animation when being dragged over - improved version */
+@keyframes kanbanColumnPulse {
+  0%, 100% { background-color: rgba(var(--color-bg-tertiary), 0.65); }
+  50% { background-color: rgba(var(--color-primary), 0.1); }
+}
+
+.kanban-column-highlight {
+  animation: kanbanColumnPulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Enhanced card transitions for smoother drag animations */
+.smooth-drag {
+  transition: transform 0.08s cubic-bezier(0.2, 0, 0, 1) !important;
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* Visual indication when trying to drop outside valid drop areas */
+.drop-not-allowed {
+  box-shadow: 0 0 0 2px rgba(var(--color-error), 0.8) !important;
+  opacity: 0.7 !important;
+  transform: scale(0.98) !important;
+}
+
+/* Hardware acceleration for smoother animations */
+.hardware-accelerated {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+  -webkit-font-smoothing: subpixel-antialiased;
+  perspective: 1000px;
+}
+
+/* Performance optimization for large lists */
+@media (prefers-reduced-motion: no-preference) {
+  .kanban-list-optimized {
+    contain: content;
+    content-visibility: auto;
+    contain-intrinsic-size: 0 500px;
+  }
+}
+
+/* Touch-friendly enhancements - enlarged touch targets */
+@media (pointer: coarse) {
+  .kanban-card-touch-enhanced {
+    --touch-target-padding: 8px;
+    position: relative;
+  }
+  
+  .kanban-card-touch-enhanced::before {
+    content: '';
+    position: absolute;
+    top: calc(-1 * var(--touch-target-padding));
+    left: calc(-1 * var(--touch-target-padding));
+    right: calc(-1 * var(--touch-target-padding));
+    bottom: calc(-1 * var(--touch-target-padding));
+    z-index: -1;
+  }
+  
+  .drag-handle-touch-friendly {
+    min-height: 32px;
+    min-width: 32px;
+  }
+}
+
+/* Card entering animation - smooth fade in */
+@keyframes cardEnterAnim {
+  from { 
+    opacity: 0; 
+    transform: translateY(10px) scale(0.96);
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0) scale(1);
+  }
+}
+
+.kanban-card-enter {
+  animation: cardEnterAnim 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* Enhanced ghost effect while dragging */
+.dragging-ghost {
+  position: relative;
+}
+
+.dragging-ghost::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(var(--color-primary), 0.08);
+  z-index: -1;
+  border-radius: inherit;
+  animation: ghostPulse 1.5s infinite;
+}
+
+@keyframes ghostPulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.03); }
+}
