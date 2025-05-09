@@ -36,6 +36,7 @@ import SelectedFilesListView from "@/views/SelectedFilesListView";
 import SelectionGroupsView from "@/views/SelectionGroupsView";
 import ExclusionsManagerView from "@/views/ExclusionsManagerView";
 import LocalExclusionsManagerView from "@/views/LocalExclusionsManagerView";
+import KanbanBoardView from "@/views/KanbanBoardView";
 import TodoListView from "@/views/TodoListView";
 
 import {
@@ -326,7 +327,7 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
       {/* TASKS TAB */}
       <TabsContent value="tasks" className="mt-6 animate-fade-in">
         {projectPath ? (
-          <TodoListView />
+          <KanbanBoardView />
         ) : (
           <div className="p-16 border border-dashed border-[rgba(var(--color-border),0.5)] rounded-xl bg-[rgba(var(--color-bg-secondary),0.3)] backdrop-blur-sm text-center flex flex-col items-center text-[rgb(var(--color-text-muted))]">
             <div className="w-16 h-16 rounded-full bg-[rgba(var(--color-bg-tertiary),0.7)] flex items-center justify-center mb-4 border border-[rgba(var(--color-border),0.3)]">
