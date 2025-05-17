@@ -57,7 +57,7 @@ class ConfigError(RuntimeError):
 # ─────────────────────────────────────────────────────────────────────────────
 class AutoselectService:
     _URL: str = "https://openrouter.ai/api/v1/chat/completions"
-    _DEFAULT_MODEL: str = "meta-llama/llama-4-maverick:free" # Changed from google/gemma-3-27b-it:free as per .env example
+    _DEFAULT_MODEL: str = "meta-llama/llama-4-scout:free" # Changed from google/gemma-3-27b-it:free as per .env example
 
     # Strict JSON schema expected from the model
     _SCHEMA: Dict[str, Any] = {
@@ -70,9 +70,9 @@ class AutoselectService:
     }
 
     # Prompt-building tunables
-    _TOKEN_HARD_LIMIT: int = 45_000           # Max tokens we’re willing to send
+    _TOKEN_HARD_LIMIT: int = 30_000           # Max tokens we’re willing to send
     _SUMMARY_MAX_CHARS: int = 10_000             # Max characters in a one-file summary
-    _TREE_MAX_LINES: int = 30_000              # Truncate huge project trees
+    _TREE_MAX_LINES: int = 10_000              # Truncate huge project trees
 
     # Regex for stripping markdown fences from JSON
     _FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]+?)\s*```", re.I)
