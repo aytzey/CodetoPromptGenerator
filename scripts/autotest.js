@@ -13,6 +13,8 @@
 const fs = require('fs');
 const path = require('path');
 const { EOL } = require('os');
+const { spawn } = require('child_process');
+const waitOn = require('wait-on');
 
 // --- Helper Functions --- (Copied from start.js)
 function parseIni(iniContent) { /* ... same as before ... */ }
@@ -27,6 +29,27 @@ function getPortConfig() { /* ... same as before ... */ }
   const { frontendPort, backendPort, backendUrl } = getPortConfig();
   const FRONTEND_BASE_URL = `http://localhost:${frontendPort}`;
   const BACKEND_BASE_URL = backendUrl; // Use the constructed URL
+
+  // Start backend and frontend if not already running
+  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const processes = [];
+  function startProc(cmd, args, name) {
+    const child = spawn(cmd, args, { stdio: 'inherit', detached: true });
+    child.on('error', err => console.error(`Failed to start ${name}:`, err));
+    processes.push(child);
+  }
+  function cleanup() {
+    for (const p of processes) {
+      try { process.kill(-p.pid); } catch { /* ignore */ }
+    }
+  }
+  process.on('exit', cleanup);
+  process.on('SIGINT', () => { cleanup(); process.exit(1); });
+
+  startProc(npmCmd, ['run', 'backend'], 'backend');
+  startProc(npmCmd, ['run', 'dev'], 'frontend');
+
+  await waitOn({ resources: [`tcp:127.0.0.1:${backendPort}`, `tcp:127.0.0.1:${frontendPort}`], timeout: 60000 });
 
   // Simple color utilities
   const green = str => `\x1b[32m${str}\x1b[0m`;
@@ -187,6 +210,7 @@ function getPortConfig() { /* ... same as before ... */ }
 
   // --- Results ---
   console.log(`\nTests completed. Passed: ${passed}, Failed: ${failed}`);
+  cleanup();
   if (failed > 0) {
     console.error(red("Some tests failed. Check logs above."));
     process.exit(1);
