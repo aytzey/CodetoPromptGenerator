@@ -15,6 +15,7 @@ const path = require('path');
 const { EOL } = require('os');
 const { spawn } = require('child_process');
 const waitOn = require('wait-on');
+const killPort = require('kill-port');
 
 // --- Helper Functions --- (Copied from start.js)
 function parseIni(iniContent) { /* ... same as before ... */ }
@@ -29,6 +30,18 @@ function getPortConfig() { /* ... same as before ... */ }
   const { frontendPort, backendPort, backendUrl } = getPortConfig();
   const FRONTEND_BASE_URL = `http://localhost:${frontendPort}`;
   const BACKEND_BASE_URL = backendUrl; // Use the constructed URL
+
+  // Ensure ports are free before starting
+  try {
+    await killPort(backendPort);
+  } catch {
+    /* ignore */
+  }
+  try {
+    await killPort(frontendPort);
+  } catch {
+    /* ignore */
+  }
 
   // Start backend and frontend if not already running
   const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';

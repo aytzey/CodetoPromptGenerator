@@ -5,9 +5,9 @@
   "main": "electron/main.js",
   "scripts": {
     "dev": "kill-port 3010 && next dev -p 3010 -H 127.0.0.1",
-    "build": "npx --yes node@18.18.0 ./node_modules/next/dist/bin/next build",
+      "build": "npx --yes node@20 ./node_modules/next/dist/bin/next build",
     "export": "next build && next export",
-    "start": "npx --yes node@18.18.0 ./node_modules/next/dist/bin/next start -p 3010",
+      "start": "npx --yes node@20 ./node_modules/next/dist/bin/next start -p 3010",
     "lint": "next lint",
     "backend": "python_backend/venv/bin/python python_backend/app.py",
     "start:dev": "node start.js",
@@ -18,7 +18,7 @@
     "electron:build": "npm run export && electron-builder --linux deb AppImage"
   },
   "engines": {
-    "node": ">=18.18.0"
+    "node": ">=20"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
