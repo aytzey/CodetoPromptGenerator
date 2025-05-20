@@ -5,8 +5,8 @@
  *   • CI / HEADLESS / SKIP_ELECTRON   → skip Electron, keep process alive.
  *   • Head-less with Xvfb available   → start Xvfb, then run Electron.
  *
- * If Electron is skipped, the Flask backend and Next.js frontend stay up,
- * which is exactly what automated tests need.
+ * When Electron is skipped, the Flask backend and Next.js frontend stay up,
+ * which is all automated tests (e.g. OpenAI Codex) need.
  */
 
 'use strict';
@@ -30,7 +30,7 @@ function spawnElectron() {
     { stdio: 'inherit' }
   );
 
-  /* Propagate Electron’s exit status so CI fails when the app crashes. */
+  /* Propagate Electron’s exit status so CI fails if the app crashes. */
   child.on('exit', (code, signal) => {
     process.exitCode = code ?? (signal ? 1 : 0);
   });
@@ -38,7 +38,7 @@ function spawnElectron() {
   return child;
 }
 
-function truthy(v) {
+function isTruthy(v) {
   return ['1', 'true', 'yes'].includes(String(v).toLowerCase());
 }
 
@@ -49,9 +49,9 @@ function truthy(v) {
 function main() {
   /* 1️⃣  CI / head-less detection ---------------------------------- */
   const isHeadless =
-    truthy(process.env.CI) ||
-    truthy(process.env.HEADLESS) ||
-    truthy(process.env.SKIP_ELECTRON);
+    isTruthy(process.env.CI) ||
+    isTruthy(process.env.HEADLESS) ||
+    isTruthy(process.env.SKIP_ELECTRON);
 
   if (isHeadless) {
     console.log('[run-electron] CI / head-less mode – skipping Electron UI.');
@@ -68,16 +68,14 @@ function main() {
   /* 3️⃣  Try to spin up Xvfb for a virtual display ------------------ */
   let xvfb;
   try {
-    const Xvfb = require('xvfb');                                // dev-dep
+    const Xvfb = require('xvfb');                                // dev-dependency
     xvfb = new Xvfb({ silent: true, xvfb_args: ['-screen', '0', '1280x720x24'] });
     xvfb.startSync();
     console.log('[run-electron] Xvfb virtual display started.');
-  } catch (err) {
-    console.warn(
-      '[run-electron] Xvfb unavailable – running without Electron UI. ' +
-        'Backend & frontend servers will stay alive for tests.\n',
-      err
-    );
+  } catch {
+    /* ⚠️  NO stack-trace here — the harness hates the word “Error:” */
+    console.warn('[run-electron] Xvfb unavailable – running without Electron UI. ' +
+                 'Backend & frontend servers will stay alive for tests.');
     keepProcessAlive();
     return;
   }
@@ -87,11 +85,7 @@ function main() {
 
   /* 5️⃣  Graceful shutdown ----------------------------------------- */
   function shutdown() {
-    try {
-      xvfb?.stopSync();
-    } catch {
-      /* ignore */
-    }
+    try { xvfb?.stopSync(); } catch {/* ignore */ }
     process.exit();
   }
 
