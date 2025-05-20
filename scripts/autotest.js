@@ -220,6 +220,29 @@ function getPortConfig() { /* ... same as before ... */ }
     }
   });
 
+  await runTest("Frontend: Copy fallback included in bundle", async () => {
+    const resp = await fetch(FRONTEND_BASE_URL);
+    if (!resp.ok) throw new Error("Expected HTTP 200 but got " + resp.status);
+    const html = await resp.text();
+    const scriptUrls = [];
+    for (const m of html.matchAll(/<script[^>]*src=\"([^\"]+)\"/g)) {
+      scriptUrls.push(m[1]);
+    }
+
+    let found = false;
+    for (const path of scriptUrls) {
+      const url = path.startsWith('http') ? path : `${FRONTEND_BASE_URL}${path}`;
+      const jsResp = await fetch(url);
+      if (!jsResp.ok) continue;
+      const js = await jsResp.text();
+      if (js.includes('execCommand("copy"') || js.includes("execCommand('copy'")) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) throw new Error("Copy fallback not found in frontend bundle");
+  });
+
 
   // --- Results ---
   console.log(`\nTests completed. Passed: ${passed}, Failed: ${failed}`);

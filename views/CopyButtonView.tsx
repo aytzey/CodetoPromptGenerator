@@ -64,6 +64,20 @@ function renderFiles(data: FileData[]) {
     .join('\n\n');
 }
 
+/** fallback copy using a temporary textarea (for older browsers like Safari) */
+function fallbackCopyText(text: string) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.top = '-1000px';
+  ta.style.left = '-1000px';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+}
+
 /** final prompt assembler – pure function for testability */
 function buildPrompt(
   meta: string,
@@ -109,7 +123,6 @@ const CopyButtonView: React.FC = () => {
   const { loadSelectedFileContents } = useProjectService();
 
   /* —— local UI state —— */
-  const hiddenTA = useRef<HTMLTextAreaElement>(null);
   const [copied, setCopied] = useState(false);
   const [isBuilding, setIsBuilding] = useState(false);
   const [animateGlow, setAnimateGlow] = useState(false);
@@ -152,13 +165,15 @@ const CopyButtonView: React.FC = () => {
       );
 
       /* 3️⃣ copy – Clipboard API first, fallback second */
-      await navigator.clipboard.writeText(prompt).catch(() => {
-        if (!hiddenTA.current) throw new Error('Hidden textarea missing');
-        hiddenTA.current.value = prompt;
-        hiddenTA.current.select();
-        document.execCommand('copy');
-        hiddenTA.current.blur();
-      });
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(prompt);
+        } else {
+          fallbackCopyText(prompt);
+        }
+      } catch {
+        fallbackCopyText(prompt);
+      }
 
       setCopied(true);
       setAnimateGlow(true);
@@ -175,10 +190,8 @@ const CopyButtonView: React.FC = () => {
   /* —— UI —— */
   const disabled = !ready || isBuilding || isLoadingContents;
 
-  return (
-    <div className="relative w-full">
-      {/* invisible textarea for fallback copy */}
-      <textarea ref={hiddenTA} className="sr-only" aria-hidden="true" />
+    return (
+      <div className="relative w-full">
 
       {/* Enhanced stats row */}
       {(fileCount > 0 || tokenCount > 0) && (
