@@ -13,7 +13,8 @@
     "start:dev": "node start.js",
     "start:all": "node start.js",
     "postinstall": "node scripts/postinstall.js",
-    "electron:dev": "concurrently -k \"npm run dev\" \"npm run backend\" \"wait-on tcp:5010 tcp:3010 && xvfb-maybe electron --no-sandbox .\"",
+    "electron:dev": "concurrently -k \"npm run dev\" \"npm run backend\" \"wait-on tcp:5010 tcp:3010 && node scripts/run-electron.js\"",
+
     "electron:pack": "electron-builder --dir",
     "electron:build": "npm run export && electron-builder --linux deb AppImage"
   },
@@ -76,7 +77,7 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
     "wait-on": "^7.0.1",
-    "xvfb-maybe": "^0.2.1"
+    "xvfb": "^0.3.2"
   },
   "build": {
     "productName": "CodeToPromptGenerator",
@@ -88,16 +89,10 @@
       "package.json"
     ],
     "extraResources": [
-      {
-        "from": "python_backend",
-        "to": "python_backend"
-      }
+      { "from": "python_backend", "to": "python_backend" }
     ],
     "linux": {
-      "target": [
-        "deb",
-        "AppImage"
-      ],
+      "target": ["deb", "AppImage"],
       "category": "Development",
       "maintainer": "Aytug Berk Sezer",
       "synopsis": "Generate finely-tuned LLM prompts from your code base"
