@@ -1,6 +1,6 @@
 Flask==2.3.3
 flask-cors==4.0.0
-python-dotenv==1.0.1 # <-- Added python-dotenv
+python-dotenv==1.0.1
 Werkzeug==2.3.7
 itsdangerous==2.1.2
 Jinja2==3.1.2
@@ -9,8 +9,10 @@ gunicorn==21.2.0
 tiktoken==0.6.0
 pathspec==0.12.1
 tree_sitter==0.21.3
-tree_sitter_languages==1.10.2
-tree_sitter_cpp==0.23.4 
+tree_sitter_languages==1.10.2 ; python_version < "3.13"
+tree_sitter_language_pack>=0.7.0 ; python_version >= "3.13"
+tree_sitter_cpp==0.23.4
 tree_sitter_c==0.23.4
-httpx==0.27.0           # ─┐ Upstream call (sync client)
-responses==0.25.0       # ─┘ HTTP‑mocking for unit tests
+httpx==0.27.0
+responses==0.25.0
+pydantic<2

@@ -11,6 +11,7 @@ from http import HTTPStatus
 from pathlib import Path
 
 from flask import Blueprint, jsonify, request, abort
+from typing import Optional
 
 from utils.path_utils import list_logical_drives, list_subfolders
 from repositories.file_storage import FileStorageRepository
@@ -36,7 +37,7 @@ def api_select_drives():
 # ───────────────────────── 2. browse sub‑folders ────────────────────────────
 @resolve_bp.get("/browse_folders")
 def api_browse_folders():
-    raw_path: str | None = request.args.get("path")
+    raw_path: Optional[str] = request.args.get("path")
     if not raw_path:
         abort(HTTPStatus.BAD_REQUEST, "Missing 'path' query‑param")
 

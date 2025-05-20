@@ -30,17 +30,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r python_backend/requirements.txt
 
-      # 4) Start the Python backend in the background
-      - name: Start Python Backend
+      # 4) Run Python unit tests
+      - name: Run Backend Tests
         run: |
-          nohup python python_backend/app.py &
-          sleep 5
+          python -m pytest -q python_backend/tests
 
       # 5) Set up Node.js
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: "16"
+          node-version: "20.x"
 
       # 6) Install Node dependencies (CI-friendly)
       - name: Install Node Dependencies
@@ -50,12 +49,6 @@ jobs:
       - name: Build Next.js
         run: npm run build
 
-      # 8) Start Next.js in the background
-      - name: Start Next.js
-        run: |
-          nohup npm run start &
-          sleep 10
-
-      # 9) Run the auto-tests (Python + Next.js)
+      # 8) Run the auto-tests (Python + Next.js)
       - name: Run AutoTests
         run: node scripts/autotest.js

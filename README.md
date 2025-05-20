@@ -118,6 +118,10 @@ This launches both servers:
 - Frontend on port specified in `ports.ini` (default: `http://localhost:3000`)
 - Backend on port specified in `ports.ini` (default: `http://localhost:5000`)
 
+Fast reload for the Electron window is **disabled by default** to reduce CPU and
+memory usage. If you prefer automatic reloads during development, set
+`USE_ELECTRON_RELOAD=1` in your environment before running the above command.
+
 Press `Ctrl + C` to stop both.
 
 #### (B) Using Provided Batch/Shell Scripts

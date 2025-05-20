@@ -1,6 +1,7 @@
-
 // types/index.ts
+
 // Shared / re‑exported project types – EXTENDED with Codemap + Auto‑select models.
+import { z } from 'zod';
 
 export interface FileNode {
   name: string;
@@ -18,6 +19,7 @@ export interface FileData {
 }
 
 /* — todo items — */
+export type TodoFilter   = 'all' | 'active' | 'completed';
 export interface TodoItem {
   id: number;
   text: string;
@@ -51,3 +53,32 @@ export interface AutoSelectRequest {
 }
 
 export type AutoSelectResponse = string[];            // list of *relative* paths
+
+/* █████  KANBAN  ██████████████████████████████████████████████████████ */
+export const KanbanStatusValues   = ['todo', 'in-progress', 'done'] as const;
+export const KanbanPriorityValues = ['low', 'medium', 'high']       as const;
+
+export type KanbanStatus   = typeof KanbanStatusValues[number];
+export type KanbanPriority = typeof KanbanPriorityValues[number];
+
+export interface KanbanItem {
+  id:          number;
+  title:       string;
+  details?:    string | null; // CHANGED from description, made nullable
+  status:      KanbanStatus;
+  priority:    KanbanPriority;
+  dueDate?:    string | null; // CHANGED from deadline, made nullable (ISO Date string)
+  createdAt:   string;        // ISO Date string
+}
+
+/* ----------  Runtime schema (shared FE/BE)  ------------------------- */
+export const KanbanItemSchema = z.object({
+  id:          z.number().int().nonnegative(),
+  title:       z.string().min(1).max(120),
+  details:     z.string().optional().nullable(), // CHANGED from description
+  status:      z.enum(KanbanStatusValues),
+  priority:    z.enum(KanbanPriorityValues),
+  // Ensure dueDate and createdAt handle full ISO strings with timezone offset (e.g., "Z" for UTC)
+  dueDate:     z.string().datetime({ offset: true }).optional().nullable(), // CHANGED from deadline
+  createdAt:   z.string().datetime({ offset: true }),
+});

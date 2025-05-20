@@ -12,6 +12,7 @@ import {
   ChevronsUp,
   LayoutGrid,
   Layers,
+  Filter,
 } from "lucide-react";
 import {
   Tabs,
@@ -35,6 +36,7 @@ import SelectedFilesListView from "@/views/SelectedFilesListView";
 import SelectionGroupsView from "@/views/SelectionGroupsView";
 import ExclusionsManagerView from "@/views/ExclusionsManagerView";
 import LocalExclusionsManagerView from "@/views/LocalExclusionsManagerView";
+import KanbanBoardView from "@/views/KanbanBoardView";
 import TodoListView from "@/views/TodoListView";
 
 import {
@@ -64,7 +66,6 @@ interface LeftPanelViewProps {
   fileTree: FileNode[];
 }
 
-
 const LeftPanelView: React.FC<LeftPanelViewProps> = ({
   activeTab,
   setActiveTab,
@@ -82,7 +83,6 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
   selectedFileCount,
   fileTree,
 }) => {
-
 
   const effectiveTree = useMemo(() => {
     const term = fileSearchTerm.trim();
@@ -103,55 +103,79 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
       onValueChange={(v) => setActiveTab(v as any)}
       className="space-y-6"
     >
-      {/* Enhanced Tab Navigation */}
-      <TabsList className="grid grid-cols-3 p-1 bg-[rgba(22,23,46,0.6)] backdrop-blur-sm border border-[rgba(60,63,87,0.5)] rounded-xl">
+      {/* Enhanced Tab Navigation with dynamic glows */}
+      <TabsList className="grid grid-cols-3 p-1.5 bg-[rgba(var(--color-bg-secondary),0.7)] backdrop-blur-xl border border-[rgba(var(--color-border),0.5)] rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.08)]">
         <TabsTrigger 
           value="files" 
-          className="rounded-lg py-2.5 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[rgba(123,147,253,0.2)] data-[state=active]:to-[rgba(123,147,253,0.1)] data-[state=active]:backdrop-blur-md data-[state=active]:border data-[state=active]:border-[rgba(123,147,253,0.3)] data-[state=active]:shadow-[0_0_10px_rgba(123,147,253,0.2)] transition-all duration-300"
+          className="rounded-lg py-2.5 data-[state=active]:bg-gradient-to-br data-[state=active]:from-[rgba(var(--color-primary),0.2)] data-[state=active]:to-[rgba(var(--color-primary),0.05)] data-[state=active]:backdrop-blur-xl data-[state=active]:border data-[state=active]:border-[rgba(var(--color-primary),0.3)] data-[state=active]:shadow-[0_0_15px_rgba(var(--color-primary),0.2)] data-[state=active]:scale-[1.02] transition-all duration-300"
         >
-          <FileCode size={16} className="mr-2 text-[rgb(123,147,253)]" />
+          <div className="p-1 rounded-md bg-[rgba(var(--color-primary),0.1)] mr-2">
+            <FileCode size={16} className="text-[rgb(var(--color-primary))]" />
+          </div>
           <span className="font-medium">Files</span>
         </TabsTrigger>
         <TabsTrigger 
           value="options"
-          className="rounded-lg py-2.5 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[rgba(80,250,123,0.2)] data-[state=active]:to-[rgba(80,250,123,0.1)] data-[state=active]:backdrop-blur-md data-[state=active]:border data-[state=active]:border-[rgba(80,250,123,0.3)] data-[state=active]:shadow-[0_0_10px_rgba(80,250,123,0.2)] transition-all duration-300"
+          className="rounded-lg py-2.5 data-[state=active]:bg-gradient-to-br data-[state=active]:from-[rgba(var(--color-secondary),0.2)] data-[state=active]:to-[rgba(var(--color-secondary),0.05)] data-[state=active]:backdrop-blur-xl data-[state=active]:border data-[state=active]:border-[rgba(var(--color-secondary),0.3)] data-[state=active]:shadow-[0_0_15px_rgba(var(--color-secondary),0.2)] data-[state=active]:scale-[1.02] transition-all duration-300"
         >
-          <Settings size={16} className="mr-2 text-[rgb(80,250,123)]" />
+          <div className="p-1 rounded-md bg-[rgba(var(--color-secondary),0.1)] mr-2">
+            <Settings size={16} className="text-[rgb(var(--color-secondary))]" />
+          </div>
           <span className="font-medium">Options</span>
         </TabsTrigger>
         <TabsTrigger 
           value="tasks"
-          className="rounded-lg py-2.5 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[rgba(189,147,249,0.2)] data-[state=active]:to-[rgba(189,147,249,0.1)] data-[state=active]:backdrop-blur-md data-[state=active]:border data-[state=active]:border-[rgba(189,147,249,0.3)] data-[state=active]:shadow-[0_0_10px_rgba(189,147,249,0.2)] transition-all duration-300"
+          className="rounded-lg py-2.5 data-[state=active]:bg-gradient-to-br data-[state=active]:from-[rgba(var(--color-tertiary),0.2)] data-[state=active]:to-[rgba(var(--color-tertiary),0.05)] data-[state=active]:backdrop-blur-xl data-[state=active]:border data-[state=active]:border-[rgba(var(--color-tertiary),0.3)] data-[state=active]:shadow-[0_0_15px_rgba(var(--color-tertiary),0.2)] data-[state=active]:scale-[1.02] transition-all duration-300"
         >
-          <ListChecks size={16} className="mr-2 text-[rgb(189,147,249)]" />
+          <div className="p-1 rounded-md bg-[rgba(var(--color-tertiary),0.1)] mr-2">
+            <ListChecks size={16} className="text-[rgb(var(--color-tertiary))]" />
+          </div>
           <span className="font-medium">Tasks</span>
         </TabsTrigger>
       </TabsList>
 
       {/* FILES TAB */}
-      <TabsContent value="files" className="mt-6 space-y-6 animate-fade-in">
-        {/* File Tree Card */}
-        <Card className="overflow-hidden border-[rgba(60,63,87,0.7)] bg-[rgba(30,31,61,0.7)] backdrop-blur-sm shadow-[0_8px_30px_rgba(0,0,0,0.12)]">
-          <CardHeader className="py-3 px-4 border-b border-[rgba(60,63,87,0.7)] bg-gradient-to-r from-[rgba(22,23,46,0.9)] to-[rgba(30,31,61,0.9)]">
+      <TabsContent value="files" className="mt-6 space-y-8 animate-fade-in">
+        {/* File Tree Card with enhanced glassmorphism */}
+        <Card className="overflow-hidden border-[rgba(var(--color-border),0.7)] bg-[rgba(var(--color-bg-tertiary),0.65)] backdrop-blur-xl shadow-card glass">
+          <CardHeader className="py-3 px-4 border-b border-[rgba(var(--color-border),0.6)] bg-gradient-to-r from-[rgba(var(--color-bg-secondary),0.9)] to-[rgba(var(--color-bg-tertiary),0.9)] glass-header">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <CardTitle className="text-base font-semibold flex items-center gap-2 text-transparent bg-clip-text bg-gradient-to-r from-[rgb(123,147,253)] to-[rgb(139,233,253)]">
-                <FileCode size={18} className="text-[rgb(123,147,253)]" />
+              <CardTitle className="text-base font-semibold flex items-center gap-2 text-transparent bg-clip-text bg-gradient-to-r from-[rgb(var(--color-primary))] to-[rgb(var(--color-accent-2))]">
+                <div className="p-1.5 rounded-md bg-[rgba(var(--color-primary),0.1)] border border-[rgba(var(--color-primary),0.2)]">
+                  <FileCode size={18} className="text-[rgb(var(--color-primary))]" />
+                </div>
                 Project Files
               </CardTitle>
 
               <div className="flex flex-wrap items-center gap-2">
-                {/* Search with enhanced styling */}
-                <div className="relative">
+                {/* Search with enhanced styling and animation */}
+                <div className="relative group">
                   <Search
-                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[rgb(140,143,170)]"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))] group-focus-within:text-[rgb(var(--color-primary))] transition-colors"
                     size={14}
                   />
                   <Input
                     placeholder="Filter files…"
                     value={fileSearchTerm}
                     onChange={(e) => setFileSearchTerm(e.target.value)}
-                    className="pl-8 h-8 w-44 bg-[rgba(15,16,36,0.4)] border-[rgba(60,63,87,0.7)] focus:border-[rgb(123,147,253)] focus:ring-[rgb(123,147,253)] transition-all"
+                    className="pl-9 pr-8 h-9 w-48 bg-[rgba(var(--color-bg-secondary),0.7)] border-[rgba(var(--color-border),0.7)] focus:border-[rgb(var(--color-primary))] focus:ring-[rgb(var(--color-primary))] transition-all focus-within:shadow-[0_0_8px_rgba(var(--color-primary),0.15)]"
                   />
+                  {fileSearchTerm && (
+                    <button
+                      onClick={() => setFileSearchTerm('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text-primary))] transition-colors"
+                    >
+                      <XSquare size={14} />
+                    </button>
+                  )}
+                  {/* Show wildcard hint if empty */}
+                  {!fileSearchTerm && (
+                    <Filter 
+                      size={14} 
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))] opacity-50" 
+                      title="Supports wildcards: *.js, src/**, etc."
+                    />
+                  )}
                 </div>
                 
                 {/* Action buttons with improved styling */}
@@ -161,11 +185,11 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
                     variant="outline"
                     onClick={handleRefresh}
                     disabled={isLoadingTree || !projectPath}
-                    className="h-8 bg-[rgba(15,16,36,0.4)] border-[rgba(60,63,87,0.7)] hover:bg-[rgba(123,147,253,0.1)] hover:border-[rgba(123,147,253,0.5)] text-[rgb(190,192,210)]"
+                    className="h-9 bg-[rgba(var(--color-bg-secondary),0.7)] border-[rgba(var(--color-border),0.7)] hover:bg-[rgba(var(--color-primary),0.1)] hover:border-[rgba(var(--color-primary),0.5)] text-[rgb(var(--color-text-secondary))] transition-all"
                   >
                     <RefreshCw
                       size={14}
-                      className={cn("mr-1.5", isLoadingTree && "animate-spin text-[rgb(123,147,253)]")}
+                      className={cn("mr-1.5", isLoadingTree && "animate-spin text-[rgb(var(--color-primary))]")}
                     />
                     Refresh
                   </Button>
@@ -176,9 +200,9 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
                       variant="outline"
                       onClick={handleSelectAll}
                       disabled={!projectPath}
-                      className="h-8 px-2.5 rounded-r-none bg-[rgba(15,16,36,0.4)] border-[rgba(60,63,87,0.7)] hover:bg-[rgba(80,250,123,0.1)] hover:border-[rgba(80,250,123,0.5)] text-[rgb(190,192,210)]"
+                      className="h-9 px-3 rounded-r-none bg-[rgba(var(--color-bg-secondary),0.7)] border-[rgba(var(--color-border),0.7)] hover:bg-[rgba(var(--color-secondary),0.1)] hover:border-[rgba(var(--color-secondary),0.5)] text-[rgb(var(--color-text-secondary))] transition-all"
                     >
-                      <CheckSquare size={14} className="mr-1.5 text-[rgb(80,250,123)]" />
+                      <CheckSquare size={14} className="mr-1.5 text-[rgb(var(--color-secondary))]" />
                       All
                     </Button>
                     <Button
@@ -186,9 +210,9 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
                       variant="outline"
                       onClick={deselectAllFiles}
                       disabled={!selectedFilePaths.length}
-                      className="h-8 px-2.5 rounded-l-none border-l-0 bg-[rgba(15,16,36,0.4)] border-[rgba(60,63,87,0.7)] hover:bg-[rgba(255,121,198,0.1)] hover:border-[rgba(255,121,198,0.5)] text-[rgb(190,192,210)]"
+                      className="h-9 px-3 rounded-l-none border-l-0 bg-[rgba(var(--color-bg-secondary),0.7)] border-[rgba(var(--color-border),0.7)] hover:bg-[rgba(var(--color-accent-1),0.1)] hover:border-[rgba(var(--color-accent-1),0.5)] text-[rgb(var(--color-text-secondary))] transition-all"
                     >
-                      <XSquare size={14} className="mr-1.5 text-[rgb(255,121,198)]" />
+                      <XSquare size={14} className="mr-1.5 text-[rgb(var(--color-accent-1))]" />
                       Clear
                     </Button>
                   </div>
@@ -199,9 +223,9 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
                       variant="outline"
                       onClick={() => treeRef.current?.expandAll()}
                       disabled={!projectPath}
-                      className="h-8 px-2.5 rounded-r-none bg-[rgba(15,16,36,0.4)] border-[rgba(60,63,87,0.7)] hover:bg-[rgba(139,233,253,0.1)] hover:border-[rgba(139,233,253,0.5)] text-[rgb(190,192,210)]"
+                      className="h-9 px-3 rounded-r-none bg-[rgba(var(--color-bg-secondary),0.7)] border-[rgba(var(--color-border),0.7)] hover:bg-[rgba(var(--color-accent-2),0.1)] hover:border-[rgba(var(--color-accent-2),0.5)] text-[rgb(var(--color-text-secondary))] transition-all"
                     >
-                      <ChevronsDown size={14} className="mr-1.5 text-[rgb(139,233,253)]" />
+                      <ChevronsDown size={14} className="mr-1.5 text-[rgb(var(--color-accent-2))]" />
                       Expand
                     </Button>
                     <Button
@@ -209,9 +233,9 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
                       variant="outline"
                       onClick={() => treeRef.current?.collapseAll()}
                       disabled={!projectPath}
-                      className="h-8 px-2.5 rounded-l-none border-l-0 bg-[rgba(15,16,36,0.4)] border-[rgba(60,63,87,0.7)] hover:bg-[rgba(139,233,253,0.1)] hover:border-[rgba(139,233,253,0.5)] text-[rgb(190,192,210)]"
+                      className="h-9 px-3 rounded-l-none border-l-0 bg-[rgba(var(--color-bg-secondary),0.7)] border-[rgba(var(--color-border),0.7)] hover:bg-[rgba(var(--color-accent-2),0.1)] hover:border-[rgba(var(--color-accent-2),0.5)] text-[rgb(var(--color-text-secondary))] transition-all"
                     >
-                      <ChevronsUp size={14} className="mr-1.5 text-[rgb(139,233,253)]" />
+                      <ChevronsUp size={14} className="mr-1.5 text-[rgb(var(--color-accent-2))]" />
                       Collapse
                     </Button>
                   </div>
@@ -219,23 +243,31 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
               </div>
             </div>
           </CardHeader>
-                    {/* File Tree content area */}
-          <CardContent className="p-3 bg-[rgba(22,23,46,0.5)]">
+          {/* File Tree content area */}
+          <CardContent className="p-3 bg-[rgba(var(--color-bg-secondary),0.3)]">
             {isLoadingTree ? (
-              /* loading state unchanged */
-              <div className="flex items-center justify-center py-10 text-[rgb(140,143,170)]">
-                <RefreshCw size={24} className="animate-spin mr-3 text-[rgb(123,147,253)]" />
-                Loading tree…
+              /* Enhanced loading state */
+              <div className="flex flex-col items-center justify-center py-12 text-[rgb(var(--color-text-muted))]">
+                <div className="relative mb-4">
+                  <div className="w-12 h-12 rounded-full border-2 border-[rgba(var(--color-primary),0.2)] border-t-[rgb(var(--color-primary))] animate-spin"></div>
+                  <div className="w-12 h-12 rounded-full border-2 border-[rgba(var(--color-secondary),0.1)] border-r-[rgb(var(--color-secondary))] animate-spin absolute top-0 left-0" style={{animationDirection: 'reverse', animationDuration: '1.5s'}}></div>
+                </div>
+                <p className="text-[rgb(var(--color-text-secondary))] animate-pulse">Loading project files...</p>
               </div>
             ) : !projectPath ? (
-              /* no‑project state unchanged */
-              <div className="flex flex-col items-center justify-center py-16 text-[rgb(140,143,170)]">
-                <LayoutGrid size={40} className="mb-3 opacity-40" />
-                <p className="text-center">Select a project folder above to begin</p>
+              /* Enhanced no‑project state */
+              <div className="flex flex-col items-center justify-center py-16 text-[rgb(var(--color-text-muted))]">
+                <div className="w-16 h-16 rounded-full bg-[rgba(var(--color-bg-tertiary),0.7)] flex items-center justify-center mb-4 border border-[rgba(var(--color-border),0.3)]">
+                  <LayoutGrid size={36} className="opacity-40 text-[rgb(var(--color-text-muted))]" />
+                </div>
+                <p className="text-center mb-2">Select a project folder to begin</p>
+                <div className="text-xs opacity-60 max-w-xs text-center">
+                  Choose a folder using the project selector at the top of the page
+                </div>
               </div>
             ) : (
-              /* the tree */
-              <div className="border border-[rgba(60,63,87,0.7)] rounded-md bg-[rgba(15,16,36,0.2)] backdrop-blur-sm">
+              /* Enhanced tree container */
+              <div className="border border-[rgba(var(--color-border),0.7)] rounded-md bg-[rgba(var(--color-bg-secondary),0.3)] backdrop-blur-sm shadow-inner">
                 <FileTreeView
                   ref={treeRef}
                   tree={effectiveTree}
@@ -248,28 +280,32 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
           </CardContent>
         </Card>
 
-        {/* Selected Files Card */}
-        <Card className="overflow-hidden border-[rgba(60,63,87,0.7)] bg-[rgba(30,31,61,0.7)] backdrop-blur-sm shadow-[0_8px_30px_rgba(0,0,0,0.12)]">
-          <CardHeader className="py-3 px-4 border-b border-[rgba(60,63,87,0.7)] bg-gradient-to-r from-[rgba(22,23,46,0.9)] to-[rgba(30,31,61,0.9)]">
-            <CardTitle className="text-base font-semibold flex items-center gap-2 text-transparent bg-clip-text bg-gradient-to-r from-[rgb(80,250,123)] to-[rgb(139,233,253)]">
-              <CheckSquare size={18} className="text-[rgb(80,250,123)]" />
+        {/* Selected Files Card with enhanced styling */}
+        <Card className="overflow-hidden border-[rgba(var(--color-border),0.7)] bg-[rgba(var(--color-bg-tertiary),0.65)] backdrop-blur-xl shadow-card glass">
+          <CardHeader className="py-3 px-4 border-b border-[rgba(var(--color-border),0.6)] bg-gradient-to-r from-[rgba(var(--color-bg-secondary),0.9)] to-[rgba(var(--color-bg-tertiary),0.9)] glass-header">
+            <CardTitle className="text-base font-semibold flex items-center gap-2 text-transparent bg-clip-text bg-gradient-to-r from-[rgb(var(--color-secondary))] to-[rgb(var(--color-accent-2))]">
+              <div className="p-1.5 rounded-md bg-[rgba(var(--color-secondary),0.1)] border border-[rgba(var(--color-secondary),0.2)]">
+                <CheckSquare size={18} className="text-[rgb(var(--color-secondary))]" />
+              </div>
               Selected Files
               {selectedFileCount > 0 && (
-                <Badge className="ml-auto py-0.5 px-2 bg-[rgba(80,250,123,0.2)] text-[rgb(80,250,123)] border border-[rgba(80,250,123,0.3)]">
+                <Badge className="ml-auto py-0.5 px-2.5 bg-[rgba(var(--color-secondary),0.15)] text-[rgb(var(--color-secondary))] border border-[rgba(var(--color-secondary),0.3)] shadow-[0_0_10px_rgba(var(--color-secondary),0.1)]">
                   {selectedFileCount}
                 </Badge>
               )}
             </CardTitle>
           </CardHeader>
           
-          <CardContent className="p-4 space-y-4 bg-[rgba(22,23,46,0.5)]">
+          <CardContent className="p-4 space-y-4 bg-[rgba(var(--color-bg-secondary),0.3)]">
             <SelectedFilesListView />
             
-            {/* Divider with label */}
-            <div className="relative flex items-center py-2">
-              <div className="flex-grow border-t border-[rgba(60,63,87,0.7)]"></div>
-              <span className="flex-shrink mx-3 text-xs text-[rgb(140,143,170)]">Selection Groups</span>
-              <div className="flex-grow border-t border-[rgba(60,63,87,0.7)]"></div>
+            {/* Enhanced divider with label */}
+            <div className="relative flex items-center py-3">
+              <div className="flex-grow h-px bg-[rgba(var(--color-border),0.6)]"></div>
+              <div className="flex-shrink mx-3 px-2 py-0.5 rounded-full text-xs text-[rgb(var(--color-text-muted))] bg-[rgba(var(--color-bg-tertiary),0.7)] border border-[rgba(var(--color-border),0.3)]">
+                Selection Groups
+              </div>
+              <div className="flex-grow h-px bg-[rgba(var(--color-border),0.6)]"></div>
             </div>
             
             <SelectionGroupsView
@@ -283,7 +319,7 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
       </TabsContent>
 
       {/* OPTIONS TAB */}
-      <TabsContent value="options" className="mt-6 space-y-6 animate-fade-in">
+      <TabsContent value="options" className="mt-6 space-y-8 animate-fade-in">
         <ExclusionsManagerView />
         {projectPath && <LocalExclusionsManagerView />}
       </TabsContent>
@@ -291,11 +327,13 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
       {/* TASKS TAB */}
       <TabsContent value="tasks" className="mt-6 animate-fade-in">
         {projectPath ? (
-          <TodoListView />
+          <KanbanBoardView />
         ) : (
-          <div className="p-16 border border-dashed border-[rgba(60,63,87,0.7)] rounded-xl bg-[rgba(15,16,36,0.3)] text-center flex flex-col items-center text-[rgb(140,143,170)]">
-            <Layers size={48} className="mb-3 opacity-50" />
-            <p className="text-lg font-medium mb-2">No Project Selected</p>
+          <div className="p-16 border border-dashed border-[rgba(var(--color-border),0.5)] rounded-xl bg-[rgba(var(--color-bg-secondary),0.3)] backdrop-blur-sm text-center flex flex-col items-center text-[rgb(var(--color-text-muted))]">
+            <div className="w-16 h-16 rounded-full bg-[rgba(var(--color-bg-tertiary),0.7)] flex items-center justify-center mb-4 border border-[rgba(var(--color-border),0.3)]">
+              <Layers size={36} className="opacity-40 text-[rgb(var(--color-text-muted))]" />
+            </div>
+            <p className="text-lg font-medium mb-2 text-[rgb(var(--color-text-secondary))]">No Project Selected</p>
             <p className="max-w-md text-sm">Select a project using the folder picker above to manage your tasks.</p>
           </div>
         )}
