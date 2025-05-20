@@ -27,10 +27,10 @@ PriorityT = Literal["low", "medium", "high"]
 class KanbanItemModel(BaseModel):
     id:        int
     title:     str  = Field(min_length=1, max_length=256)
-    details:   str | None = None
+    details:   Optional[str] = None
     status:    StatusT    = "todo"
     priority:  PriorityT  = "medium"
-    dueDate:   str | None = None          # ISO-8601
+    dueDate:   Optional[str] = None          # ISO-8601
     createdAt: str
 
     # empty strings → None (prevents validation error on “clear”)

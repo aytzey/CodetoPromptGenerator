@@ -30,7 +30,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set, Tuple, Optional, Union
 
 from tree_sitter import Node, Parser  # type: ignore
 from tree_sitter_languages import get_parser
@@ -249,13 +249,13 @@ class CodemapService:
 
     # ---------------------------------------------------------------- helpers
     @staticmethod
-    def _lang_for(path: str) -> str | None:
+    def _lang_for(path: str) -> Optional[str]:
         return _EXT_TO_LANG.get(os.path.splitext(path)[1].lower())
 
     def _error_stub(self, message: str) -> Dict[str, str]:
         return {"error": message}
 
-    def _extract_one(self, abs_path: str, rel: str) -> Dict[str, List[str] | str]:
+    def _extract_one(self, abs_path: str, rel: str) -> Dict[str, Union[List[str], str]]:
         lang = self._lang_for(abs_path)
         if not lang:
             # Unsupported *and* no txt fallback – silently ignore
@@ -296,13 +296,13 @@ class CodemapService:
     # ---------------------------------------------------------------- public
     def extract_codemap(
         self, base_dir: str, rel_paths: List[str]
-    ) -> Dict[str, Dict[str, List[str] | str]]:
+    ) -> Dict[str, Dict[str, Union[List[str], str]]]:
         if not os.path.isdir(base_dir):
             raise ValueError("base_dir must be an existing directory")
         if not isinstance(rel_paths, list):
             raise ValueError("rel_paths must be a list")
 
-        result: Dict[str, Dict[str, List[str] | str]] = {}
+        result: Dict[str, Dict[str, Union[List[str], str]]] = {}
         for rel in rel_paths:
             abs_path = os.path.join(base_dir, rel)
             if not os.path.isfile(abs_path):
