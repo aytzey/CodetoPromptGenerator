@@ -6,6 +6,14 @@ const os = require('node:os'); // Import os module
 let backendProcess = null; // Renamed to avoid conflict with backend variable name if used elsewhere
 const BACKEND_PORT = '5010';
 
+process.on('uncaughtException', (err) => {
+  console.error('[electron] Uncaught exception:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[electron] Unhandled rejection:', reason);
+});
+
 function findPython() {
   for (const cmd of ['python3', 'python', 'py']) {
     try {
@@ -113,15 +121,19 @@ app.whenReady().then(() => {
   const isDev = !app.isPackaged;
 
   if (isDev) {
-    // Setup electron-reload only in development
-    try {
+    const reloadEnabled = /^(1|true)$/i.test(process.env.USE_ELECTRON_RELOAD || '');
+    if (reloadEnabled) {
+      try {
         require('electron-reload')(__dirname, {
-            electron: path.join(__dirname, '..', 'node_modules', '.bin', 'electron'),
-            awaitWriteFinish: true, // Wait for file writes to complete
+          electron: path.join(__dirname, '..', 'node_modules', '.bin', 'electron'),
+          awaitWriteFinish: true,
         });
-        console.log("[electron] electron-reload enabled.");
-    } catch (err) {
-        console.warn("[electron] electron-reload setup failed (likely not installed, which is ok for basic runs):", err.message);
+        console.log('[electron] Fast reload enabled.');
+      } catch (err) {
+        console.warn('[electron] electron-reload setup failed:', err.message);
+      }
+    } else {
+      console.log('[electron] Fast reload disabled.');
     }
   }
 
