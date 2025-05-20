@@ -327,7 +327,7 @@ class AutoselectService:
     # ───────────────────────────── json / path utils (same as before) ───────
     _FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]+?)\s*```", re.I)
 
-    def _extract_json(self, text: str) -> Any | None:
+    def _extract_json(self, text: str) -> Optional[Any]:
         cleaned = text.strip()
         m = self._FENCE_RE.search(cleaned)
         if m:
