@@ -47,6 +47,8 @@ export default function Home() {
     apiKeyDraft,
     handlePathSelected,
     autoSelect,
+    generateActors,
+    isGeneratingActors,
     setShowSettings,
     saveApiKey,
     setApiKeyDraft,
@@ -75,7 +77,9 @@ export default function Home() {
       <HeaderView
         onShowSettings={() => setShowSettings(true)}
         onAutoSelect={autoSelect}
+        onGenerateActors={generateActors}
         isSelecting={isSelecting}
+        isGeneratingActors={isGeneratingActors}
         projectPath={projectPath}
       />
 

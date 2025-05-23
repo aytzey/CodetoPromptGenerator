@@ -6,6 +6,7 @@ import {
   Github,
   Zap,
   RefreshCw,
+  Users,
   Terminal,
   ChevronRight,
   ExternalLink,
@@ -21,14 +22,18 @@ import {
 interface HeaderViewProps {
   onShowSettings: () => void;
   onAutoSelect: () => void;
+  onGenerateActors: () => void;
   isSelecting: boolean;
+  isGeneratingActors: boolean;
   projectPath: string;
 }
 
 const HeaderView: React.FC<HeaderViewProps> = ({
   onShowSettings,
   onAutoSelect,
+  onGenerateActors,
   isSelecting,
+  isGeneratingActors,
   projectPath,
 }) => {
   return (
@@ -82,6 +87,32 @@ const HeaderView: React.FC<HeaderViewProps> = ({
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="glass py-2 px-3 shadow-lg">
                   <p className="text-[rgb(var(--color-text-secondary))]">Smart-Select files with Gemma-3</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            {/* Actor Wizard */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    disabled={!projectPath || isGeneratingActors}
+                    onClick={onGenerateActors}
+                    className="relative overflow-hidden bg-gradient-to-r from-[rgb(var(--color-accent-2))] to-[rgba(var(--color-accent-2),0.9)] hover:from-[rgb(var(--color-accent-2))] hover:to-[rgb(var(--color-secondary))] text-[rgb(var(--color-bg-primary))] font-medium shadow-[0_0_15px_rgba(var(--color-accent-2),0.25)] hover:shadow-[0_0_20px_rgba(var(--color-accent-2),0.4)] rounded-lg px-4 h-9 transition-all active:scale-95"
+                  >
+                    <div className="relative z-10 flex items-center">
+                      {isGeneratingActors ? (
+                        <RefreshCw size={18} className="animate-spin mr-2" />
+                      ) : (
+                        <Users size={18} className="mr-2" />
+                      )}
+                      <span>{isGeneratingActors ? "Processing..." : "Actor Wizard"}</span>
+                    </div>
+                    <div className="absolute top-0 left-[-100%] w-full h-full bg-gradient-to-r from-transparent via-white to-transparent opacity-30 animate-[shimmer_2s_infinite]"></div>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="glass py-2 px-3 shadow-lg">
+                  <p className="text-[rgb(var(--color-text-secondary))]">Generate actors using Llama‑4</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

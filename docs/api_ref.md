@@ -299,3 +299,4 @@ All responses follow the envelope
 | PUT    | `/api/actors/{id}?projectPath=<dir>` | Update an actor |
 | DELETE | `/api/actors/{id}?projectPath=<dir>` | Delete an actor |
 | POST   | `/api/actors/suggest?projectPath=<dir>` | Suggest an actor from description. Body → `{ "description": "..." }` |
+| POST   | `/api/actors/generate` | Generate actors from project context. Body → `{ "baseDir": "<path>", "treePaths": ["..."] }` |
