@@ -82,3 +82,41 @@ export const KanbanItemSchema = z.object({
   dueDate:     z.string().datetime({ offset: true }).optional().nullable(), // CHANGED from deadline
   createdAt:   z.string().datetime({ offset: true }),
 });
+
+
+// ADDED: Task interface extending KanbanItem to include userStoryIds
+export interface Task extends KanbanItem {
+  userStoryIds?: number[]; // IDs of associated user stories
+}
+
+// ADDED: TaskSchema extending KanbanItemSchema
+export const TaskSchema = KanbanItemSchema.extend({
+  userStoryIds: z.array(z.number().int()).optional(),
+});
+
+
+/* █████  USER STORY  ██████████████████████████████████████████████████████ */
+// Using KanbanStatusValues and KanbanPriorityValues for consistency if suitable
+export interface UserStory {
+  id: number;
+  title: string;
+  description?: string | null;
+  acceptanceCriteria?: string | null;
+  priority: KanbanPriority; // Reusing KanbanPriority
+  points?: number | null;
+  status: KanbanStatus; // Reusing KanbanStatus
+  createdAt: string; // ISO Date string
+  taskIds?: number[]; // IDs of associated tasks
+}
+
+export const UserStorySchema = z.object({
+  id: z.number().int().nonnegative(),
+  title: z.string().min(1).max(256), // Max length from KanbanItemModel or adjust
+  description: z.string().optional().nullable(),
+  acceptanceCriteria: z.string().optional().nullable(),
+  priority: z.enum(KanbanPriorityValues),
+  points: z.number().int().nonnegative().optional().nullable(),
+  status: z.enum(KanbanStatusValues),
+  createdAt: z.string().datetime({ offset: true }),
+  taskIds: z.array(z.number().int()).optional(), // Array of task IDs
+});

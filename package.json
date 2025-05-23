@@ -5,9 +5,9 @@
   "main": "electron/main.js",
   "scripts": {
     "dev": "kill-port 3010 && next dev -p 3010 -H 127.0.0.1",
-      "build": "npx --yes node@20 ./node_modules/next/dist/bin/next build",
+    "build": "npx --yes node@20 ./node_modules/next/dist/bin/next build",
     "export": "next build && next export",
-      "start": "npx --yes node@20 ./node_modules/next/dist/bin/next start -p 3010",
+    "start": "npx --yes node@20 ./node_modules/next/dist/bin/next start -p 3010",
     "lint": "next lint",
     "backend": "python_backend/venv/bin/python python_backend/app.py",
     "start:dev": "node start.js",
@@ -61,7 +61,7 @@
   },
   "devDependencies": {
     "@types/node": "18.17.12",
-    "@types/react": "18.2.14",
+    "@types/react": "^19.1.5",
     "@types/react-dom": "18.2.7",
     "@typescript-eslint/eslint-plugin": "^6.7.5",
     "@typescript-eslint/parser": "^6.7.5",
@@ -88,10 +88,16 @@
       "package.json"
     ],
     "extraResources": [
-      { "from": "python_backend", "to": "python_backend" }
+      {
+        "from": "python_backend",
+        "to": "python_backend"
+      }
     ],
     "linux": {
-      "target": ["deb", "AppImage"],
+      "target": [
+        "deb",
+        "AppImage"
+      ],
       "category": "Development",
       "maintainer": "Aytug Berk Sezer",
       "synopsis": "Generate finely-tuned LLM prompts from your code base"

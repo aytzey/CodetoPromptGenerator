@@ -1,0 +1,512 @@
+// views/UserStoryListView.tsx
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import {
+  UserStory,
+  KanbanPriorityValues,
+  KanbanStatusValues,
+} from '@/types';
+import { useUserStoryStore } from '@/stores/useUserStoryStore';
+import { useUserStoryService } from '@/services/userStoryServiceHooks';
+import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
+
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import {
+  Tooltip,
+  TooltipProvider,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip';
+import {
+  Plus,
+  Edit2,
+  Trash2,
+  Loader2,
+  Search,
+  Filter,
+  Flag,
+  BookOpen,
+  ListTodo,
+  Hash,
+  ListOrdered,
+  RefreshCw,
+  X, // For clearing search/filter
+  Calendar, // ADDED: Calendar icon import
+} from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Dialog, // For the simple task display modal
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+
+import UserStoryEditModal from './UserStoryEditModal';
+// import TaskStoryAssociationModal from './TaskStoryAssociationModal'; // To view associated tasks
+
+
+const PRIORITY_CONFIG = {
+  low: {
+    icon: <Flag size={11} />,
+    label: 'Low',
+    color: 'text-blue-400',
+    bgColor: 'bg-blue-500/10',
+    borderColor: 'border-blue-500/30',
+  },
+  medium: {
+    icon: <Flag size={11} />,
+    label: 'Medium',
+    color: 'text-amber-400',
+    bgColor: 'bg-amber-500/10',
+    borderColor: 'border-amber-500/30',
+  },
+  high: {
+    icon: <Flag size={11} />,
+    label: 'High',
+    color: 'text-rose-400',
+    bgColor: 'bg-rose-500/10',
+    borderColor: 'border-rose-500/30',
+  },
+};
+
+const STATUS_CONFIG = {
+  todo: {
+    label: 'To Do',
+    color: 'text-blue-400',
+    bgColor: 'bg-blue-500/10',
+    borderColor: 'border-blue-500/30',
+  },
+  'in-progress': {
+    label: 'In Progress',
+    color: 'text-amber-400',
+    bgColor: 'bg-amber-500/10',
+    borderColor: 'border-amber-500/30',
+  },
+  done: {
+    label: 'Done',
+    color: 'text-emerald-400',
+    bgColor: 'bg-emerald-500/10',
+    borderColor: 'border-emerald-500/30',
+  },
+};
+
+const UserStoryListView: React.FC = () => {
+  const { stories, isLoading, isSaving } = useUserStoryStore();
+  const { loadStories, createStory, updateStory, deleteStory } = useUserStoryService();
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterPriority, setFilterPriority] = useState<KanbanPriority | null>(null);
+  const [filterStatus, setFilterStatus] = useState<KanbanStatus | null>(null);
+  
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingStory, setEditingStory] = useState<UserStory | null>(null); // Null for create
+  const [storyTaskAssociation, setStoryTaskAssociation] = useState<UserStory | null>(null);
+  const [isTaskAssociationModalOpen, setIsTaskAssociationModalOpen] = useState(false);
+
+  // Load stories on mount
+  useEffect(() => {
+    loadStories();
+  }, [loadStories]);
+
+  // Filter stories based on search and filters
+  const filteredStories = useMemo(() => {
+    return stories.filter((story) => {
+      const matchesSearch = searchTerm
+        ? story.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (story.description?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
+          (story.acceptanceCriteria?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
+        : true;
+      const matchesPriority = filterPriority ? story.priority === filterPriority : true;
+      const matchesStatus = filterStatus ? story.status === filterStatus : true;
+      return matchesSearch && matchesPriority && matchesStatus;
+    });
+  }, [stories, searchTerm, filterPriority, filterStatus]);
+
+  // Handlers
+  const handleCreateNewStory = () => {
+    setEditingStory(null); // Indicate new story creation
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditStory = useCallback((story: UserStory) => {
+    setEditingStory(story);
+    setIsEditModalOpen(true);
+  }, []);
+
+  const handleSaveStory = useCallback(
+    async (
+      id: number | null,
+      data: Partial<Omit<UserStory, 'id' | 'createdAt' | 'taskIds'>>
+    ) => {
+      if (id) {
+        await updateStory({ id, ...data });
+      } else {
+        await createStory(data as Omit<UserStory, 'id' | 'createdAt' | 'taskIds'>);
+      }
+      setIsEditModalOpen(false);
+      setEditingStory(null);
+    },
+    [createStory, updateStory]
+  );
+
+  const handleDeleteStory = useCallback(
+    async (id: number) => {
+      if (confirm('Are you sure you want to delete this user story?')) {
+        await deleteStory(id);
+      }
+    },
+    [deleteStory]
+  );
+
+  const handleViewAssociatedTasks = useCallback((story: UserStory) => {
+    setStoryTaskAssociation(story);
+    setIsTaskAssociationModalOpen(true);
+  }, []);
+
+  if (isLoading && !stories.length) {
+    return (
+      <div className="flex items-center justify-center h-[400px]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-[rgb(var(--color-primary))] mx-auto mb-3" />
+          <p className="text-sm text-[rgb(var(--color-text-muted))]">Loading user stories...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-semibold text-[rgb(var(--color-text-primary))] flex items-center gap-2">
+              <BookOpen size={18} className="text-[rgb(var(--color-tertiary))]" />
+              User Stories
+            </h2>
+            <p className="text-xs text-[rgb(var(--color-text-muted))] mt-0.5">
+              Define user-centric features and requirements
+            </p>
+          </div>
+          <Button
+            onClick={handleCreateNewStory}
+            className="bg-gradient-to-r from-[rgb(var(--color-tertiary))] to-[rgb(var(--color-tertiary))]/80 hover:from-[rgb(var(--color-tertiary))] hover:to-[rgb(var(--color-accent-1))]/80 text-white shadow-[0_4px_12px_rgba(0,0,0,0.1)]"
+            disabled={isSaving}
+          >
+            <Plus size={16} className="mr-2" />
+            Add Story
+          </Button>
+        </div>
+
+        {/* Search and filters */}
+        <div className="flex gap-2 mb-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[rgb(var(--color-text-muted))]" />
+            <Input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search stories by title, description..."
+              className="pl-9 h-9 bg-[rgba(var(--color-bg-secondary),0.3)] border-[rgba(var(--color-border),0.4)] focus:border-[rgba(var(--color-tertiary),0.5)]"
+            />
+          </div>
+
+          <Select
+            value={filterPriority || 'all'}
+            onValueChange={(val) => setFilterPriority(val === 'all' ? null : val as KanbanPriority)}
+          >
+            <SelectTrigger className="w-[120px] h-9 text-xs bg-[rgba(var(--color-bg-secondary),0.3)] border-[rgba(var(--color-border),0.4)] focus:border-[rgba(var(--color-tertiary),0.5)]">
+              <Filter size={14} className="mr-1" />
+              <SelectValue placeholder="Priority" />
+            </SelectTrigger>
+            <SelectContent className="glass border-[rgba(var(--color-border),0.7)]">
+              <SelectItem value="all">All Priorities</SelectItem>
+              {KanbanPriorityValues.map((p) => (
+                <SelectItem key={p} value={p} className="capitalize">
+                  <div className="flex items-center gap-2">
+                    {PRIORITY_CONFIG[p].icon} {p}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={filterStatus || 'all'}
+            onValueChange={(val) => setFilterStatus(val === 'all' ? null : val as KanbanStatus)}
+          >
+            <SelectTrigger className="w-[120px] h-9 text-xs bg-[rgba(var(--color-bg-secondary),0.3)] border-[rgba(var(--color-border),0.4)] focus:border-[rgba(var(--color-tertiary),0.5)]">
+              <ListTodo size={14} className="mr-1" />
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent className="glass border-[rgba(var(--color-border),0.7)]">
+              <SelectItem value="all">All Statuses</SelectItem>
+              {KanbanStatusValues.map((s) => (
+                <SelectItem key={s} value={s} className="capitalize">
+                  <div className="flex items-center gap-2">
+                    <div className={cn('w-2 h-2 rounded-full', STATUS_CONFIG[s].color.replace('text-', 'bg-'))} />
+                    {s.replace(/-/g, ' ')}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="icon" className="h-9 w-9" onClick={loadStories}>
+                  <RefreshCw size={16} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Refresh stories</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+
+        {/* Active filters display */}
+        {(searchTerm || filterPriority || filterStatus) && (
+          <div className="flex items-center gap-2 mt-2 text-xs text-[rgb(var(--color-text-muted))]">
+            <span>Active filters:</span>
+            {searchTerm && (
+              <Badge variant="secondary" className="text-xs">
+                Search: "{searchTerm}"
+                <Button variant="ghost" size="icon" className="h-3 w-3 ml-1" onClick={() => setSearchTerm('')}>
+                  <X size={10} />
+                </Button>
+              </Badge>
+            )}
+            {filterPriority && (
+              <Badge variant="secondary" className="text-xs">
+                Priority: {PRIORITY_CONFIG[filterPriority].label}
+                <Button variant="ghost" size="icon" className="h-3 w-3 ml-1" onClick={() => setFilterPriority(null)}>
+                  <X size={10} />
+                </Button>
+              </Badge>
+            )}
+            {filterStatus && (
+              <Badge variant="secondary" className="text-xs">
+                Status: {STATUS_CONFIG[filterStatus].label}
+                <Button variant="ghost" size="icon" className="h-3 w-3 ml-1" onClick={() => setFilterStatus(null)}>
+                  <X size={10} />
+                </Button>
+              </Badge>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* User Story List */}
+      <CardContent className="flex-1 overflow-hidden p-0">
+        <ScrollArea className="h-full pr-4">
+          {filteredStories.length === 0 && !isLoading ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center text-[rgb(var(--color-text-muted))]">
+              <BookOpen size={48} className="mb-3 opacity-50" />
+              <p className="text-lg font-medium">No User Stories Found</p>
+              <p className="text-sm mt-1 max-w-xs">
+                {searchTerm || filterPriority || filterStatus
+                  ? 'No stories match your current filters.'
+                  : 'Start by adding a new user story using the "Add Story" button above.'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4 py-1">
+              {filteredStories.map((story) => (
+                <div
+                  key={story.id}
+                  className="group relative bg-[rgba(var(--color-bg-secondary),0.3)] hover:bg-[rgba(var(--color-bg-secondary),0.5)] border border-[rgba(var(--color-border),0.4)] hover:border-[rgba(var(--color-border),0.6)] rounded-lg p-4 transition-all duration-200 ease-out hover:shadow-sm"
+                >
+                  {/* Priority indicator line */}
+                  <div
+                    className={cn(
+                      'absolute top-0 left-0 w-1 h-full rounded-l-lg transition-all duration-200',
+                      PRIORITY_CONFIG[story.priority].bgColor.replace('/10', '/40'), // Make it stronger for the line
+                    )}
+                  />
+
+                  <div className="pl-2">
+                    <h3 className="text-base font-medium text-[rgb(var(--color-text-primary))] line-clamp-2 mb-2">
+                      {story.title}
+                    </h3>
+                    {story.description && (
+                      <p className="text-sm text-[rgb(var(--color-text-muted))] line-clamp-3 mb-2">
+                        {story.description}
+                      </p>
+                    )}
+                    {story.acceptanceCriteria && (
+                      <div className="mt-2 text-xs text-[rgb(var(--color-text-muted))] border-t border-[rgba(var(--color-border),0.3)] pt-2">
+                        <span className="font-semibold text-[rgb(var(--color-text-secondary))]">Acceptance Criteria:</span>
+                        <p className="line-clamp-2">{story.acceptanceCriteria}</p>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between flex-wrap gap-2 mt-3">
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'h-5 px-1.5 text-[10px] font-medium border',
+                            PRIORITY_CONFIG[story.priority].bgColor,
+                            PRIORITY_CONFIG[story.priority].borderColor,
+                            PRIORITY_CONFIG[story.priority].color
+                          )}
+                        >
+                          {PRIORITY_CONFIG[story.priority].icon}
+                          <span className="ml-0.5">{PRIORITY_CONFIG[story.priority].label}</span>
+                        </Badge>
+                        {story.points && (
+                          <Badge
+                            variant="outline"
+                            className="h-5 px-1.5 text-[10px] font-medium bg-purple-500/10 border-purple-500/30 text-purple-400"
+                          >
+                            <Hash size={10} className="mr-0.5" />
+                            {story.points} pts
+                          </Badge>
+                        )}
+                        <Badge
+                            variant="outline"
+                            className={cn(
+                                'h-5 px-1.5 text-[10px] font-medium border',
+                                STATUS_CONFIG[story.status].bgColor,
+                                STATUS_CONFIG[story.status].borderColor,
+                                STATUS_CONFIG[story.status].color
+                            )}
+                        >
+                            <div className={cn('w-2 h-2 rounded-full mr-1', STATUS_CONFIG[story.status].color.replace('text-', 'bg-'))} />
+                            {STATUS_CONFIG[story.status].label}
+                        </Badge>
+                        {story.taskIds && story.taskIds.length > 0 && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge
+                                  variant="secondary"
+                                  className="h-5 px-1.5 text-[10px] font-medium cursor-pointer"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    // Assuming a modal or view to show tasks for this story
+                                    handleViewAssociatedTasks(story);
+                                  }}
+                                >
+                                  <ListTodo size={10} className="mr-0.5" />
+                                  {story.taskIds.length} tasks
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent side="top">
+                                <p className="text-xs">Linked to {story.taskIds.length} user {story.taskIds.length === 1 ? 'task' : 'tasks'}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
+                      
+                      <div className="text-xs text-[rgb(var(--color-text-muted))] flex items-center gap-1.5">
+                        <Calendar size={10} />
+                        Created: {format(new Date(story.createdAt), 'MMM d, yyyy')}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quick actions on hover */}
+                  <div className="absolute -right-2 top-1/2 -translate-y-1/2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-2 group-hover:translate-x-0">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-7 w-7 bg-[rgb(var(--color-bg-primary))] border-[rgba(var(--color-border),0.5)] hover:border-[rgba(var(--color-tertiary),0.5)] hover:text-[rgb(var(--color-tertiary))]"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditStory(story);
+                            }}
+                          >
+                            <Edit2 size={12} />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="left">Edit</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-7 w-7 bg-[rgb(var(--color-bg-primary))] border-[rgba(var(--color-border),0.5)] hover:border-rose-500/50 hover:text-rose-400"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteStory(story.id);
+                            }}
+                          >
+                            <Trash2 size={12} />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="left">Delete</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </ScrollArea>
+      </CardContent>
+
+      {/* Edit/Create Story Modal */}
+      <UserStoryEditModal
+        story={editingStory}
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingStory(null);
+        }}
+        onSave={handleSaveStory}
+        isSaving={isSaving}
+      />
+      {/* Task Association Modal (if needed for a story, though primarily for tasks) */}
+      {/* Note: This modal is currently designed for `Task` type. Re-evaluation might be needed if user wants to associate tasks *from* a story's perspective directly via this modal. */}
+      {/* For now, this is kept as a placeholder if a story would show its associated tasks, not manage them. */}
+      {/* It expects a `Task` not a `UserStory`. A new modal might be needed for the `UserStory` perspective. */}
+      {isTaskAssociationModalOpen && storyTaskAssociation && (
+        <Dialog open={isTaskAssociationModalOpen} onOpenChange={setIsTaskAssociationModalOpen}>
+            <DialogContent className="sm:max-w-[600px] glass border-[rgba(var(--color-border),0.7)]">
+                <DialogHeader className="pb-3 border-b border-[rgba(var(--color-border),0.5)]">
+                    <DialogTitle className="text-[rgb(var(--color-primary))] flex items-center gap-2">
+                        <ListTodo size={18} />
+                        Tasks for Story: "{storyTaskAssociation.title}"
+                    </DialogTitle>
+                </DialogHeader>
+                <ScrollArea className="h-[350px] pr-4">
+                  {storyTaskAssociation.taskIds && storyTaskAssociation.taskIds.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-sm text-[rgb(var(--color-text-muted))]">
+                        Currently linked task IDs: {storyTaskAssociation.taskIds.join(', ')}
+                      </p>
+                      {/* You might want to fetch and display actual task titles here */}
+                      {/* For now, just display IDs */}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <ListTodo className="h-12 w-12 text-[rgb(var(--color-text-muted))] opacity-50 mx-auto mb-3" />
+                      <p className="text-sm text-[rgb(var(--color-text-muted))]">
+                        No tasks associated with this story.
+                      </p>
+                    </div>
+                  )}
+                </ScrollArea>
+                <DialogFooter className="border-t border-[rgba(var(--color-border),0.5)] pt-3">
+                    <Button variant="outline" onClick={() => setIsTaskAssociationModalOpen(false)}>Close</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  );
+};
+
+export default UserStoryListView;

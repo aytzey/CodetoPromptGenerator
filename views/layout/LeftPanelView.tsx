@@ -11,8 +11,10 @@ import {
   ChevronsDown,
   ChevronsUp,
   LayoutGrid,
+  ClipboardList, // New icon for Kanban
   Layers,
   Filter,
+  BookOpen, // New icon for User Stories
 } from "lucide-react";
 import {
   Tabs,
@@ -38,6 +40,7 @@ import ExclusionsManagerView from "@/views/ExclusionsManagerView";
 import LocalExclusionsManagerView from "@/views/LocalExclusionsManagerView";
 import KanbanBoardView from "@/views/KanbanBoardView";
 import TodoListView from "@/views/TodoListView";
+import UserStoryListView from "@/views/UserStoryListView"; // Import the new UserStoryListView
 
 import {
   applyWildcardFilter,
@@ -325,17 +328,48 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
       </TabsContent>
 
       {/* TASKS TAB */}
-      <TabsContent value="tasks" className="mt-6 animate-fade-in">
+      {/* Nested Tabs for Kanban and User Stories */}
+      <TabsContent value="tasks" className="mt-6 h-full flex flex-col animate-fade-in">
         {projectPath ? (
-          <KanbanBoardView />
+          <Tabs defaultValue="kanban-board" className="flex-1 flex flex-col">
+            <TabsList className="grid grid-cols-2 p-1.5 bg-[rgba(var(--color-bg-secondary),0.7)] backdrop-blur-xl border border-[rgba(var(--color-border),0.5)] rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.08)] mb-4">
+              <TabsTrigger 
+                value="kanban-board" 
+                className="rounded-lg py-2.5 data-[state=active]:bg-gradient-to-br data-[state=active]:from-[rgba(var(--color-primary),0.2)] data-[state=active]:to-[rgba(var(--color-primary),0.05)] data-[state=active]:backdrop-blur-xl data-[state=active]:border data-[state=active]:border-[rgba(var(--color-primary),0.3)] data-[state=active]:shadow-[0_0_15px_rgba(var(--color-primary),0.2)] data-[state=active]:scale-[1.02] transition-all duration-300"
+              >
+                <div className="p-1 rounded-md bg-[rgba(var(--color-primary),0.1)] mr-2">
+                  <ClipboardList size={16} className="text-[rgb(var(--color-primary))]" />
+                </div>
+                <span className="font-medium">Kanban Board</span>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="user-stories" 
+                className="rounded-lg py-2.5 data-[state=active]:bg-gradient-to-br data-[state=active]:from-[rgba(var(--color-tertiary),0.2)] data-[state=active]:to-[rgba(var(--color-tertiary),0.05)] data-[state=active]:backdrop-blur-xl data-[state=active]:border data-[state=active]:border-[rgba(var(--color-tertiary),0.3)] data-[state=active]:shadow-[0_0_15px_rgba(var(--color-tertiary),0.2)] data-[state=active]:scale-[1.02] transition-all duration-300"
+              >
+                <div className="p-1 rounded-md bg-[rgba(var(--color-tertiary),0.1)] mr-2">
+                  <BookOpen size={16} className="text-[rgb(var(--color-tertiary))]" />
+                </div>
+                <span className="font-medium">User Stories</span>
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="kanban-board" className="flex-1 pt-0 mt-0">
+              <KanbanBoardView />
+            </TabsContent>
+            <TabsContent value="user-stories" className="flex-1 pt-0 mt-0">
+              <UserStoryListView />
+            </TabsContent>
+          </Tabs>
         ) : (
-          <div className="p-16 border border-dashed border-[rgba(var(--color-border),0.5)] rounded-xl bg-[rgba(var(--color-bg-secondary),0.3)] backdrop-blur-sm text-center flex flex-col items-center text-[rgb(var(--color-text-muted))]">
+          // Moved to a common 'no project selected' message within the nested tabs
+          <div className="p-16 border border-dashed border-[rgba(var(--color-border),0.5)] rounded-xl bg-[rgba(var(--color-bg-secondary),0.3)] backdrop-blur-sm text-center flex flex-col items-center text-[rgb(var(--color-text-muted))] h-full justify-center">
             <div className="w-16 h-16 rounded-full bg-[rgba(var(--color-bg-tertiary),0.7)] flex items-center justify-center mb-4 border border-[rgba(var(--color-border),0.3)]">
               <Layers size={36} className="opacity-40 text-[rgb(var(--color-text-muted))]" />
             </div>
             <p className="text-lg font-medium mb-2 text-[rgb(var(--color-text-secondary))]">No Project Selected</p>
-            <p className="max-w-md text-sm">Select a project using the folder picker above to manage your tasks.</p>
+            <p className="max-w-md text-sm">Select a project using the folder picker at the top to manage your tasks and user stories.</p>
           </div>
+          
         )}
       </TabsContent>
     </Tabs>

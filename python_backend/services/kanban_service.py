@@ -25,16 +25,18 @@ PriorityT = Literal["low", "medium", "high"]
 
 
 class KanbanItemModel(BaseModel):
-    id:        int
-    title:     str  = Field(min_length=1, max_length=256)
-    details:   Optional[str] = None
-    status:    StatusT    = "todo"
-    priority:  PriorityT  = "medium"
-    dueDate:   Optional[str] = None          # ISO-8601
-    createdAt: str
+    id:          int
+    title:       str  = Field(min_length=1, max_length=256)
+    details:     Optional[str] = None
+    status:      StatusT    = "todo"
+    priority:    PriorityT  = "medium"
+    dueDate:     Optional[str] = None          # ISO-8601
+    createdAt:   str
+    userStoryIds: List[int] = Field(default_factory=list) # Added for relations
+
 
     # empty strings → None (prevents validation error on “clear”)
-    @validator("dueDate", pre=True, always=True)
+    @validator("details", "dueDate", pre=True, always=True)
     def _blank_to_none(cls, v):           # noqa: N805
         if isinstance(v, str) and not v.strip():
             return None
@@ -55,107 +57,131 @@ class KanbanItemModel(BaseModel):
 # Service layer
 # ──────────────────────────────────────────────
 class KanbanService:
-    FILE_NAME  = "kanban.json"
-    HIDDEN_DIR = ".codetoprompt"
-
     def __init__(self, storage_repo: FileStorageRepository):
         self.storage = storage_repo
-        self._mem_db: Dict[int, Dict[str, Any]] = {}
-        self._next_id = 1
+        self._file_name = "kanban.json"
+        self._relations_file = "user_story_tasks.json"
 
-    # ---------- helpers --------------------------------------------------
-    def _file_path(self, project: Optional[str]) -> Optional[str]:
-        if not project:
-            return None
-        hidden = os.path.join(project, self.HIDDEN_DIR)
-        os.makedirs(hidden, exist_ok=True)
-        return os.path.join(hidden, self.FILE_NAME)
-
-    def _load(self, project: Optional[str]) -> List[Dict[str, Any]]:
-        path = self._file_path(project)
-        if not path:
-            return list(self._mem_db.values())
-
-        if not os.path.exists(path):
-            return []
-
+    def _get_project_dir(self, project_path: Optional[str]) -> str:
+        """Get the .codetoprompt directory for a project"""
+        if not project_path:
+            return os.path.expanduser("~/.codetoprompt")
+        # Ensure the .codetoprompt directory exists inside the project path
+        project_codetoprompt_dir = os.path.join(project_path, ".codetoprompt")
         try:
-            data = self.storage.read_json(path, default=[])
-            return data if isinstance(data, list) else []
-        except Exception:
+            os.makedirs(project_codetoprompt_dir, exist_ok=True)
+        except OSError as e:
+            raise IOError(f"Failed to create directory {project_codetoprompt_dir}: {e}") from e
+        return project_codetoprompt_dir
+
+    def _load_items(self, project_path: Optional[str]) -> List[Dict[str, Any]]:
+        """Load kanban items from storage"""
+        project_dir = self._get_project_dir(project_path)
+        try:
+            data = self.storage.read_json(os.path.join(project_dir, self._file_name), default={"items": []})
+            return data.get("items", []) if isinstance(data, dict) else []
+        except (IOError, json.JSONDecodeError):
             return []
 
-    def _save(self, project: Optional[str], items: List[Dict[str, Any]]) -> None:
-        path = self._file_path(project)
-        if not path:
-            self._mem_db = {it["id"]: it for it in items}
-            return
-        self.storage.write_json(path, items)
+    def _save_items(self, items: List[Dict[str, Any]], project_path: Optional[str]) -> None:
+        """Save kanban items to storage"""
+        project_dir = self._get_project_dir(project_path)
+        self.storage.write_json(os.path.join(project_dir, self._file_name), {"items": items})
+        
+    def _load_relations(self, project_path: Optional[str]) -> List[Dict[str, Any]]:
+        """Load user story-task relations from file"""
+        project_dir = self._get_project_dir(project_path)
+        try:
+            data = self.storage.read_json(os.path.join(project_dir, self._relations_file), default={"relations": []})
+            return data.get("relations", []) if isinstance(data, dict) else []
+        except (IOError, json.JSONDecodeError):
+            return []
 
-    @staticmethod
-    def _serialise(model: KanbanItemModel) -> Dict[str, Any]:
-        """
-        Convert *model* → dict, **excluding keys whose value is None**.
-        Prevents the FE Zod schema from receiving `null`.
-        """
-        return model.dict(exclude_none=True)
+    def list_items(self, project_path: Optional[str]) -> List[Dict[str, Any]]:
+        """Get all kanban items with their associated user story IDs"""
+        items = self._load_items(project_path)
+        relations = self._load_relations(project_path)
+        
+        # Add userStoryIds to each task
+        for item in items:
+            item["userStoryIds"] = [
+                r["userStoryId"] for r in relations 
+                if r["taskId"] == item["id"]
+            ]
+            
+        return items
 
-    # ---------- public API -----------------------------------------------
-    def list_items(self, project: Optional[str]) -> List[Dict[str, Any]]:
-        return self._load(project)
+    def add_item(self, item_data: Dict[str, Any], project_path: Optional[str]) -> Dict[str, Any]:
+        """Create a new kanban item"""
+        items = self._load_items(project_path)
 
-    def add_item(self, payload: Dict[str, Any], project: Optional[str]) -> Dict[str, Any]:
-        now_iso = datetime.utcnow().isoformat(timespec="seconds") + "Z"
-        new_id  = int(time.time() * 1000)
+        # Validate required fields
+        if not item_data.get("title"):
+            raise ValueError("Title is required")
 
-        # sanitise blank strings in incoming payload
-        payload = {k: (v if not (isinstance(v, str) and not v.strip()) else None)
-                   for k, v in payload.items()}
+        # Generate new ID
+        new_id = max((item["id"] for item in items), default=0) + 1
 
-        item_data = {
-            "id":        new_id,
-            "createdAt": now_iso,
-            **payload,
+        # Create item with defaults
+        new_item = {
+            "id": new_id,
+            "title": item_data["title"],
+            "details": item_data.get("details"),
+            "status": item_data.get("status", "todo"),
+            "priority": item_data.get("priority", "medium"),
+            "dueDate": item_data.get("dueDate"),
+            "createdAt": datetime.utcnow().isoformat() + "Z"
         }
 
-        try:
-            item = self._serialise(KanbanItemModel(**item_data))
-        except ValidationError as exc:
-            raise ValueError(str(exc)) from exc
+        items.append(new_item)
+        self._save_items(items, project_path)
+        
+        # Include empty userStoryIds for consistency
+        new_item["userStoryIds"] = []
+        
+        return new_item
 
-        items = self._load(project)
-        items.append(item)
-        self._save(project, items)
+    def update_item(self, item_id: int, updates: Dict[str, Any], project_path: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Update a kanban item"""
+        items = self._load_items(project_path)
+        item_idx = next((i for i, item in enumerate(items) if item["id"] == item_id), None)
+
+        if item_idx is None:
+            return None
+
+        # Update fields (except id and createdAt)
+        item = items[item_idx]
+        for key, value in updates.items():
+            if key not in ["id", "createdAt", "userStoryIds"]:
+                item[key] = value
+
+        self._save_items(items, project_path)
+        
+        # Return updated item with userStoryIds
+        relations = self._load_relations(project_path)
+        item["userStoryIds"] = [
+            r["userStoryId"] for r in relations 
+            if r["taskId"] == item["id"]
+        ]
+        
         return item
 
-    def update_item(
-        self,
-        item_id: int,
-        patch: Dict[str, Any],
-        project: Optional[str],
-    ) -> Optional[Dict[str, Any]]:
-        # sanitise blank strings from patch first
-        patch = {k: (v if not (isinstance(v, str) and not v.strip()) else None)
-                 for k, v in patch.items()}
+    def delete_item(self, item_id: int, project_path: Optional[str]) -> bool:
+        """Delete a kanban item and its relations"""
+        items = self._load_items(project_path)
+        original_count = len(items)
 
-        items = self._load(project)
+        items = [item for item in items if item["id"] != item_id]
 
-        for idx, it in enumerate(items):
-            if it["id"] == item_id:
-                updated_raw = {**it, **patch}
-                try:
-                    updated = self._serialise(KanbanItemModel(**updated_raw))
-                except ValidationError as exc:
-                    raise ValueError(str(exc)) from exc
-                items[idx] = updated
-                self._save(project, items)
-                return updated
-        return None
+        if len(items) < original_count:
+            self._save_items(items, project_path)
+            
+            # Also remove all relations for this task
+            project_dir = self._get_project_dir(project_path)
+            relations = self._load_relations(project_path)
+            relations = [r for r in relations if r["taskId"] != item_id]
+            self.storage.write_json(os.path.join(project_dir, self._relations_file), {"relations": relations})
+            
+            return True
 
-    def delete_item(self, item_id: int, project: Optional[str]) -> bool:
-        items = self._load(project)
-        new_items = [it for it in items if it["id"] != item_id]
-        if len(new_items) == len(items):
-            return False                          # not found
-        self._save(project, new_items)
-        return True
+        return False
