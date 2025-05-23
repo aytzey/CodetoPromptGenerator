@@ -33,7 +33,7 @@ def actors_collection():
         try:
             actors = actor_service.list_actors(project_path)
             # Convert Pydantic models to dictionaries for JSON serialization
-            return success_response(data=[a.model_dump() for a in actors])
+            return success_response(data=[a.dict() for a in actors])
         except ValueError as e: # Catch invalid project path
             return error_response(str(e), status_code=400)
         except Exception as e:
@@ -44,7 +44,7 @@ def actors_collection():
     payload = request.get_json(silent=True) or {}
     try:
         new_actor = actor_service.create_actor(payload, project_path)
-        return success_response(data=new_actor.model_dump(), status_code=201)
+        return success_response(data=new_actor.dict(), status_code=201)
     except ValidationError as e:
         return error_response(f"Validation error: {e.json()}", status_code=400)
     except ValueError as e:
@@ -59,7 +59,7 @@ def actor_suggest():
     payload = request.get_json(silent=True) or {}
     description = payload.get("description", "")
     try:
-        actors = [a.model_dump() for a in actor_service.list_actors(project_path)]
+        actors = [a.dict() for a in actor_service.list_actors(project_path)]
         actor_id = actor_suggest_service.suggest(description, actors)
         return success_response(data={"actorId": actor_id})
     except Exception as e:
@@ -81,7 +81,7 @@ def actor_item(actor_id: int):
             actor = next((a for a in actors if a.id == actor_id), None)
             if actor is None:
                 return error_response("Actor not found", status_code=404)
-            return success_response(data=actor.model_dump())
+            return success_response(data=actor.dict())
         except ValueError as e: # Catch invalid project path
             return error_response(str(e), status_code=400)
         except Exception as e:
@@ -94,7 +94,7 @@ def actor_item(actor_id: int):
             updated_actor = actor_service.update_actor(actor_id, patch, project_path)
             if updated_actor is None:
                 return error_response("Actor not found", status_code=404)
-            return success_response(data=updated_actor.model_dump())
+            return success_response(data=updated_actor.dict())
         except ValidationError as e:
             return error_response(f"Validation error: {e.json()}", status_code=400)
         except ValueError as e:
