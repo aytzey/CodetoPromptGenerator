@@ -4,9 +4,12 @@ import {
   UserStory,
   KanbanPriorityValues,
   KanbanStatusValues,
+  Task, // Import Task type
 } from '@/types';
 import { useUserStoryStore } from '@/stores/useUserStoryStore';
 import { useUserStoryService } from '@/services/userStoryServiceHooks';
+import { useKanbanStore } from '@/stores/useKanbanStore'; // Import Kanban store to get task details
+import { useKanbanService } from '@/services/kanbanServiceHooks'; // Import Kanban service to create tasks
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 
@@ -36,6 +39,10 @@ import {
   RefreshCw,
   X, // For clearing search/filter
   Calendar, // ADDED: Calendar icon import
+  ClipboardList, // For tasks icon
+  Link2, // For task association status
+  Circle, // For task status dot
+  Unlink, // ADDED: Unlink icon for disassociating tasks
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -96,8 +103,10 @@ const STATUS_CONFIG = {
 };
 
 const UserStoryListView: React.FC = () => {
-  const { stories, isLoading, isSaving } = useUserStoryStore();
-  const { loadStories, createStory, updateStory, deleteStory } = useUserStoryService();
+  const { stories, isLoading, isSaving, getStoryById } = useUserStoryStore(); // Destructure getStoryById
+  const { loadStories, createStory, updateStory, deleteStory, addTaskToStory, removeTaskFromStory } = useUserStoryService(); // Add removeTaskFromStory
+  const { items: allKanbanTasks } = useKanbanStore(); // Corrected: Get items directly from useKanbanStore
+  const { create: createKanbanTask, load: loadKanbanTasks } = useKanbanService(); // Kanban service functions
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPriority, setFilterPriority] = useState<KanbanPriority | null>(null);
@@ -107,11 +116,15 @@ const UserStoryListView: React.FC = () => {
   const [editingStory, setEditingStory] = useState<UserStory | null>(null); // Null for create
   const [storyTaskAssociation, setStoryTaskAssociation] = useState<UserStory | null>(null);
   const [isTaskAssociationModalOpen, setIsTaskAssociationModalOpen] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [isAddingNewTask, setIsAddingNewTask] = useState(false);
+  const [isUnlinkingTask, setIsUnlinkingTask] = useState(false); // New state for unlink loading
 
   // Load stories on mount
   useEffect(() => {
     loadStories();
-  }, [loadStories]);
+    loadKanbanTasks(); // Also load Kanban tasks
+  }, [loadStories, loadKanbanTasks]);
 
   // Filter stories based on search and filters
   const filteredStories = useMemo(() => {
@@ -126,6 +139,15 @@ const UserStoryListView: React.FC = () => {
       return matchesSearch && matchesPriority && matchesStatus;
     });
   }, [stories, searchTerm, filterPriority, filterStatus]);
+
+  // Get associated task details for the modal
+  const associatedTasks = useMemo(() => {
+    if (!storyTaskAssociation || !storyTaskAssociation.taskIds) return [];
+    return storyTaskAssociation.taskIds
+      .map(taskId => allKanbanTasks.find(task => task.id === taskId))
+      .filter((task): task is Task => task !== undefined); // Filter out undefined tasks
+  }, [storyTaskAssociation, allKanbanTasks]);
+
 
   // Handlers
   const handleCreateNewStory = () => {
@@ -167,6 +189,62 @@ const UserStoryListView: React.FC = () => {
     setStoryTaskAssociation(story);
     setIsTaskAssociationModalOpen(true);
   }, []);
+
+  const handleAddNewTaskAndAssociate = async () => {
+    if (!newTaskTitle.trim() || !storyTaskAssociation) return;
+
+    setIsAddingNewTask(true);
+    try {
+      // 1. Create the new Kanban task
+      const newTask = await createKanbanTask({
+        title: newTaskTitle.trim(),
+        status: 'todo', // Default status for new tasks
+        priority: 'medium', // Default priority
+      });
+
+      if (newTask) {
+        // 2. Associate the new task with the current user story
+        await addTaskToStory(storyTaskAssociation.id, newTask.id);
+        
+        // 3. Refresh data to reflect changes
+        loadKanbanTasks();
+        await loadStories(); // Await loadStories to ensure store is updated
+
+        // 4. Update the local storyTaskAssociation state with the fresh data from the store
+        // This ensures the associatedTasks memo re-evaluates with the correct story.taskIds
+        const updatedStoryFromStore = getStoryById(storyTaskAssociation.id);
+        if (updatedStoryFromStore) {
+            setStoryTaskAssociation(updatedStoryFromStore);
+        }
+
+        setNewTaskTitle('');
+      }
+    } finally {
+      setIsAddingNewTask(false);
+    }
+  };
+
+  const handleUnlinkTask = async (storyId: number, taskId: number) => {
+    setIsUnlinkingTask(true);
+    try {
+      const success = await removeTaskFromStory(storyId, taskId);
+      if (success) {
+        // Refresh stories and Kanban tasks to ensure global state is updated
+        await loadStories();
+        loadKanbanTasks();
+
+        // Crucially, update the local storyTaskAssociation state
+        // Get the freshest story from the store after the update
+        const updatedStoryFromStore = getStoryById(storyId);
+        if (updatedStoryFromStore) {
+            setStoryTaskAssociation(updatedStoryFromStore);
+        }
+      }
+    } finally {
+      setIsUnlinkingTask(false);
+    }
+  };
+
 
   if (isLoading && !stories.length) {
     return (
@@ -468,37 +546,98 @@ const UserStoryListView: React.FC = () => {
         onSave={handleSaveStory}
         isSaving={isSaving}
       />
-      {/* Task Association Modal (if needed for a story, though primarily for tasks) */}
-      {/* Note: This modal is currently designed for `Task` type. Re-evaluation might be needed if user wants to associate tasks *from* a story's perspective directly via this modal. */}
-      {/* For now, this is kept as a placeholder if a story would show its associated tasks, not manage them. */}
-      {/* It expects a `Task` not a `UserStory`. A new modal might be needed for the `UserStory` perspective. */}
+      {/* Task Association Modal (Simplified for UserStory View) */}
       {isTaskAssociationModalOpen && storyTaskAssociation && (
         <Dialog open={isTaskAssociationModalOpen} onOpenChange={setIsTaskAssociationModalOpen}>
             <DialogContent className="sm:max-w-[600px] glass border-[rgba(var(--color-border),0.7)]">
                 <DialogHeader className="pb-3 border-b border-[rgba(var(--color-border),0.5)]">
                     <DialogTitle className="text-[rgb(var(--color-primary))] flex items-center gap-2">
-                        <ListTodo size={18} />
+                        <ClipboardList size={18} />
                         Tasks for Story: "{storyTaskAssociation.title}"
                     </DialogTitle>
                 </DialogHeader>
-                <ScrollArea className="h-[350px] pr-4">
-                  {storyTaskAssociation.taskIds && storyTaskAssociation.taskIds.length > 0 ? (
-                    <div className="space-y-2">
-                      <p className="text-sm text-[rgb(var(--color-text-muted))]">
-                        Currently linked task IDs: {storyTaskAssociation.taskIds.join(', ')}
-                      </p>
-                      {/* You might want to fetch and display actual task titles here */}
-                      {/* For now, just display IDs */}
+                <div className="flex flex-col gap-4 py-4">
+                    {/* Add new task input */}
+                    <div className="flex gap-2">
+                        <Input
+                            placeholder="Add new task for this story..."
+                            value={newTaskTitle}
+                            onChange={(e) => setNewTaskTitle(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    handleAddNewTaskAndAssociate();
+                                }
+                            }}
+                            className="flex-1 bg-[rgba(var(--color-bg-secondary),0.3)] border-[rgba(var(--color-border),0.4)]"
+                            disabled={isAddingNewTask}
+                        />
+                        <Button onClick={handleAddNewTaskAndAssociate} disabled={!newTaskTitle.trim() || isAddingNewTask}>
+                            {isAddingNewTask ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                            <span className="ml-2">Add Task</span>
+                        </Button>
                     </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <ListTodo className="h-12 w-12 text-[rgb(var(--color-text-muted))] opacity-50 mx-auto mb-3" />
-                      <p className="text-sm text-[rgb(var(--color-text-muted))]">
-                        No tasks associated with this story.
-                      </p>
-                    </div>
-                  )}
-                </ScrollArea>
+
+                    {/* List of associated tasks */}
+                    <ScrollArea className="h-[250px] pr-4">
+                        {associatedTasks.length > 0 ? (
+                            <div className="space-y-3">
+                                {associatedTasks.map(task => (
+                                    <div 
+                                        key={task.id} 
+                                        className="flex items-center p-3 rounded-lg border border-[rgba(var(--color-border),0.4)] bg-[rgba(var(--color-bg-secondary),0.2)]"
+                                    >
+                                        <div className={cn(
+                                            'w-2.5 h-2.5 rounded-full mr-3 flex-shrink-0',
+                                            STATUS_CONFIG[task.status].color.replace('text-', 'bg-')
+                                        )} />
+                                        <div className="flex-1 min-w-0">
+                                            <h4 className="text-sm font-medium text-[rgb(var(--color-text-primary))] line-clamp-1">{task.title}</h4>
+                                            <p className="text-xs text-[rgb(var(--color-text-muted))] flex items-center gap-1">
+                                                <Link2 size={10} /> Linked (Status: {STATUS_CONFIG[task.status].label})
+                                            </p>
+                                        </div>
+                                        <Badge
+                                            variant="outline"
+                                            className={cn(
+                                                'h-5 px-1.5 text-[10px] font-medium border ml-2',
+                                                PRIORITY_CONFIG[task.priority].bgColor,
+                                                PRIORITY_CONFIG[task.priority].borderColor,
+                                                PRIORITY_CONFIG[task.priority].color
+                                            )}
+                                        >
+                                            {PRIORITY_CONFIG[task.priority].icon}
+                                            <span className="ml-0.5">{PRIORITY_CONFIG[task.priority].label}</span>
+                                        </Badge>
+                                        {/* Unlink Button */}
+                                        <TooltipProvider>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7 ml-2 text-rose-500 hover:bg-rose-500/10"
+                                                onClick={() => handleUnlinkTask(storyTaskAssociation.id, task.id)}
+                                                disabled={isUnlinkingTask}
+                                              >
+                                                {isUnlinkingTask ? <Loader2 size={16} className="animate-spin" /> : <Unlink size={14} />}
+                                              </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="left">Unlink Task</TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-8">
+                                <ListTodo className="h-12 w-12 text-[rgb(var(--color-text-muted))] opacity-50 mx-auto mb-3" />
+                                <p className="text-sm text-[rgb(var(--color-text-muted))]">
+                                    No tasks associated with this story. Add one using the input above!
+                                </p>
+                            </div>
+                        )}
+                    </ScrollArea>
+                </div>
                 <DialogFooter className="border-t border-[rgba(var(--color-border),0.5)] pt-3">
                     <Button variant="outline" onClick={() => setIsTaskAssociationModalOpen(false)}>Close</Button>
                 </DialogFooter>

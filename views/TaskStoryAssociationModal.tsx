@@ -17,13 +17,14 @@ import {
   BookOpen,
   Loader2,
   Link2,
-  Unlink,
+  Unlink, // ADDED: Unlink icon
   Flag,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Task, UserStory } from '@/types';
 import { useUserStoryStore } from '@/stores/useUserStoryStore';
 import { useUserStoryService } from '@/services/userStoryServiceHooks';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface TaskStoryAssociationModalProps {
   task: Task | null;
@@ -255,6 +256,45 @@ const TaskStoryAssociationModal: React.FC<TaskStoryAssociationModalProps> = ({
                           </Badge>
                         </div>
                       </div>
+                      
+                      {/* Unlink Button (only if originally linked and not already marked for removal) */}
+                      {isOriginallyLinked && !willBeRemoved && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-rose-500 hover:bg-rose-500/10"
+                                onClick={() => handleToggleStory(story.id)} // Mark for removal
+                                disabled={isSaving}
+                              >
+                                <Unlink size={14} />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="left">Unlink Task</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                      {/* Link Button (only if NOT originally linked and NOT already marked for addition) */}
+                      {!isOriginallyLinked && !willBeAdded && (
+                         <TooltipProvider>
+                           <Tooltip>
+                             <TooltipTrigger asChild>
+                               <Button
+                                 variant="ghost"
+                                 size="icon"
+                                 className="h-7 w-7 text-emerald-500 hover:bg-emerald-500/10"
+                                 onClick={() => handleToggleStory(story.id)} // Mark for addition
+                                 disabled={isSaving}
+                               >
+                                 <Link2 size={14} />
+                               </Button>
+                             </TooltipTrigger>
+                             <TooltipContent side="left">Link Task</TooltipContent>
+                           </Tooltip>
+                         </TooltipProvider>
+                      )}
                     </div>
                   );
                 })}
