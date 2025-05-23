@@ -19,6 +19,7 @@ import {
   import { useExclusionService } from "@/services/exclusionServiceHooks";
   import { useTodoService } from "@/services/todoServiceHooks";
   import { useAutoSelectService } from "@/services/autoSelectServiceHooks";
+  import { useActorWizardService } from "@/services/actorWizardServiceHooks";
 
   import {
     applyExtensionFilter,
@@ -60,6 +61,7 @@ import {
     const { fetchGlobalExclusions, fetchLocalExclusions } = useExclusionService();
     const { loadTodos } = useTodoService();
     const { autoSelect, isSelecting } = useAutoSelectService();
+    const { generateActors, isGenerating } = useActorWizardService();
 
     // --- Refs & Local UI State ---
     const treeRef = useRef<FileTreeViewHandle>(null);
@@ -218,6 +220,8 @@ import {
       // handleDismissWelcome, // Removed
       // toggleDark, // Removed
       autoSelect,
+      generateActors,
+      isGeneratingActors: isGenerating,
       setShowSettings,
       saveApiKey,
       setApiKeyDraft,
