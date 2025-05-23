@@ -19,6 +19,13 @@ if sys.version_info < (3, 10):          # Python < 3.10 has no dataclass slo
 import os
 import logging
 
+# Ensure the parent directory of app.py (which is python_backend)
+# is at the beginning of sys.path, so modules like 'controllers', 'services', etc.
+# can be imported directly. This makes imports more robust.
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
 # third‑party
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -26,6 +33,7 @@ from dotenv import load_dotenv # <-- Import load_dotenv
 from werkzeug.exceptions import HTTPException
 
 # local
+# These imports now rely on 'current_dir' being in sys.path
 from utils.response_utils import error_response
 from controllers import all_blueprints
 
