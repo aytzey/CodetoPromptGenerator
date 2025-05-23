@@ -26,6 +26,8 @@ import {
   KanbanStatus,
   KanbanStatusValues,
 } from '@/types';
+import { useActorStore } from '@/stores/useActorStore';
+import { useActorSuggestService } from '@/services/actorSuggestServiceHooks';
 import {
   Loader2,
   AlertCircle,
@@ -36,6 +38,7 @@ import {
   X,
   Hash,
   ListOrdered,
+  Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -76,12 +79,15 @@ const UserStoryEditModal: React.FC<UserStoryEditModalProps> = ({
   onSave,
   isSaving,
 }) => {
+  const { actors } = useActorStore();
+  const { suggestActor, isSuggesting } = useActorSuggestService();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [acceptanceCriteria, setAcceptanceCriteria] = useState('');
   const [priority, setPriority] = useState<KanbanPriority>('medium');
   const [points, setPoints] = useState<number | ''>('');
   const [status, setStatus] = useState<KanbanStatus>('todo');
+  const [actorId, setActorId] = useState<number | ''>('');
   const [error, setError] = useState<string | null>(null);
   const [titleFocused, setTitleFocused] = useState(false);
 
@@ -93,6 +99,7 @@ const UserStoryEditModal: React.FC<UserStoryEditModalProps> = ({
       setPriority(story.priority);
       setPoints(story.points ?? '');
       setStatus(story.status);
+      setActorId(story.actorId ?? '');
       setError(null);
     } else {
       // For new story
@@ -102,6 +109,7 @@ const UserStoryEditModal: React.FC<UserStoryEditModalProps> = ({
       setPriority('medium');
       setPoints('');
       setStatus('todo');
+      setActorId('');
       setError(null);
     }
   }, [story, isOpen]);
@@ -132,6 +140,7 @@ const UserStoryEditModal: React.FC<UserStoryEditModalProps> = ({
       title: title.trim(),
       description: description.trim() ? description.trim() : null,
       acceptanceCriteria: acceptanceCriteria.trim() ? acceptanceCriteria.trim() : null,
+      actorId: actorId === '' ? null : Number(actorId),
       priority,
       points: savedPoints,
       status,
@@ -142,6 +151,11 @@ const UserStoryEditModal: React.FC<UserStoryEditModalProps> = ({
     } catch (err) {
       setError('Failed to save changes');
     }
+  };
+
+  const handleSuggestActor = async () => {
+    const id = await suggestActor(description);
+    if (id !== null) setActorId(id);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -199,6 +213,26 @@ const UserStoryEditModal: React.FC<UserStoryEditModalProps> = ({
               placeholder="Enter user story title"
               autoFocus={titleFocused}
             />
+          </div>
+
+          {/* Actor Selection */}
+          <div className="space-y-2">
+            <Label htmlFor="actor" className="text-sm text-[rgb(var(--color-text-secondary))] flex items-center gap-1.5">
+              <Users size={14} /> Actor
+            </Label>
+            <Select value={actorId === '' ? undefined : String(actorId)} onValueChange={(v) => setActorId(v === '' ? '' : Number(v))}>
+              <SelectTrigger className="h-10 focus-glow border-[rgba(var(--color-border),0.7)]">
+                <SelectValue placeholder="Select actor" />
+              </SelectTrigger>
+              <SelectContent className="glass border-[rgba(var(--color-border),0.7)] max-h-60 overflow-y-auto">
+                {actors.map((a) => (
+                  <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button type="button" onClick={handleSuggestActor} disabled={isSuggesting} className="mt-2">
+              {isSuggesting ? 'Suggesting...' : 'Suggest Actor'}
+            </Button>
           </div>
 
           {/* Description Field */}
