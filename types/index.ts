@@ -100,6 +100,7 @@ export const TaskSchema = KanbanItemSchema.extend({
 export interface UserStory {
   id: number;
   title: string;
+  actorId?: number | null;
   description?: string | null;
   acceptanceCriteria?: string | null;
   priority: KanbanPriority; // Reusing KanbanPriority
@@ -112,6 +113,7 @@ export interface UserStory {
 export const UserStorySchema = z.object({
   id: z.number().int().nonnegative(),
   title: z.string().min(1).max(256), // Max length from KanbanItemModel or adjust
+  actorId: z.number().int().optional().nullable(),
   description: z.string().optional().nullable(),
   acceptanceCriteria: z.string().optional().nullable(),
   priority: z.enum(KanbanPriorityValues),

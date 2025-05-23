@@ -1,6 +1,7 @@
 # python_backend/controllers/actor_controller.py
 from flask import Blueprint, request
-from services.actor_service import ActorService # CORRECTED: Absolute import from the assumed top-level package 'python_backend'
+from services.actor_service import ActorService
+from services.actor_suggest_service import ActorSuggestService
 from repositories.file_storage import FileStorageRepository
 from utils.response_utils import success_response, error_response
 from pydantic import ValidationError # Import Pydantic's ValidationError
@@ -13,6 +14,7 @@ actor_bp = Blueprint("actor_bp", __name__)
 # Dependencies
 storage_repo = FileStorageRepository()
 actor_service = ActorService(storage_repo)
+actor_suggest_service = ActorSuggestService()
 
 # Helper to get projectPath
 def _get_project_path():
@@ -50,6 +52,19 @@ def actors_collection():
     except Exception as e:
         logger.exception(f"Error creating actor for project: {project_path}")
         return error_response(str(e), "Failed to create actor", 500)
+
+@actor_bp.route("/api/actors/suggest", methods=["POST"])
+def actor_suggest():
+    project_path = _get_project_path()
+    payload = request.get_json(silent=True) or {}
+    description = payload.get("description", "")
+    try:
+        actors = [a.model_dump() for a in actor_service.list_actors(project_path)]
+        actor_id = actor_suggest_service.suggest(description, actors)
+        return success_response(data={"actorId": actor_id})
+    except Exception as e:
+        logger.exception("Error suggesting actor")
+        return error_response(str(e), "Failed to suggest actor", 500)
 
 # ───────────────────────────────────────────────────────────────────
 # GET /api/actors/<id>?projectPath=…   → get a single actor
