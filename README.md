@@ -35,8 +35,10 @@ A tool for quickly assembling Large Language Model (LLM) prompts from a local fi
 - **Copy to Clipboard**  
   Gather your meta prompt, main instructions, plus the selected files’ contents in one click. Paste directly into your preferred LLM interface.
 
-- **Python Backend for Extended Services**  
+- **Python Backend for Extended Services**
   An optional Python/Flask backend (e.g., for to-do items, scanning directory structure on certain OSes, or future expansions).
+- **Actors & User Stories**
+  Manage project actors with full CRUD. User stories can reference these actors and an optional AI helper can suggest the best actor based on the description.
 
 ---
 

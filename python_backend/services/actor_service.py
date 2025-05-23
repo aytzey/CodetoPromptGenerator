@@ -130,7 +130,8 @@ class ActorService:
         """Saves a list of ActorModel instances to the project's JSON file."""
         file_path = self._get_actors_file_path(project_path)
         # Convert Pydantic models back to dicts for JSON serialization
-        actors_data = [actor.model_dump() for actor in actors]
+        # Pydantic v1.x uses ``dict()`` instead of ``model_dump()``.
+        actors_data = [actor.dict() for actor in actors]
         self.storage.write_json(file_path, {"actors": actors_data})
 
     def list_actors(self, project_path: Optional[str]) -> List[ActorModel]:
@@ -170,7 +171,7 @@ class ActorService:
             return None
         
         # Apply updates and re-validate the entire model
-        existing_actor = actors[actor_index].model_dump() # Get dict representation
+        existing_actor = actors[actor_index].dict()  # Get dict representation
         updated_data = {**existing_actor, **updates}
         
         try:
