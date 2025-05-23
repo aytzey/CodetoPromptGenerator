@@ -15,6 +15,7 @@ import {
   Layers,
   Filter,
   BookOpen, // New icon for User Stories
+  Users, // NEW icon for Actors
 } from "lucide-react";
 import {
   Tabs,
@@ -40,7 +41,8 @@ import ExclusionsManagerView from "@/views/ExclusionsManagerView";
 import LocalExclusionsManagerView from "@/views/LocalExclusionsManagerView";
 import KanbanBoardView from "@/views/KanbanBoardView";
 import TodoListView from "@/views/TodoListView";
-import UserStoryListView from "@/views/UserStoryListView"; // Import the new UserStoryListView
+import UserStoryListView from "@/views/UserStoryListView";
+import ActorListView from "@/views/ActorListView"; // Import the new ActorListView
 
 import {
   applyWildcardFilter,
@@ -50,8 +52,8 @@ import {
 import type { FileNode } from "@/types";
 
 interface LeftPanelViewProps {
-  activeTab: "files" | "options" | "tasks";
-  setActiveTab: (tab: "files" | "options" | "tasks") => void;
+  activeTab: "files" | "options" | "tasks" | "actors"; // ADDED "actors"
+  setActiveTab: (tab: "files" | "options" | "tasks" | "actors") => void; // ADDED "actors"
   projectPath: string;
   isLoadingTree: boolean;
   fileSearchTerm: string;
@@ -107,7 +109,7 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
       className="space-y-6"
     >
       {/* Enhanced Tab Navigation with dynamic glows */}
-      <TabsList className="grid grid-cols-3 p-1.5 bg-[rgba(var(--color-bg-secondary),0.7)] backdrop-blur-xl border border-[rgba(var(--color-border),0.5)] rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.08)]">
+      <TabsList className="grid grid-cols-4 p-1.5 bg-[rgba(var(--color-bg-secondary),0.7)] backdrop-blur-xl border border-[rgba(var(--color-border),0.5)] rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.08)]">
         <TabsTrigger 
           value="files" 
           className="rounded-lg py-2.5 data-[state=active]:bg-gradient-to-br data-[state=active]:from-[rgba(var(--color-primary),0.2)] data-[state=active]:to-[rgba(var(--color-primary),0.05)] data-[state=active]:backdrop-blur-xl data-[state=active]:border data-[state=active]:border-[rgba(var(--color-primary),0.3)] data-[state=active]:shadow-[0_0_15px_rgba(var(--color-primary),0.2)] data-[state=active]:scale-[1.02] transition-all duration-300"
@@ -134,6 +136,15 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
             <ListChecks size={16} className="text-[rgb(var(--color-tertiary))]" />
           </div>
           <span className="font-medium">Tasks</span>
+        </TabsTrigger>
+        <TabsTrigger 
+          value="actors" // NEW Tab
+          className="rounded-lg py-2.5 data-[state=active]:bg-gradient-to-br data-[state=active]:from-[rgba(var(--color-accent-2),0.2)] data-[state=active]:to-[rgba(var(--color-accent-2),0.05)] data-[state=active]:backdrop-blur-xl data-[state=active]:border data-[state=active]:border-[rgba(var(--color-accent-2),0.3)] data-[state=active]:shadow-[0_0_15px_rgba(var(--color-accent-2),0.2)] data-[state=active]:scale-[1.02] transition-all duration-300"
+        >
+          <div className="p-1 rounded-md bg-[rgba(var(--color-accent-2),0.1)] mr-2">
+            <Users size={16} className="text-[rgb(var(--color-accent-2))]" />
+          </div>
+          <span className="font-medium">Actors</span>
         </TabsTrigger>
       </TabsList>
 
@@ -371,6 +382,11 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
           </div>
           
         )}
+      </TabsContent>
+
+      {/* ACTORS TAB (NEW) */}
+      <TabsContent value="actors" className="mt-6 h-full flex flex-col animate-fade-in">
+        <ActorListView />
       </TabsContent>
     </Tabs>
   );

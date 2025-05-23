@@ -24,7 +24,7 @@ export interface TodoItem {
   id: number;
   text: string;
   completed: boolean;
-  createdAt?: string;
+  createdAt?: string; // Keep optional for compatibility
 }
 
 /* ═══════════════ Codemap models ═══════════════ */
@@ -119,4 +119,22 @@ export const UserStorySchema = z.object({
   status: z.enum(KanbanStatusValues),
   createdAt: z.string().datetime({ offset: true }),
   taskIds: z.array(z.number().int()).optional(), // Array of task IDs
+});
+
+
+/* █████  ACTOR  ██████████████████████████████████████████████████████ */
+export interface Actor {
+  id: number;
+  name: string;
+  role: string;
+  permissions?: string[];
+  goals?: string[];
+}
+
+export const ActorSchema = z.object({
+  id: z.number().int().nonnegative(),
+  name: z.string().min(1).max(100),
+  role: z.string().min(1),
+  permissions: z.array(z.string()).optional(),
+  goals: z.array(z.string()).optional(),
 });

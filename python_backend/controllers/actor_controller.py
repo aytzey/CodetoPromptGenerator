@@ -1,6 +1,6 @@
 # python_backend/controllers/actor_controller.py
 from flask import Blueprint, request
-from services.actor_service import ActorService
+from services.actor_service import ActorService # CORRECTED: Absolute import from the assumed top-level package 'python_backend'
 from repositories.file_storage import FileStorageRepository
 from utils.response_utils import success_response, error_response
 from pydantic import ValidationError # Import Pydantic's ValidationError
