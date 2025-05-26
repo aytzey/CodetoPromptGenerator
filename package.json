@@ -15,7 +15,8 @@
     "postinstall": "node scripts/postinstall.js",
     "electron:dev": "concurrently --kill-others-on-fail \"npm run dev\" \"npm run backend\" \"wait-on tcp:5010 tcp:3010 && node scripts/run-electron.js\"",
     "electron:pack": "electron-builder --dir",
-    "electron:build": "npm run export && electron-builder --linux deb AppImage"
+    "electron:build": "npm run export && electron-builder --linux deb AppImage",
+    "test": "node scripts/autotest.js"
   },
   "engines": {
     "node": ">=20"
