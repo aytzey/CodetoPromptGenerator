@@ -1,45 +1,50 @@
 // stores/useAppStore.ts
 import { create } from "zustand";
+import type { CodemapResponse } from "@/types"; // Import CodemapResponse
 
 interface AppState {
-  // Removed darkMode and toggleDarkMode
-  // darkMode: boolean;
-  // toggleDarkMode(): void;
-
-  /** Global error banner (set via fetchApi) */
   error: string | null;
   setError(e: string | null): void;
   clearError(): void;
 
-  /** Generic spinner flag (kept for future use) */
   isLoading: boolean;
   setIsLoading(b: boolean): void;
 
-  /**
-   * SETTINGS  – Token optimisation:
-   * If true → after codemap extraction, files with *zero*
-   * classes & functions are auto‑deselected to save context tokens.
-   */
   codemapFilterEmpty: boolean;
   toggleCodemapFilterEmpty(): void;
+
+  // State for settings modal
+  isSettingsModalOpen: boolean;
+  openSettingsModal: () => void;
+  closeSettingsModal: () => void;
+
+  // State for Codemap modal
+  isCodemapModalOpen: boolean;
+  codemapModalData: CodemapResponse | null;
+  openCodemapModal: (data: CodemapResponse) => void;
+  closeCodemapModal: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  /* theme - REMOVED */
-  // darkMode: true, // Default removed
-  // toggleDarkMode: () => set((s) => ({ darkMode: !s.darkMode })), // Action removed
-
-  /* error handling */
   error: null,
   setError: (e) => set({ error: e }),
   clearError: () => set({ error: null }),
 
-  /* misc loading */
   isLoading: false,
   setIsLoading: (b) => set({ isLoading: b }),
 
-  /* settings */
   codemapFilterEmpty: false,
   toggleCodemapFilterEmpty: () =>
     set((s) => ({ codemapFilterEmpty: !s.codemapFilterEmpty })),
+
+  // Settings modal state and actions
+  isSettingsModalOpen: false,
+  openSettingsModal: () => set({ isSettingsModalOpen: true }),
+  closeSettingsModal: () => set({ isSettingsModalOpen: false }),
+
+  // Codemap modal state and actions
+  isCodemapModalOpen: false,
+  codemapModalData: null,
+  openCodemapModal: (data) => set({ isCodemapModalOpen: true, codemapModalData: data }),
+  closeCodemapModal: () => set({ isCodemapModalOpen: false, codemapModalData: null }),
 }));

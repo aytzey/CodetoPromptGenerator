@@ -1,15 +1,18 @@
+// FILE: views/UserStoryListView.tsx
 // views/UserStoryListView.tsx
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   UserStory,
   KanbanPriorityValues,
   KanbanStatusValues,
-  Task, // Import Task type
+  Task, 
+  KanbanPriority,
+  KanbanStatus,
 } from '@/types';
 import { useUserStoryStore } from '@/stores/useUserStoryStore';
 import { useUserStoryService } from '@/services/userStoryServiceHooks';
-import { useKanbanStore } from '@/stores/useKanbanStore'; // Import Kanban store to get task details
-import { useKanbanService } from '@/services/kanbanServiceHooks'; // Import Kanban service to create tasks
+import { useKanbanStore } from '@/stores/useKanbanStore'; 
+import { useKanbanService } from '@/services/kanbanServiceHooks'; 
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 
@@ -37,16 +40,16 @@ import {
   Hash,
   ListOrdered,
   RefreshCw,
-  X, // For clearing search/filter
-  Calendar, // ADDED: Calendar icon import
-  ClipboardList, // For tasks icon
-  Link2, // For task association status
-  Circle, // For task status dot
-  Unlink, // ADDED: Unlink icon for disassociating tasks
+  X, 
+  Calendar, 
+  ClipboardList, 
+  Link2, 
+  Circle, 
+  Unlink, 
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  Dialog, // For the simple task display modal
+  Dialog, 
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -54,10 +57,15 @@ import {
 } from '@/components/ui/dialog';
 
 import UserStoryEditModal from './UserStoryEditModal';
-// import TaskStoryAssociationModal from './TaskStoryAssociationModal'; // To view associated tasks
 
 
-const PRIORITY_CONFIG = {
+const PRIORITY_CONFIG: Record<KanbanPriority, {
+  icon: React.ReactNode;
+  label: string;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+}> = {
   low: {
     icon: <Flag size={11} />,
     label: 'Low',
@@ -81,7 +89,12 @@ const PRIORITY_CONFIG = {
   },
 };
 
-const STATUS_CONFIG = {
+const STATUS_CONFIG: Record<KanbanStatus, {
+  label: string;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+}> = {
   todo: {
     label: 'To Do',
     color: 'text-blue-400',
@@ -103,30 +116,33 @@ const STATUS_CONFIG = {
 };
 
 const UserStoryListView: React.FC = () => {
-  const { stories, isLoading, isSaving, getStoryById } = useUserStoryStore(); // Destructure getStoryById
-  const { loadStories, createStory, updateStory, deleteStory, addTaskToStory, removeTaskFromStory } = useUserStoryService(); // Add removeTaskFromStory
-  const { items: allKanbanTasks } = useKanbanStore(); // Corrected: Get items directly from useKanbanStore
-  const { create: createKanbanTask, load: loadKanbanTasks } = useKanbanService(); // Kanban service functions
+  const stories = useUserStoryStore(s => s.stories);
+  const isLoading = useUserStoryStore(s => s.isLoading);
+  const isSaving = useUserStoryStore(s => s.isSaving);
+  const getStoryById = useUserStoryStore(s => s.getStoryById);
+
+  const { loadStories, createStory, updateStory, deleteStory, addTaskToStory, removeTaskFromStory } = useUserStoryService();
+  
+  const allKanbanTasks = useKanbanStore(s => s.items); 
+  const { create: createKanbanTask, load: loadKanbanTasks } = useKanbanService(); 
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPriority, setFilterPriority] = useState<KanbanPriority | null>(null);
   const [filterStatus, setFilterStatus] = useState<KanbanStatus | null>(null);
   
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editingStory, setEditingStory] = useState<UserStory | null>(null); // Null for create
+  const [editingStory, setEditingStory] = useState<UserStory | null>(null); 
   const [storyTaskAssociation, setStoryTaskAssociation] = useState<UserStory | null>(null);
   const [isTaskAssociationModalOpen, setIsTaskAssociationModalOpen] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [isAddingNewTask, setIsAddingNewTask] = useState(false);
-  const [isUnlinkingTask, setIsUnlinkingTask] = useState(false); // New state for unlink loading
+  const [isUnlinkingTask, setIsUnlinkingTask] = useState(false); 
 
-  // Load stories on mount
   useEffect(() => {
     loadStories();
-    loadKanbanTasks(); // Also load Kanban tasks
+    loadKanbanTasks(); 
   }, [loadStories, loadKanbanTasks]);
 
-  // Filter stories based on search and filters
   const filteredStories = useMemo(() => {
     return stories.filter((story) => {
       const matchesSearch = searchTerm
@@ -140,18 +156,16 @@ const UserStoryListView: React.FC = () => {
     });
   }, [stories, searchTerm, filterPriority, filterStatus]);
 
-  // Get associated task details for the modal
   const associatedTasks = useMemo(() => {
     if (!storyTaskAssociation || !storyTaskAssociation.taskIds) return [];
     return storyTaskAssociation.taskIds
       .map(taskId => allKanbanTasks.find(task => task.id === taskId))
-      .filter((task): task is Task => task !== undefined); // Filter out undefined tasks
+      .filter((task): task is Task => task !== undefined); 
   }, [storyTaskAssociation, allKanbanTasks]);
 
 
-  // Handlers
   const handleCreateNewStory = () => {
-    setEditingStory(null); // Indicate new story creation
+    setEditingStory(null); 
     setIsEditModalOpen(true);
   };
 
@@ -195,28 +209,20 @@ const UserStoryListView: React.FC = () => {
 
     setIsAddingNewTask(true);
     try {
-      // 1. Create the new Kanban task
       const newTask = await createKanbanTask({
         title: newTaskTitle.trim(),
-        status: 'todo', // Default status for new tasks
-        priority: 'medium', // Default priority
+        status: 'todo', 
+        priority: 'medium', 
       });
 
       if (newTask) {
-        // 2. Associate the new task with the current user story
         await addTaskToStory(storyTaskAssociation.id, newTask.id);
-        
-        // 3. Refresh data to reflect changes
         loadKanbanTasks();
-        await loadStories(); // Await loadStories to ensure store is updated
-
-        // 4. Update the local storyTaskAssociation state with the fresh data from the store
-        // This ensures the associatedTasks memo re-evaluates with the correct story.taskIds
+        await loadStories(); 
         const updatedStoryFromStore = getStoryById(storyTaskAssociation.id);
         if (updatedStoryFromStore) {
             setStoryTaskAssociation(updatedStoryFromStore);
         }
-
         setNewTaskTitle('');
       }
     } finally {
@@ -229,12 +235,8 @@ const UserStoryListView: React.FC = () => {
     try {
       const success = await removeTaskFromStory(storyId, taskId);
       if (success) {
-        // Refresh stories and Kanban tasks to ensure global state is updated
         await loadStories();
         loadKanbanTasks();
-
-        // Crucially, update the local storyTaskAssociation state
-        // Get the freshest story from the store after the update
         const updatedStoryFromStore = getStoryById(storyId);
         if (updatedStoryFromStore) {
             setStoryTaskAssociation(updatedStoryFromStore);
@@ -465,7 +467,6 @@ const UserStoryListView: React.FC = () => {
                                   className="h-5 px-1.5 text-[10px] font-medium cursor-pointer"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    // Assuming a modal or view to show tasks for this story
                                     handleViewAssociatedTasks(story);
                                   }}
                                 >

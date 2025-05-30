@@ -27,6 +27,9 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Actor } from '@/types';
+// No direct store usage in this component, props are passed down.
+// If it were to use a store, example:
+// import { useActorStore } from '@/stores/useActorStore';
 
 interface ActorEditModalProps {
   actor: Actor | null; // Null for creation, object for editing

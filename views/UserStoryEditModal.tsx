@@ -1,3 +1,4 @@
+// FILE: views/UserStoryEditModal.tsx
 // views/UserStoryEditModal.tsx
 import React, { useState, useEffect } from 'react';
 import {
@@ -10,7 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea'; // Corrected this line
+import { Textarea } from '@/components/ui/textarea'; 
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -43,17 +44,21 @@ import {
 import { cn } from '@/lib/utils';
 
 interface UserStoryEditModalProps {
-  story: UserStory | null; // Null for creation, object for editing
+  story: UserStory | null; 
   isOpen: boolean;
   onClose: () => void;
   onSave: (
-    id: number | null, // null for new story
+    id: number | null, 
     data: Partial<Omit<UserStory, 'id' | 'createdAt' | 'taskIds'>>
   ) => Promise<void>;
   isSaving: boolean;
 }
 
-const PRIORITY_CONFIG = {
+const PRIORITY_CONFIG: Record<KanbanPriority, {
+  icon: React.ReactNode;
+  label: string;
+  className: string;
+}> = {
   low: {
     icon: <Flag className="h-4 w-4 text-emerald-500" />,
     label: 'Low Priority',
@@ -79,7 +84,7 @@ const UserStoryEditModal: React.FC<UserStoryEditModalProps> = ({
   onSave,
   isSaving,
 }) => {
-  const { actors } = useActorStore();
+  const actors = useActorStore(s => s.actors);
   const { suggestActor, isSuggesting } = useActorSuggestService();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');

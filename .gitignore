@@ -13,3 +13,4 @@ next
 python_backend/.env
 out/_next/
 out/
+dist/

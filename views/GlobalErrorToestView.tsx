@@ -1,3 +1,4 @@
+// FILE: views/GlobalErrorToestView.tsx
 // views/GlobalErrorToastView.tsx
 import React, { useEffect } from 'react';
 import { useAppStore } from '@/stores/useAppStore';

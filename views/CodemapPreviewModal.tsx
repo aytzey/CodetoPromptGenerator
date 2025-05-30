@@ -4,6 +4,7 @@
  * ────────────────────────────────────────────────────
  * A modal window that displays a structural map of classes 
  * and functions throughout the project's codebase.
+ * Now uses useAppStore for visibility and data.
  */
 
 import React, { useMemo, useState } from "react";
@@ -38,43 +39,47 @@ import {
 } from "@/components/ui/tooltip";
 
 import type { CodemapResponse } from "@/types";
+import { useAppStore } from "@/stores/useAppStore"; // Added
 
 /* ─────────────────────────────────────────────────── */
 
+// Props removed: isOpen, onClose, data
 interface Props {
-  isOpen: boolean;
-  onClose(): void;
-  data: CodemapResponse;
+  // No props needed if all state comes from Zustand
 }
 
+interface Row { // Keep Row type local or move to types if shared
+  file: string;
+  type: "header" | "class" | "func" | "note";
+  info?: any; // For header type, consider a more specific type if possible
+  value?: string; // For class, func, note types
+}
+
+
 /* ─────────────────────────────────────────────────── */
 
-export default function CodemapPreviewModal({
-  isOpen,
-  onClose,
-  data,
-}: Props) {
-  // Local state for filtering and interaction
+export default function CodemapPreviewModal({}: Props) { // Props destructured as empty
+  const isCodemapModalOpen = useAppStore((s) => s.isCodemapModalOpen);
+  const codemapModalData = useAppStore((s) => s.codemapModalData);
+  const closeCodemapModal = useAppStore((s) => s.closeCodemapModal);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [hoveredRowIndex, setHoveredRowIndex] = useState<number | null>(null);
   
+  const dataToDisplay = codemapModalData || {}; // Use data from store
+
   // Count totals for stats display
-  const totalFiles = Object.keys(data).length;
-  const totalClasses = Object.values(data).reduce((acc, info) => 
+  const totalFiles = Object.keys(dataToDisplay).length;
+  const totalClasses = Object.values(dataToDisplay).reduce((acc, info) => 
     acc + (info.classes?.length || 0), 0);
-  const totalFunctions = Object.values(data).reduce((acc, info) => 
+  const totalFunctions = Object.values(dataToDisplay).reduce((acc, info) => 
     acc + (info.functions?.length || 0), 0);
 
   /* — flatten codemap → rows for react‑window — */
-  type Row =
-    | { file: string; type: "header"; info: any }
-    | { file: string; type: "class" | "func" | "note"; value: string };
-
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = [];
     
-    Object.entries(data).forEach(([file, info]) => {
-      // Add file header
+    Object.entries(dataToDisplay).forEach(([file, info]) => {
       out.push({ file, type: "header", info });
 
       if (info.error) {
@@ -87,51 +92,41 @@ export default function CodemapPreviewModal({
         return;
       }
       
-      // Add classes
       info.classes.forEach((c) =>
         out.push({ file, type: "class", value: c }),
       );
       
-      // Add functions
       info.functions.forEach((f) =>
         out.push({ file, type: "func", value: f }),
       );
       
-      // Add empty notice if no classes or functions found
       if (
         info.classes.length === 0 &&
         info.functions.length === 0 &&
-        !info.error
+        !info.error && !info.binary
       ) {
         out.push({ file, type: "note", value: "— no classes / functions —" });
       }
     });
     
-    // Filter rows based on search query if provided
     if (searchQuery.trim()) {
       const normalizedQuery = searchQuery.toLowerCase();
-      
-      // Keep headers and matching items
       return out.filter(row => {
         if (row.type === "header") {
-          // Always keep the header if any child matches
           const childrenMatch = out.some(r => 
             r.file === row.file && 
             r.type !== "header" && 
-            r.value.toLowerCase().includes(normalizedQuery)
+            r.value?.toLowerCase().includes(normalizedQuery)
           );
-          
           return row.file.toLowerCase().includes(normalizedQuery) || childrenMatch;
         } else {
-          // Keep item if it or its parent file matches
-          return row.value.toLowerCase().includes(normalizedQuery) || 
+          return row.value?.toLowerCase().includes(normalizedQuery) || 
                  row.file.toLowerCase().includes(normalizedQuery);
         }
       });
     }
-    
     return out;
-  }, [data, searchQuery]);
+  }, [dataToDisplay, searchQuery]);
 
   /* — single row renderer — */
   const RowRenderer = ({ index, style }: ListChildComponentProps) => {
@@ -139,8 +134,7 @@ export default function CodemapPreviewModal({
     const isHovered = hoveredRowIndex === index;
 
     if (r.type === "header") {
-      const info = r.info;
-      // File header styling
+      const info = r.info || { classes: [], functions: [], references: [] }; // Ensure info is defined
       return (
         <div
           style={style}
@@ -161,16 +155,14 @@ export default function CodemapPreviewModal({
             <div className="flex items-center gap-2 flex-shrink-0">
               <Badge className="bg-[rgba(139,233,253,0.1)] text-[rgb(139,233,253)] border border-[rgba(139,233,253,0.3)]">
                 <Code size={12} className="mr-1" />
-                {info.classes.length}
+                {info.classes?.length || 0}
               </Badge>
-              
               <Badge className="bg-[rgba(189,147,249,0.1)] text-[rgb(189,147,249)] border border-[rgba(189,147,249,0.3)]">
                 <ListIcon size={12} className="mr-1" />
-                {info.functions.length}
+                {info.functions?.length || 0}
               </Badge>
-              
               <Badge className="bg-[rgba(60,63,87,0.2)] text-[rgb(140,143,170)] border border-[rgba(60,63,87,0.5)]">
-                {info.references.length} refs
+                {info.references?.length || 0} refs
               </Badge>
             </div>
           )}
@@ -193,52 +185,20 @@ export default function CodemapPreviewModal({
       );
     }
 
-    /* ─ Classes / functions / notes styling ─ */
-    // Choose icon and styling based on type
     const getTypeStyles = () => {
       switch(r.type) {
-        case "class":
-          return {
-            icon: <Code size={14} className="text-[rgb(139,233,253)]" />,
-            bg: isHovered ? "bg-[rgba(139,233,253,0.08)]" : "bg-transparent",
-            text: "text-[rgb(224,226,240)]",
-            border: "border-l-[rgb(139,233,253)]"
-          };
-        case "func":
-          return {
-            icon: <ListIcon size={14} className="text-[rgb(189,147,249)]" />,
-            bg: isHovered ? "bg-[rgba(189,147,249,0.08)]" : "bg-transparent",
-            text: "text-[rgb(224,226,240)]",
-            border: "border-l-[rgb(189,147,249)]"
-          };
-        case "note":
-          return {
-            icon: <AlertTriangle size={14} className="text-[rgb(255,85,85)]" />,
-            bg: isHovered ? "bg-[rgba(255,85,85,0.08)]" : "bg-transparent",
-            text: "italic text-[rgb(140,143,170)]",
-            border: "border-l-[rgb(255,85,85)]"
-          };
-        default:
-          return {
-            icon: <Code size={14} />,
-            bg: "",
-            text: "",
-            border: ""
-          };
+        case "class": return { icon: <Code size={14} className="text-[rgb(139,233,253)]" />, bg: isHovered ? "bg-[rgba(139,233,253,0.08)]" : "bg-transparent", text: "text-[rgb(224,226,240)]", border: "border-l-[rgb(139,233,253)]"};
+        case "func": return { icon: <ListIcon size={14} className="text-[rgb(189,147,249)]" />, bg: isHovered ? "bg-[rgba(189,147,249,0.08)]" : "bg-transparent", text: "text-[rgb(224,226,240)]", border: "border-l-[rgb(189,147,249)]"};
+        case "note": return { icon: <AlertTriangle size={14} className="text-[rgb(255,85,85)]" />, bg: isHovered ? "bg-[rgba(255,85,85,0.08)]" : "bg-transparent", text: "italic text-[rgb(140,143,170)]", border: "border-l-[rgb(255,85,85)]"};
+        default: return { icon: <Code size={14} />, bg: "", text: "", border: ""};
       }
     };
-
     const typeStyles = getTypeStyles();
 
-    // Highlight matching text if search is active
     const highlightMatch = (text: string) => {
-      if (!searchQuery.trim()) return <span className="truncate">{text}</span>;
-      
+      if (!searchQuery.trim() || !text) return <span className="truncate">{text}</span>;
       const normalizedQuery = searchQuery.toLowerCase();
-      if (!text.toLowerCase().includes(normalizedQuery)) {
-        return <span className="truncate">{text}</span>;
-      }
-      
+      if (!text.toLowerCase().includes(normalizedQuery)) return <span className="truncate">{text}</span>;
       const parts = text.split(new RegExp(`(${searchQuery})`, 'i'));
       return (
         <span className="truncate">
@@ -259,18 +219,16 @@ export default function CodemapPreviewModal({
         onMouseLeave={() => setHoveredRowIndex(null)}
       >
         {typeStyles.icon}
-        {highlightMatch(r.value)}
+        {highlightMatch(r.value || "")}
       </div>
     );
   };
 
-  /* ————————————————— render ————————————————— */
   return (
-    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()} modal={true}>
+    <Dialog open={isCodemapModalOpen} onOpenChange={(o) => !o && closeCodemapModal()} modal={true}>
       <DialogContent
         className="h-[80vh] w-full max-w-4xl p-0 flex flex-col overflow-hidden border-[rgba(60,63,87,0.7)] bg-[rgba(30,31,61,0.97)] backdrop-blur-lg shadow-[0_25px_50px_-12px_rgba(0,0,0,0.4)] animate-fade-in"
       >
-        {/* Decorative background elements */}
         <div className="absolute -z-10 top-20 left-1/4 w-96 h-96 bg-[rgba(123,147,253,0.03)] rounded-full blur-[120px]"></div>
         <div className="absolute -z-10 bottom-0 right-1/3 w-80 h-80 bg-[rgba(189,147,249,0.03)] rounded-full blur-[100px]"></div>
         
@@ -281,9 +239,7 @@ export default function CodemapPreviewModal({
           </DialogTitle>
         </DialogHeader>
 
-        {/* Search and stats bar */}
         <div className="px-5 py-3 border-b border-[rgba(60,63,87,0.5)] bg-[rgba(15,16,36,0.5)] flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
-          {/* Search input */}
           <div className="relative w-full sm:w-64 flex-shrink-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[rgb(140,143,170)]" />
             <Input
@@ -293,34 +249,24 @@ export default function CodemapPreviewModal({
               className="pl-9 pr-8 h-9 bg-[rgba(15,16,36,0.6)] border-[rgba(60,63,87,0.7)] focus:ring-1 focus:ring-[rgb(123,147,253)] focus:border-transparent"
             />
             {searchQuery && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-[rgb(140,143,170)] hover:text-[rgb(224,226,240)]"
-                onClick={() => setSearchQuery("")}
-              >
+              <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-[rgb(140,143,170)] hover:text-[rgb(224,226,240)]" onClick={() => setSearchQuery("")}>
                 <X size={14} />
               </Button>
             )}
           </div>
-          
-          {/* Stats badges */}
           <div className="flex items-center gap-3 flex-wrap">
             <Badge className="bg-[rgba(15,16,36,0.4)] text-[rgb(224,226,240)] border border-[rgba(60,63,87,0.7)] px-2.5 py-1 h-auto">
               <ListTree size={14} className="mr-1.5 text-[rgb(123,147,253)]" />
               {totalFiles} Files
             </Badge>
-            
             <Badge className="bg-[rgba(15,16,36,0.4)] text-[rgb(224,226,240)] border border-[rgba(60,63,87,0.7)] px-2.5 py-1 h-auto">
               <Code size={14} className="mr-1.5 text-[rgb(139,233,253)]" />
               {totalClasses} Classes
             </Badge>
-            
             <Badge className="bg-[rgba(15,16,36,0.4)] text-[rgb(224,226,240)] border border-[rgba(60,63,87,0.7)] px-2.5 py-1 h-auto">
               <ListIcon size={14} className="mr-1.5 text-[rgb(189,147,249)]" />
               {totalFunctions} Functions
             </Badge>
-            
             {searchQuery && (
               <Badge className="bg-[rgba(255,184,108,0.15)] text-[rgb(255,184,108)] border border-[rgba(255,184,108,0.3)] px-2.5 py-1 h-auto animate-pulse">
                 <Filter size={14} className="mr-1.5" />
@@ -330,9 +276,7 @@ export default function CodemapPreviewModal({
           </div>
         </div>
 
-        {/* Virtual list */}
         <div className="flex-1 min-h-0 relative">
-          {/* Empty state */}
           {rows.length === 0 && (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-[rgb(140,143,170)]">
               <div className="w-16 h-16 flex items-center justify-center rounded-full bg-[rgba(60,63,87,0.2)] mb-4">
@@ -342,51 +286,24 @@ export default function CodemapPreviewModal({
               <p className="text-sm mt-1">Try adjusting your search query</p>
             </div>
           )}
-          
-          {/* List container */}
           <AutoSizer>
             {({ height, width }) => (
-              <List
-                height={height}
-                width={width}
-                itemCount={rows.length}
-                itemSize={36}
-                overscanCount={10}
-                className="scrollbar-thin"
-              >
+              <List height={height} width={width} itemCount={rows.length} itemSize={36} overscanCount={10} className="scrollbar-thin">
                 {RowRenderer}
               </List>
             )}
           </AutoSizer>
-          
-          {/* Gradient fade effect at the bottom */}
           <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-[rgba(15,16,36,0.5)] to-transparent pointer-events-none"></div>
         </div>
         
-        {/* Footer with legend */}
         <DialogFooter className="px-5 py-3 border-t border-[rgba(60,63,87,0.5)] bg-[rgba(15,16,36,0.5)]">
           <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-[rgb(140,143,170)]">
             <div className="flex items-center gap-3">
-              <div className="flex items-center">
-                <div className="w-2 h-2 bg-[rgb(139,233,253)] rounded-full mr-1.5"></div>
-                Classes
-              </div>
-              <div className="flex items-center">
-                <div className="w-2 h-2 bg-[rgb(189,147,249)] rounded-full mr-1.5"></div>
-                Functions
-              </div>
-              <div className="flex items-center">
-                <div className="w-2 h-2 bg-[rgb(255,85,85)] rounded-full mr-1.5"></div>
-                Notes
-              </div>
+              <div className="flex items-center"><div className="w-2 h-2 bg-[rgb(139,233,253)] rounded-full mr-1.5"></div>Classes</div>
+              <div className="flex items-center"><div className="w-2 h-2 bg-[rgb(189,147,249)] rounded-full mr-1.5"></div>Functions</div>
+              <div className="flex items-center"><div className="w-2 h-2 bg-[rgb(255,85,85)] rounded-full mr-1.5"></div>Notes</div>
             </div>
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onClose}
-              className="border-[rgba(123,147,253,0.4)] text-[rgb(123,147,253)] hover:bg-[rgba(123,147,253,0.1)] hover:text-[rgb(123,147,253)] hover:border-[rgba(123,147,253,0.6)] h-8 px-3 text-xs"
-            >
+            <Button variant="outline" size="sm" onClick={closeCodemapModal} className="border-[rgba(123,147,253,0.4)] text-[rgb(123,147,253)] hover:bg-[rgba(123,147,253,0.1)] hover:text-[rgb(123,147,253)] hover:border-[rgba(123,147,253,0.6)] h-8 px-3 text-xs">
               Close Preview
             </Button>
           </div>

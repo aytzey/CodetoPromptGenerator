@@ -1,4 +1,4 @@
-// File: views/TodoListView.tsx
+// FILE: views/TodoListView.tsx
 import React, { useEffect } from "react";
 import { useTodoStore } from "@/stores/useTodoStore";
 import { useTodoService } from "@/services/todoServiceHooks";
@@ -22,7 +22,11 @@ import { TodoItem, TodoFilter } from '@/types';
 
 const TodoListView: React.FC = () => {
   // Get state and actions from Zustand store
-  const { todos, filter, setFilter, isLoading, isAdding } = useTodoStore();
+  const todos = useTodoStore(s => s.todos);
+  const filter = useTodoStore(s => s.filter);
+  const setFilter = useTodoStore(s => s.setFilter);
+  const isLoading = useTodoStore(s => s.isLoading);
+  const isAdding = useTodoStore(s => s.isAdding);
   
   // Get service functions from hook
   const { loadTodos, addTodo, toggleTodo, deleteTodo, clearCompletedTodos } = useTodoService();
@@ -70,7 +74,8 @@ const TodoListView: React.FC = () => {
   });
 
   // Format date to display
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return '';
     const date = new Date(dateString);
     return date.toLocaleDateString(undefined, { 
       month: 'short', 

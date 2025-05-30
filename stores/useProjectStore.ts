@@ -100,6 +100,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   projectPath: "",
   setProjectPath: (path) => {
     const normalizedPath = path.replace(/\\/g, '/'); // Normalize slashes
+    // This is a single logical update triggered by a project change.
+    // Grouping these state resets into one `set` call is appropriate.
     set({
       projectPath: normalizedPath,
       selectedFilePaths: [],
@@ -129,24 +131,26 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   toggleFilePathSelection: (path, isSel, descendants) => {
     const normalizedPath = path.replace(/\\/g, '/');
     const normalizedDescendants = descendants.map(d => d.replace(/\\/g, '/'));
-    const cur = new Set(get().selectedFilePaths);
+    
+    // Using set(state => ...) to ensure atomicity for complex updates if needed,
+    // though direct set is also fine here as it's one property.
+    set((state) => {
+      const cur = new Set(state.selectedFilePaths);
+      const pathsToModify = [normalizedPath, ...normalizedDescendants];
 
-    // If selecting, add the path itself (if it's a file) and all descendants
-    // If deselecting, remove the path itself and all descendants
-    const pathsToModify = [normalizedPath, ...normalizedDescendants];
-
-    pathsToModify.forEach((p) => {
-        if (isSel) {
-            cur.add(p);
-        } else {
-            cur.delete(p);
-        }
+      pathsToModify.forEach((p) => {
+          if (isSel) {
+              cur.add(p);
+          } else {
+              cur.delete(p);
+          }
+      });
+      const next = Array.from(cur);
+      if (!sameSet(next, state.selectedFilePaths)) {
+        return { selectedFilePaths: next };
+      }
+      return {}; // No change
     });
-
-    const next = Array.from(cur);
-    if (!sameSet(next, get().selectedFilePaths)) {
-      set({ selectedFilePaths: next });
-    }
   },
 
   /** honours global & local exclusions, including *.ext patterns */
@@ -166,6 +170,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   deselectAllFiles: () => {
     if (get().selectedFilePaths.length === 0 && get().filesData.length === 0)
       return;
+    // This is a single logical action (deselecting all).
     set({ selectedFilePaths: [], filesData: [] });
   },
 

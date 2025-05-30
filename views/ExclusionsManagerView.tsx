@@ -18,7 +18,10 @@ import { useExclusionService } from '@/services/exclusionServiceHooks';
 
 const ExclusionsManagerView: React.FC = () => {
   // Get state from Zustand store
-  const { globalExclusions, isLoadingGlobal, isSavingGlobal } = useExclusionStore();
+  const globalExclusions = useExclusionStore(s => s.globalExclusions);
+  const isLoadingGlobal = useExclusionStore(s => s.isLoadingGlobal);
+  const isSavingGlobal = useExclusionStore(s => s.isSavingGlobal);
+  
   // Get actions from service hook
   const { fetchGlobalExclusions, updateGlobalExclusions } = useExclusionService();
 

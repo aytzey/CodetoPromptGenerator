@@ -28,55 +28,67 @@ function findPython() {
     }
   }
   console.error('[electron] ERROR: Python interpreter not found. Please install Python 3.');
-  // Optional: Exit or throw if Python is absolutely required even for dev setup aspects not involving the direct backend start
-  // For now, we allow Electron to start, assuming the external backend process handles Python needs in dev.
-  // throw new Error('Python interpreter not found. Install python3.');
-  return null; // Return null if no python found
+  return null;
 }
 
-function startBackend(isDevMode) {
-  // This function should only be called when isDevMode is false (i.e., packaged app)
-  if (isDevMode) {
-      console.log("[electron] Skipping backend start in dev mode (handled by npm script).");
+function startBackend(isPackagedApp) {
+  if (!isPackagedApp) {
+      console.log("[electron] Skipping backend start in non-packaged mode (handled by npm script).");
       return;
   }
 
   const rootDir = process.resourcesPath; // In packaged app, resourcesPath is the base
-  const pythonExecutable = path.join(rootDir, 'python_backend', 'venv', os.platform() === 'win32' ? 'Scripts' : 'bin', 'python');
-  const backendScript = path.join(rootDir, 'python_backend', 'app.py');
+  const pythonBackendDir = path.join(rootDir, 'python_backend');
+  const pythonExecutable = path.join(pythonBackendDir, 'venv', os.platform() === 'win32' ? 'Scripts' : 'bin', 'python');
+  const backendAppModule = 'app:app'; // For Gunicorn: refers to app.py and the 'app' instance
 
-  console.log(`[electron] Starting backend: ${pythonExecutable} ${backendScript}`);
+  console.log(`[electron] Preparing to start backend for packaged app.`);
 
-  // Check if the python executable exists in the packaged resources
   if (!require('fs').existsSync(pythonExecutable)) {
       console.error(`[electron] ERROR: Packaged Python interpreter not found at ${pythonExecutable}`);
-      // Handle this error appropriately - maybe show an error dialog to the user
       return;
   }
-   if (!require('fs').existsSync(backendScript)) {
-      console.error(`[electron] ERROR: Packaged backend script not found at ${backendScript}`);
+   // Check for app.py (not strictly needed for Gunicorn module path, but good sanity check)
+   if (!require('fs').existsSync(path.join(pythonBackendDir, 'app.py'))) {
+      console.error(`[electron] ERROR: Packaged backend app.py script not found in ${pythonBackendDir}`);
       return;
   }
 
-  backendProcess = spawn(pythonExecutable, [backendScript], {
-    // Ensure necessary environment variables are set if needed for the packaged app
-    env: { ...process.env, FLASK_PORT: BACKEND_PORT, PYTHONUNBUFFERED: '1' },
-    stdio: ['ignore', 'pipe', 'pipe'], // Pipe output for logging
+  // Use Gunicorn to run the Flask app in production
+  const gunicornArgs = [
+    '-m', 'gunicorn', // Run gunicorn as a module
+    '-w', '2',        // Number of worker processes (adjust as needed)
+    '-b', `127.0.0.1:${BACKEND_PORT}`, // Bind address and port
+    backendAppModule  // WSGI application (app:app means app.py, app instance)
+  ];
+
+  console.log(`[electron] Starting Gunicorn: ${pythonExecutable} ${gunicornArgs.join(' ')} in ${pythonBackendDir}`);
+
+  backendProcess = spawn(pythonExecutable, gunicornArgs, {
+    cwd: pythonBackendDir, // Set working directory for Gunicorn to python_backend
+    env: { ...process.env, PYTHONUNBUFFERED: '1' }, // Ensure Python output is unbuffered
+    stdio: ['ignore', 'pipe', 'pipe'], 
   });
 
   backendProcess.stdout?.on('data', (data) => {
-    console.log(`[backend-pkg] stdout: ${data.toString().trim()}`);
+    console.log(`[gunicorn-backend] stdout: ${data.toString().trim()}`);
   });
   backendProcess.stderr?.on('data', (data) => {
-    console.error(`[backend-pkg] stderr: ${data.toString().trim()}`);
+    // Gunicorn often logs to stderr, so differentiate between actual errors and info
+    const logLine = data.toString().trim();
+    if (logLine.includes('[ERROR]') || logLine.includes('Traceback')) {
+        console.error(`[gunicorn-backend] stderr: ${logLine}`);
+    } else {
+        console.log(`[gunicorn-backend] log: ${logLine}`);
+    }
   });
 
   backendProcess.on('exit', (code, signal) => {
-      console.log(`[backend-pkg] exited with code ${code}, signal ${signal}`);
-      backendProcess = null; // Clear the reference
+      console.log(`[gunicorn-backend] exited with code ${code}, signal ${signal}`);
+      backendProcess = null; 
   });
    backendProcess.on('error', (err) => {
-        console.error('[backend-pkg] Failed to start subprocess.', err);
+        console.error('[gunicorn-backend] Failed to start Gunicorn subprocess.', err);
         backendProcess = null;
    });
 }
@@ -86,41 +98,42 @@ function createWindow() {
     width: 1200,
     height: 800,
     webPreferences: {
-        nodeIntegration: false, // Best practice: disable nodeIntegration
-        contextIsolation: true, // Best practice: enable contextIsolation
-        // preload: path.join(__dirname, 'preload.js') // Consider using a preload script if needed
+        nodeIntegration: false, 
+        contextIsolation: true, 
+        // preload: path.join(__dirname, 'preload.js') 
     },
-    // Optionally, hide menu bar on Windows/Linux (user can press Alt to show)
-    // autoHideMenuBar: true, // This hides but doesn't remove it
   });
 
-  const isDev = !app.isPackaged;
-  const frontendUrl = isDev
-    ? 'http://127.0.0.1:3010' // Dev server URL
-    : `file://${path.join(__dirname, '..', 'out', 'index.html')}`; // Packaged app URL
+  // Determine if running in development mode (Next.js dev server)
+  // or production-like mode (packaged app or local prod build)
+  const isDevelopmentEnv = process.env.APP_ENV !== 'production' && !app.isPackaged;
 
-  console.log(`[electron] Loading URL: ${frontendUrl}`);
+  const frontendUrl = isDevelopmentEnv
+    ? 'http://127.0.0.1:3010' // Dev server URL from `npm run dev`
+    : `file://${path.join(__dirname, '..', 'out', 'index.html')}`; // Packaged app or local prod build
+
+  console.log(`[electron] Loading URL for ${isDevelopmentEnv ? 'DEV (Next.js dev server)' : 'PROD (static files)'}: ${frontendUrl}`);
+  
   win.loadURL(frontendUrl)
     .then(() => {
-      // Completely remove the menu bar after the window loads
       win.setMenu(null);
       console.log('[electron] Default menu bar removed.');
     })
     .catch(err => {
         console.error(`[electron] Failed to load URL ${frontendUrl}:`, err);
-        // Potentially load an error page or quit
     });
 
-    // Open DevTools in development
-    if (isDev) {
+    if (isDevelopmentEnv || process.env.APP_ENV === 'production_devtools') { // Allow devtools in local prod build if needed
         win.webContents.openDevTools();
     }
 }
 
 app.whenReady().then(() => {
-  const isDev = !app.isPackaged;
+  const isPackaged = app.isPackaged;
+  const isDevScript = process.env.npm_lifecycle_event === 'electron:dev';
 
-  if (isDev) {
+
+  if (!isPackaged && isDevScript) { // Only enable electron-reload for `npm run electron:dev`
     const reloadEnabled = /^(1|true)$/i.test(process.env.USE_ELECTRON_RELOAD || '');
     if (reloadEnabled) {
       try {
@@ -128,24 +141,21 @@ app.whenReady().then(() => {
           electron: path.join(__dirname, '..', 'node_modules', '.bin', 'electron'),
           awaitWriteFinish: true,
         });
-        console.log('[electron] Fast reload enabled.');
+        console.log('[electron] Fast reload enabled for electron:dev.');
       } catch (err) {
         console.warn('[electron] electron-reload setup failed:', err.message);
       }
     } else {
-      console.log('[electron] Fast reload disabled.');
+      console.log('[electron] Fast reload disabled for electron:dev.');
     }
   }
 
-  // Start the backend process *only* when the app is packaged.
-  // In development, the backend is started separately by the npm script.
-  if (!isDev) {
-    startBackend(false); // Pass false indicating it's not dev mode
+  if (isPackaged) { // Start backend only if packaged
+    startBackend(true); 
   }
 
   createWindow();
 
-  // Handle macOS activation
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -153,24 +163,22 @@ app.whenReady().then(() => {
   });
 });
 
-// Quit when all windows are closed (except on macOS)
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-// Ensure backend process is terminated when Electron quits
 app.on('quit', () => {
   console.log('[electron] Quitting application.');
   if (backendProcess) {
     console.log('[electron] Terminating backend process...');
-    backendProcess.kill('SIGTERM'); // Send SIGTERM first
+    backendProcess.kill('SIGTERM'); 
      setTimeout(() => {
          if (backendProcess && !backendProcess.killed) {
              console.warn('[electron] Backend process did not terminate gracefully, sending SIGKILL.');
              backendProcess.kill('SIGKILL');
          }
-     }, 3000); // Force kill after 3 seconds if needed
+     }, 3000); 
   }
 });

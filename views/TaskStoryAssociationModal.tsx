@@ -1,3 +1,4 @@
+// FILE: views/TaskStoryAssociationModal.tsx
 // views/TaskStoryAssociationModal.tsx
 import React, { useState, useEffect } from 'react';
 import {
@@ -17,7 +18,7 @@ import {
   BookOpen,
   Loader2,
   Link2,
-  Unlink, // ADDED: Unlink icon
+  Unlink, 
   Flag,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -43,8 +44,11 @@ const TaskStoryAssociationModal: React.FC<TaskStoryAssociationModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { stories, isLoading, isSaving } = useUserStoryStore();
+  const stories = useUserStoryStore(s => s.stories);
+  const isLoading = useUserStoryStore(s => s.isLoading);
+  const isSaving = useUserStoryStore(s => s.isSaving);
   const { loadStories, addTaskToStory, removeTaskFromStory } = useUserStoryService();
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStoryIds, setSelectedStoryIds] = useState<Set<number>>(new Set());
   const [pendingChanges, setPendingChanges] = useState<{
@@ -84,34 +88,33 @@ const TaskStoryAssociationModal: React.FC<TaskStoryAssociationModalProps> = ({
       newSelected.delete(storyId);
       
       // Track changes
-      if (originalIds.has(storyId)) {
+      if (originalIds.has(storyId)) { // Was originally linked, now unlinking
         setPendingChanges(prev => ({
-          toAdd: prev.toAdd.filter(id => id !== storyId),
-          toRemove: [...prev.toRemove, storyId],
+          toAdd: prev.toAdd.filter(id => id !== storyId), // Remove from 'toAdd' if it was there
+          toRemove: [...new Set([...prev.toRemove, storyId])], // Add to 'toRemove'
         }));
-      } else {
+      } else { // Was not originally linked, was marked to add, now unmarking
         setPendingChanges(prev => ({
-          toAdd: prev.toAdd.filter(id => id !== storyId),
-          toRemove: prev.toRemove,
+          toAdd: prev.toAdd.filter(id => id !== storyId), // Remove from 'toAdd'
+          toRemove: prev.toRemove, // No change to 'toRemove'
         }));
       }
     } else {
       newSelected.add(storyId);
       
       // Track changes
-      if (!originalIds.has(storyId)) {
+      if (!originalIds.has(storyId)) { // Not originally linked, now linking
         setPendingChanges(prev => ({
-          toAdd: [...prev.toAdd, storyId],
-          toRemove: prev.toRemove.filter(id => id !== storyId),
+          toAdd: [...new Set([...prev.toAdd, storyId])], // Add to 'toAdd'
+          toRemove: prev.toRemove.filter(id => id !== storyId), // Remove from 'toRemove' if it was there
         }));
-      } else {
+      } else { // Was originally linked, was marked to remove, now re-marking
         setPendingChanges(prev => ({
-          toAdd: prev.toAdd,
-          toRemove: prev.toRemove.filter(id => id !== storyId),
+          toAdd: prev.toAdd, // No change to 'toAdd'
+          toRemove: prev.toRemove.filter(id => id !== storyId), // Remove from 'toRemove'
         }));
       }
     }
-    
     setSelectedStoryIds(newSelected);
   };
 

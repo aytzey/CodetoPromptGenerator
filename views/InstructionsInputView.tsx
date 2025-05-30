@@ -14,25 +14,32 @@ import { Progress } from "@/components/ui/progress";
 
 // Import Stores and Service Hook
 import { usePromptStore } from '@/stores/usePromptStore';
-import { useProjectStore } from '@/stores/useProjectStore'; // Import project store
-import { useExclusionStore } from '@/stores/useExclusionStore'; // Import exclusion store
+import { useProjectStore } from '@/stores/useProjectStore'; 
+import { useExclusionStore } from '@/stores/useExclusionStore'; 
 import { usePromptService } from '@/services/promptServiceHooks';
 import { useUndoRedo } from '@/lib/hooks/useUndoRedo';
-import { generateTextualTree } from '@/lib/treeUtils'; // Import tree utility
+import { generateTextualTree } from '@/lib/treeUtils'; 
 
 const MAX_CHARS = 1000;
 
 const InstructionsInputView: React.FC = () => {
   // Get state from Zustand stores
-  const {
-    metaPrompt, setMetaPrompt,
-    mainInstructions, setMainInstructions,
-    metaPromptFiles, selectedMetaFile, setSelectedMetaFile,
-    newMetaFileName, setNewMetaFileName,
-    isLoadingMetaList, isLoadingMetaContent, isSavingMeta
-  } = usePromptStore();
-  const { fileTree } = useProjectStore(); // Get file tree
-  const { globalExclusions, extensionFilters } = useExclusionStore(); // Get exclusions/filters
+  const metaPrompt = usePromptStore(s => s.metaPrompt);
+  const setMetaPrompt = usePromptStore(s => s.setMetaPrompt);
+  const mainInstructionsFromStore = usePromptStore(s => s.mainInstructions); // Renamed for clarity with useUndoRedo
+  const setMainInstructionsInStore = usePromptStore(s => s.setMainInstructions); // Renamed for clarity
+  const metaPromptFiles = usePromptStore(s => s.metaPromptFiles);
+  const selectedMetaFile = usePromptStore(s => s.selectedMetaFile);
+  const setSelectedMetaFile = usePromptStore(s => s.setSelectedMetaFile);
+  const newMetaFileName = usePromptStore(s => s.newMetaFileName);
+  const setNewMetaFileName = usePromptStore(s => s.setNewMetaFileName);
+  const isLoadingMetaList = usePromptStore(s => s.isLoadingMetaList);
+  const isLoadingMetaContent = usePromptStore(s => s.isLoadingMetaContent);
+  const isSavingMeta = usePromptStore(s => s.isSavingMeta);
+
+  const fileTree = useProjectStore(s => s.fileTree); 
+  const globalExclusions = useExclusionStore(s => s.globalExclusions); 
+  const extensionFilters = useExclusionStore(s => s.extensionFilters); 
 
   // Get actions from service hook
   const { fetchMetaPromptList, loadMetaPrompt, saveMetaPrompt, useRefinePrompt } = usePromptService();
@@ -46,7 +53,7 @@ const InstructionsInputView: React.FC = () => {
     redo: redoMainInstructions,
     canUndo: canUndoMain,
     canRedo: canRedoMain,
-  } = useUndoRedo(mainInstructions, setMainInstructions, { debounceMs: 0 });
+  } = useUndoRedo(mainInstructionsFromStore, setMainInstructionsInStore, { debounceMs: 0 });
 
   // Calculate character counts and percentages
   const metaCount = metaPrompt.length;

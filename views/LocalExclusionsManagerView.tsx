@@ -38,11 +38,12 @@ const COMMON_HINTS = [
 
 export default function LocalExclusionsManagerView() {
   /* ───── global state ───── */
-  const { projectPath }         = useProjectStore();
-  const {
-    localExclusions,
-    isLoadingLocal,  isSavingLocal,
-  } = useExclusionStore();
+  const projectPath = useProjectStore(s => s.projectPath);
+  
+  const localExclusions = useExclusionStore(s => s.localExclusions);
+  const isLoadingLocal = useExclusionStore(s => s.isLoadingLocal);
+  const isSavingLocal = useExclusionStore(s => s.isSavingLocal);
+
   const {
     fetchLocalExclusions,
     updateLocalExclusions,

@@ -1,3 +1,4 @@
+// FILE: views/FolderPickerView.tsx
 // views/FolderPickerView.tsx
 /**
  * A visually enhanced folder‑selection component that

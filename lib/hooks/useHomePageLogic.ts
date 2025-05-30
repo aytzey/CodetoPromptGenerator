@@ -1,3 +1,4 @@
+// FILE: lib/hooks/useHomePageLogic.ts
 // lib/hooks/useHomePageLogic.ts
 // Updated to remove theme and welcome logic
 import {
@@ -32,27 +33,31 @@ import {
 
   export function useHomePageLogic() {
     // --- Global State ---
-    // Removed darkMode and toggleDark
     const setError = useAppStore((s) => s.setError);
+    const openSettingsModal = useAppStore((s) => s.openSettingsModal);   // Get action from store
+    const closeSettingsModal = useAppStore((s) => s.closeSettingsModal); // Get action from store
 
-    const {
-      projectPath,
-      setProjectPath,
-      fileTree,
-      selectedFilePaths,
-      setSelectedFilePaths,
-      isLoadingTree,
-      filesData,
-      fileSearchTerm,
-      setFileSearchTerm,
-      selectAllFiles,
-      deselectAllFiles,
-    } = useProjectStore();
 
-    const { metaPrompt, mainInstructions } = usePromptStore();
-    const { globalExclusions, localExclusions, extensionFilters } =
-      useExclusionStore();
-    const { todos } = useTodoStore();
+    const projectPath = useProjectStore((s) => s.projectPath);
+    const setProjectPath = useProjectStore((s) => s.setProjectPath);
+    const fileTree = useProjectStore((s) => s.fileTree);
+    const selectedFilePaths = useProjectStore((s) => s.selectedFilePaths);
+    const setSelectedFilePaths = useProjectStore((s) => s.setSelectedFilePaths);
+    const isLoadingTree = useProjectStore((s) => s.isLoadingTree);
+    const filesData = useProjectStore((s) => s.filesData);
+    const fileSearchTerm = useProjectStore((s) => s.fileSearchTerm);
+    const setFileSearchTerm = useProjectStore((s) => s.setFileSearchTerm);
+    const selectAllFiles = useProjectStore((s) => s.selectAllFiles);
+    const deselectAllFiles = useProjectStore((s) => s.deselectAllFiles);
+
+    const metaPrompt = usePromptStore((s) => s.metaPrompt);
+    const mainInstructions = usePromptStore((s) => s.mainInstructions);
+
+    const globalExclusions = useExclusionStore((s) => s.globalExclusions);
+    const localExclusions = useExclusionStore((s) => s.localExclusions);
+    const extensionFilters = useExclusionStore((s) => s.extensionFilters);
+
+    const todos = useTodoStore((s) => s.todos);
     const setOpenrouterApiKey = useSettingsStore((s) => s.setOpenrouterApiKey);
 
     // --- Services ---
@@ -65,43 +70,34 @@ import {
 
     // --- Refs & Local UI State ---
     const treeRef = useRef<FileTreeViewHandle>(null);
-    const [activeTab, setActiveTab] = useState<"files" | "options" | "tasks">(
+    const [activeTab, setActiveTab] = useState<"files" | "options" | "tasks" | "actors">( 
       "files",
     );
-    // Removed showWelcome state
-    // const [showWelcome, setShowWelcome] = useState(true);
-    const [showSettings, setShowSettings] = useState(false);
+    // showSettings and setShowSettings are removed, managed by useAppStore
     const [apiKeyDraft, setApiKeyDraft] = useState<string>("");
     const [isClient, setIsClient] = useState(false);
 
     // --- Lifecycle Effects ---
     useEffect(() => {
-      setIsClient(true); // Client-side mount detection
+      setIsClient(true); 
     }, []);
 
     useEffect(() => {
-      // Initial data load independent of project path
       fetchGlobalExclusions();
       fetchMetaPromptList();
-      // Load API key from localStorage on mount
       const storedKey = localStorage.getItem(LS_KEY_OR) ?? "";
       setApiKeyDraft(storedKey);
-      // Also set it in the store if found
       if (storedKey) {
         setOpenrouterApiKey(storedKey);
       }
     }, [fetchGlobalExclusions, fetchMetaPromptList, setOpenrouterApiKey]);
 
     useEffect(() => {
-      // Actions triggered by projectPath change
       if (projectPath) {
-        // setShowWelcome(false); // Removed welcome logic
         loadProjectTree();
         loadTodos();
         fetchLocalExclusions();
       } else {
-        // setShowWelcome(true); // Removed welcome logic
-        // Reset project-specific stores
         useProjectStore.setState({
           fileTree: [],
           selectedFilePaths: [],
@@ -113,11 +109,10 @@ import {
     }, [projectPath, loadProjectTree, loadTodos, fetchLocalExclusions]);
 
     useEffect(() => {
-      // Load file contents when selection changes
       if (projectPath && selectedFilePaths.length) {
         loadSelectedFileContents();
       } else {
-        useProjectStore.setState({ filesData: [] }); // Clear content if selection is empty
+        useProjectStore.setState({ filesData: [] }); 
       }
     }, [selectedFilePaths, projectPath, loadSelectedFileContents]);
 
@@ -142,7 +137,7 @@ import {
     );
 
     const totalTokens = useMemo(
-      () => filesData.reduce((a, f) => a + (f.tokenCount ?? 0), 0), // Added nullish coalescing for safety
+      () => filesData.reduce((a, f) => a + (f.tokenCount ?? 0), 0), 
       [filesData],
     );
 
@@ -168,7 +163,6 @@ import {
     const handleRefresh = useCallback(async () => {
       if (!projectPath) return;
       await loadProjectTree();
-      // Reload content only if there's a selection
       if (useProjectStore.getState().selectedFilePaths.length > 0) {
         await loadSelectedFileContents();
       }
@@ -176,53 +170,44 @@ import {
 
     const saveApiKey = useCallback(() => {
       const trimmed = apiKeyDraft.trim();
-      // Basic check, can be improved
       if (!trimmed.startsWith("sk-")) {
         setError("API key format looks invalid. It should start with 'sk-'.");
         return;
       }
       localStorage.setItem(LS_KEY_OR, trimmed);
       setOpenrouterApiKey(trimmed);
-      setShowSettings(false);
-    }, [apiKeyDraft, setOpenrouterApiKey, setError]);
+      closeSettingsModal(); // Use store action to close
+    }, [apiKeyDraft, setOpenrouterApiKey, setError, closeSettingsModal]);
 
     const handlePathSelected = useCallback((path: string) => {
         setProjectPath(path);
     }, [setProjectPath]);
 
-    // Removed handleDismissWelcome
-    // const handleDismissWelcome = useCallback(() => {
-    //     setShowWelcome(false);
-    // }, []);
 
     // --- Return values needed by the UI ---
     return {
       // State
       isClient,
-      // showWelcome, // Removed
       projectPath,
       isLoadingTree,
-      // darkMode, // Removed
       isSelecting,
       activeTab,
-      filteredTree,
+      filteredTree, 
       selectedFilePaths,
       fileSearchTerm,
-      localExclusions, // Needed for LocalExclusionsManagerView
-      todos, // Needed for TodoListView
+      localExclusions, 
+      todos, 
       hasContent,
       selectedFileCount,
       totalTokens,
-      showSettings,
+      // Settings Modal specific props
       apiKeyDraft,
       // Setters & Handlers
       handlePathSelected,
-      // handleDismissWelcome, // Removed
-      // toggleDark, // Removed
       autoSelect,
       generateActors,
       isGeneratingActors: isGenerating,
-      setShowSettings,
+      openSettingsModal, // Expose store action
       saveApiKey,
       setApiKeyDraft,
       setActiveTab,
@@ -230,9 +215,9 @@ import {
       handleRefresh,
       handleSelectAll,
       deselectAllFiles,
-      setSelectedFilePaths, // Pass down to FileTreeView and SelectionGroupsView
+      setSelectedFilePaths,
       // Refs
       treeRef,
-      fileTree, // Pass down to MainLayout -> LeftPanel -> SelectionGroups
+      fileTree, 
     };
   }

@@ -1,3 +1,4 @@
+// FILE: views/CopyButtonView.tsx
 // views/CopyButtonView.tsx
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import {
@@ -113,11 +114,16 @@ function buildPrompt(
 
 const CopyButtonView: React.FC = () => {
   /* —— global state —— */
-  const { metaPrompt, mainInstructions }  = usePromptStore();
-  const {
-    selectedFilePaths, filesData, fileTree, isLoadingContents,
-  } = useProjectStore();
-  const { globalExclusions, extensionFilters } = useExclusionStore();
+  const metaPrompt = usePromptStore(s => s.metaPrompt);
+  const mainInstructions = usePromptStore(s => s.mainInstructions);
+  
+  const selectedFilePaths = useProjectStore(s => s.selectedFilePaths);
+  const filesData = useProjectStore(s => s.filesData);
+  const fileTree = useProjectStore(s => s.fileTree);
+  const isLoadingContents = useProjectStore(s => s.isLoadingContents);
+  
+  const globalExclusions = useExclusionStore(s => s.globalExclusions);
+  const extensionFilters = useExclusionStore(s => s.extensionFilters);
 
   /* —— services —— */
   const { loadSelectedFileContents } = useProjectService();

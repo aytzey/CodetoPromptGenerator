@@ -4,19 +4,14 @@ const nextConfig = {
   reactStrictMode: true,
   eslint: { dirs: ["pages","components","lib","services","stores","views","types","scripts"], ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
-  output: 'export', // Add this line for static export
+  output: 'export',
+  
+  // Add assetPrefix to make paths relative for file:// protocol
+  assetPrefix: './', 
 
-  // ⬇️  ADD: tell chokidar not to watch gigantic / irrelevant dirs
-  webpackDevMiddleware: (config) => {
-    config.watchOptions.ignored = [
-      "**/python_backend/venv/**",
-      "**/.codetoprompt/**",
-      "**/sample_project/meta_prompts/**",
-      "**/node_modules/**",
-      "**/externalLibs/**"
-    ];
-    return config;
-  },
+  images: {
+    unoptimized: true, // Required for 'output: export'
+  }
 };
 
 module.exports = nextConfig;

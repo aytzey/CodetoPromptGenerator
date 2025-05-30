@@ -11,3 +11,4 @@ build
 externalLibs
 out
 dummy_tests
+dist

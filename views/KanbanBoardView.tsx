@@ -13,7 +13,7 @@ import {
 import { useKanbanStore } from '@/stores/useKanbanStore';
 import { useKanbanService } from '@/services/kanbanServiceHooks';
 import { useUserStoryStore } from '@/stores/useUserStoryStore';
-import { useUserStoryService } from '@/services/userStoryServiceHooks'; // UserStoryService is used by the modal itself, not directly here.
+import { useUserStoryService } from '@/services/userStoryServiceHooks'; 
 import { format, isPast, isToday, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
@@ -123,7 +123,7 @@ interface TaskCardProps {
 const TaskCard = React.memo(
   React.forwardRef<HTMLDivElement, TaskCardProps>(
     ({ item, onEdit, onDelete, onManageStories, isDragging, dragHandleProps, ...rest }, ref) => {
-      const { getStoriesForTask } = useUserStoryStore();
+      const getStoriesForTask = useUserStoryStore(s => s.getStoriesForTask);
       const linkedStories = getStoriesForTask(item.id);
       const priorityConfig = PRIORITY_CONFIG[item.priority];
       
@@ -529,7 +529,10 @@ const Column: React.FC<ColumnProps> = ({
 /* Main Kanban Board Component                                         */
 /* =================================================================== */
 const KanbanBoardView: React.FC = () => {
-  const { items, isLoading, isSaving } = useKanbanStore();
+  const items = useKanbanStore(s => s.items);
+  const isLoading = useKanbanStore(s => s.isLoading);
+  const isSaving = useKanbanStore(s => s.isSaving);
+  
   const { load, create, patch, deleteItem, relocate } = useKanbanService();
   const { loadStories } = useUserStoryService();
 
