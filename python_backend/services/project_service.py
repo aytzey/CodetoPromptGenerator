@@ -1,5 +1,5 @@
 # FILE: python_backend/services/project_service.py
-# UPDATED: unified error handling / logging (service_exceptions)
+# UPDATED: 2025-05-30 – binary-file tolerance & minor perf tweaks
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ import os
 import re
 from typing import Any, Dict, List, Optional, Set
 
-import pathspec  # git-wildmatch impl.
+import pathspec  # git-wildmatch implementation
 
 from repositories.file_storage import FileStorageRepository
 from services.exclusion_service import ExclusionService
 from services.service_exceptions import (
     InvalidInputError,
-    ResourceNotFoundError,
     PermissionDeniedError,
+    ResourceNotFoundError,
     wrap_service_methods,
 )
 
@@ -29,12 +29,23 @@ except Exception:  # pragma: no cover
     _ENC = None
     logger.info("tiktoken unavailable – falling back to regex token counter.")
 
+# ───────────────────────── constants ───────────────────────── #
+
 _MAX_TREE_DEPTH: int = int(os.getenv("CTP_MAX_TREE_DEPTH", "50"))
-_TOKEN_SIZE_LIMIT: int = int(os.getenv("CTP_TOKEN_SIZE_LIMIT", "2000000"))  # 2 MB
+_TOKEN_SIZE_LIMIT: int = int(os.getenv("CTP_TOKEN_SIZE_LIMIT", "2000000"))  # ≈2 MB
+_TOKEN_SPLIT_RE: re.Pattern[str] = re.compile(r"\s+|([,.;:!?(){}\[\]<>\"'])")
+
+# ─────────────────────── service class ─────────────────────── #
+
 
 @wrap_service_methods
 class ProjectService:
-    """Pure, stateless helpers – instantiate once per request."""
+    """
+    Stateless helpers for project-level operations.
+    Instantiate once per request for DI-friendly tests.
+    """
+
+    # ─────────────────── init / DI wiring ─────────────────── #
 
     def __init__(
         self,
@@ -44,41 +55,43 @@ class ProjectService:
         self._storage = storage_repo
         self._excl = exclusion_service
 
-    # ─────────────────────── helpers ────────────────────────────────
+    # ───────────────────── utilities ────────────────────── #
+
     @staticmethod
     def _norm(path: str) -> str:
+        """Normalise slashes and strip leading './'."""
         p = os.path.normpath(path).replace("\\", "/")
-        if p.startswith("./"):
-            p = p[2:]
-        return p
+        return p[2:] if p.startswith("./") else p
 
-    # ------------------------- token counter ------------------------
+    # ---------------- token counting ---------------- #
+
     @staticmethod
     def _regex_token_count(text: str) -> int:
-        return len(re.split(r"\s+|([,.;:!?(){}\[\]<>\"'])", text.strip()))
+        return len(_TOKEN_SPLIT_RE.split(text.strip()))
 
     def _token_count(self, text: str) -> int:
         if _ENC is None:
             return self._regex_token_count(text)
         try:
             return len(_ENC.encode(text))
-        except Exception:
+        except Exception:  # pragma: no cover
             return self._regex_token_count(text)
 
     def estimate_token_count(self, text: str) -> int:  # noqa: D401
-        """Lightweight token estimate for *text*."""
+        """≈ token count for *text* (fast)."""
         return self._token_count(text)
 
-    # ─────────────────────── 1. Tree builder ────────────────────────
+    # ─────────────────── tree builder ─────────────────── #
+
     def _expand_simple_pattern(self, p: str) -> List[str]:
         if any(ch in p for ch in "*?[]!"):
             return [p]
-        return [p.rstrip("/"), f"{p.rstrip('/')}/**"]
+        cleaned = p.rstrip("/")
+        return [cleaned, f"{cleaned}/**"]
 
     def _make_pathspec(self, patterns: List[str]) -> pathspec.PathSpec:
-        cleaned = [pat.strip() for pat in patterns if pat.strip()]
         lines: List[str] = []
-        for pat in cleaned:
+        for pat in (p.strip() for p in patterns if p.strip()):
             lines.extend(
                 [pat] if any(ch in pat for ch in "*?[]!") else self._expand_simple_pattern(pat)
             )
@@ -96,14 +109,14 @@ class ProjectService:
         if visited is None:
             visited = set()
         if depth > _MAX_TREE_DEPTH:
-            logger.warning("Max depth (%s) exceeded at %s – pruning", _MAX_TREE_DEPTH, cur_dir)
+            if logger.isEnabledFor(logging.WARNING):
+                logger.warning("Max depth (%s) exceeded – pruning %s", _MAX_TREE_DEPTH, cur_dir)
             return
+
         try:
             with os.scandir(cur_dir) as it:
                 for entry in it:
                     try:
-                        if not os.path.exists(entry.path):
-                            continue
                         rel_path = self._norm(os.path.relpath(entry.path, base_dir))
                         if spec.match_file(rel_path):
                             continue
@@ -122,15 +135,17 @@ class ProjectService:
                                 continue
                             visited.add(inode)
                             node["children"] = []
-                            self._walk(entry.path, base_dir, spec, node["children"], depth + 1, visited)
+                            self._walk(
+                                entry.path, base_dir, spec, node["children"], depth + 1, visited
+                            )
                             if not node["children"]:
-                                continue
+                                continue  # drop empty dirs post-exclude
                         out.append(node)
                     except PermissionError as exc:
                         logger.error("Permission denied reading %s: %s", entry.path, exc)
                         raise PermissionDeniedError(f"Permission denied: {entry.path}") from exc
                     except OSError as exc:
-                        logger.error("OS error scanning %s: %s", entry.path, exc)
+                        logger.error("OS error reading %s: %s", entry.path, exc)
         except PermissionError as exc:
             logger.error("Permission denied scanning %s: %s", cur_dir, exc)
             raise PermissionDeniedError(f"Permission denied: {cur_dir}") from exc
@@ -140,20 +155,16 @@ class ProjectService:
 
     def get_project_tree(self, root_dir: str) -> List[Dict[str, Any]]:
         if not root_dir:
-            logger.error("root_dir is empty")
             raise InvalidInputError("rootDir must not be empty.")
         if not os.path.isdir(root_dir):
-            logger.error("Project root directory not found: %s", root_dir)
             raise ResourceNotFoundError(f"Project root directory not found: {root_dir}")
 
         root_dir = os.path.abspath(root_dir)
         spec = self._make_pathspec(
-            list(
-                set(
-                    self._excl.get_global_exclusions()
-                    + self._excl.get_local_exclusions(root_dir)
-                )
-            )
+            [
+                *self._excl.get_global_exclusions(),
+                *self._excl.get_local_exclusions(root_dir),
+            ]
         )
 
         tree: List[Dict[str, Any]] = []
@@ -161,89 +172,121 @@ class ProjectService:
         tree.sort(key=lambda n: (n["type"] != "directory", n["name"].lower()))
         return tree
 
-    # ─────────────────── 2. Bulk file-content loader ───────────────────
-    def _candidate_paths(self, base_dir: str, raw: str) -> List[str]:
-        base_dir_abs = os.path.abspath(base_dir)
-        raw_abs = os.path.abspath(raw)
-        candidates = [raw_abs]
+    # ───────────── candidate-path expander ───────────── #
 
+    def _candidate_paths(self, base_dir: str, raw: str) -> List[str]:
+        """Generate plausible absolute paths for *raw* under/around *base_dir*."""
+        base_abs = os.path.abspath(base_dir)
+        raw_abs = os.path.abspath(raw)
+
+        cand: List[str] = [raw_abs]
         if not os.path.isabs(raw):
-            candidates.append(os.path.join(base_dir_abs, raw))
-        else:
-            if raw_abs.startswith(base_dir_abs):
-                rel = os.path.relpath(raw_abs, base_dir_abs)
-                candidates.append(os.path.join(base_dir_abs, rel))
-        candidates.append(os.path.abspath(os.path.join(os.getcwd(), raw)))
+            cand.append(os.path.join(base_abs, raw))
+        elif raw_abs.startswith(base_abs):
+            cand.append(os.path.join(base_abs, os.path.relpath(raw_abs, base_abs)))
+
+        cand.append(os.path.abspath(os.path.join(os.getcwd(), raw)))
 
         seen: Set[str] = set()
         uniq: List[str] = []
-        for c in candidates:
-            norm_c = os.path.normpath(c)
-            if norm_c not in seen:
-                seen.add(norm_c)
-                uniq.append(norm_c)
+        for c in cand:
+            n = os.path.normpath(c)
+            if n not in seen:
+                seen.add(n)
+                uniq.append(n)
         return uniq
 
-    # noqa: C901 – complex but well-tested
-    def get_files_content(self, base_dir: str, relative_paths: List[str]) -> List[Dict[str, Any]]:
+    # ───────────── bulk file-content loader ───────────── #
+
+    # noqa: C901 (complex but cohesive)
+    def get_files_content(
+        self,
+        base_dir: str,
+        relative_paths: List[str],
+    ) -> List[Dict[str, Any]]:
+        """
+        Return contents & token counts for *relative_paths*.
+
+        • Directories → placeholder (`"isDirectory": True`).  
+        • Non-UTF-8 or binary files → placeholder (`"isBinary": True`).  
+        • Missing files → `ResourceNotFoundError`.
+        """
         if not base_dir:
-            logger.error("baseDir missing")
             raise InvalidInputError("baseDir must not be empty.")
         if not os.path.isdir(base_dir):
-            logger.error("Base directory not found: %s", base_dir)
             raise ResourceNotFoundError(f"Base directory not found: {base_dir}")
         if not isinstance(relative_paths, list):
-            logger.error("paths must be a list, got %s", type(relative_paths).__name__)
             raise InvalidInputError("paths must be a list of strings.")
 
+        base_abs = os.path.abspath(base_dir)
         results: List[Dict[str, Any]] = []
-        base_dir_abs = os.path.abspath(base_dir)
 
-        for raw_rel_path in relative_paths:
-            norm_rel_path = self._norm(raw_rel_path)
-            info: Dict[str, Any] = {"path": norm_rel_path, "content": "", "tokenCount": 0}
+        for raw_rel in relative_paths:
+            rel = self._norm(raw_rel)
+            info: Dict[str, Any] = {"path": rel, "content": "", "tokenCount": 0}
 
-            expected_abs_path = os.path.normpath(os.path.join(base_dir_abs, norm_rel_path))
-            if os.path.isfile(expected_abs_path):
-                chosen = expected_abs_path
-            else:
-                chosen = next(
-                    (cand for cand in self._candidate_paths(base_dir, raw_rel_path) if os.path.isfile(cand)),
-                    None,
-                )
+            expected = os.path.normpath(os.path.join(base_abs, rel))
+
+            # ── directory? return placeholder ──
+            if os.path.isdir(expected):
+                info.update({"content": None, "isDirectory": True})
+                results.append(info)
+                continue
+
+            # ── locate file ──
+            chosen = expected if os.path.isfile(expected) else next(
+                (p for p in self._candidate_paths(base_dir, raw_rel) if os.path.isfile(p)),
+                None,
+            )
 
             if chosen is None:
-                logger.error("File not found on server: %s", norm_rel_path)
-                raise ResourceNotFoundError(f"File not found on server: {norm_rel_path}")
+                raise ResourceNotFoundError(f"File not found on server: {rel}")
 
+            # ── read & tokenise ──
             try:
-                file_size = os.path.getsize(chosen)
-                if file_size > _TOKEN_SIZE_LIMIT * 2:
-                    logger.warning("File too large: %s (%s bytes)", chosen, file_size)
-                    info["content"] = f"File too large to process: {norm_rel_path}"
+                size = os.path.getsize(chosen)
+                if size > _TOKEN_SIZE_LIMIT * 2:
+                    info["content"] = f"File too large to process: {rel}"
                     info["tokenCount"] = -1
                 else:
-                    content = self._storage.read_text(chosen)
+                    try:
+                        content = self._storage.read_text(chosen)
+                    except UnicodeDecodeError:
+                        # 🆕 Binary / non-UTF-8 safeguard
+                        info.update(
+                            {
+                                "content": None,
+                                "isBinary": True,
+                                "size": size,
+                                "tokenCount": 0,
+                            }
+                        )
+                        results.append(info)
+                        continue
+
                     if content is None:
-                        logger.error("Failed reading file (None): %s", chosen)
-                        raise ResourceNotFoundError(f"Unable to read file: {norm_rel_path}")
+                        raise ResourceNotFoundError(f"Unable to read file: {rel}")
+
                     info["content"] = content
                     info["tokenCount"] = (
-                        -1
-                        if len(content) > _TOKEN_SIZE_LIMIT
-                        else self._token_count(content)
+                        -1 if len(content) > _TOKEN_SIZE_LIMIT else self._token_count(content)
                     )
             except PermissionError as exc:
-                logger.error("Permission denied reading %s: %s", chosen, exc)
-                raise PermissionDeniedError(f"Permission denied: {norm_rel_path}") from exc
+                raise PermissionDeniedError(f"Permission denied: {rel}") from exc
+            except OSError as exc:
+                # Covers unexpected I/O issues (e.g., device errors)
+                logger.error("OS error reading %s: %s", chosen, exc)
+                raise ResourceNotFoundError(f"Unable to read file: {rel}") from exc
+
             results.append(info)
 
         return results
 
-    # (small utility helpers unchanged)
+    # ───────────────────── misc helpers ───────────────────── #
+
     def resolve_folder_path(self, folder_name: str) -> str:
+        """Return an absolute path for *folder_name*, searching upward."""
         if not folder_name:
-            logger.error("folderName cannot be empty")
             raise InvalidInputError("folderName cannot be empty.")
 
         if os.path.isabs(folder_name) and os.path.isdir(folder_name):
@@ -251,8 +294,8 @@ class ProjectService:
 
         cwd = os.getcwd()
         for up in (cwd, os.path.dirname(cwd), os.path.dirname(os.path.dirname(cwd))):
-            candidate = os.path.join(up, folder_name)
-            if os.path.isdir(candidate):
-                return self._norm(os.path.abspath(candidate))
+            cand = os.path.join(up, folder_name)
+            if os.path.isdir(cand):
+                return self._norm(os.path.abspath(cand))
 
-        # If still not found, re
+        raise ResourceNotFoundError(f"Folder not found: {folder_name}")
