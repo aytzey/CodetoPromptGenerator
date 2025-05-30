@@ -3,10 +3,14 @@
 import os
 import logging
 from typing import List, Optional
+from services.service_exceptions import wrap_service_methods
 from repositories.file_storage import FileStorageRepository
 
 logger = logging.getLogger(__name__)
 
+
+
+@wrap_service_methods
 class MetapromptService:
     """Service layer for managing meta prompt files."""
 

@@ -32,6 +32,7 @@ import os
 import re
 from typing import Dict, List, Set, Tuple, Optional, Union
 
+from services.service_exceptions import wrap_service_methods
 from tree_sitter import Node, Parser  # type: ignore
 from tree_sitter_languages import get_parser
 
@@ -142,6 +143,8 @@ def _is_binary_sample(chunk: bytes) -> bool:
 # ────────────────────────────────────────────────────────────────────────────
 # 4 · Internal symbol collector
 # ────────────────────────────────────────────────────────────────────────────
+
+@wrap_service_methods
 class _SymbolCollector:
     """
     Depth-first walker that translates tree-sitter nodes → symbol buckets.
@@ -238,7 +241,7 @@ class _SymbolCollector:
 _SAFE_SIZE_LIMIT = int(os.getenv("CTP_CODEMAP_SIZE_LIMIT", "4000000"))  # 4 MB
 _BINARY_SAMPLE_BYTES = 2048
 
-
+@wrap_service_methods
 class CodemapService:
     """High-level API used by *codemap_controller*."""
 

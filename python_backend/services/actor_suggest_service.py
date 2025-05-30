@@ -10,8 +10,10 @@ from __future__ import annotations
 import logging
 from typing import List, Dict, Any
 
-logger = logging.getLogger(__name__)
+from services.service_exceptions import wrap_service_methods
 
+logger = logging.getLogger(__name__)
+@wrap_service_methods
 class ActorSuggestService:
     def suggest(self, description: str, actors: List[Dict[str, Any]]) -> int | None:
         """Return the actor id that best matches *description*."""

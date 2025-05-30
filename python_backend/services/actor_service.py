@@ -4,12 +4,13 @@ import json
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from services.service_exceptions import wrap_service_methods
 from repositories.file_storage import FileStorageRepository
 from models.actor_model import ActorModel # Import the Pydantic model
 from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
-
+@wrap_service_methods
 class ActorService:
     def __init__(self, storage_repo: FileStorageRepository):
         self.storage = storage_repo

@@ -4,10 +4,12 @@ import os
 import logging
 import time
 from typing import List, Dict, Any, Optional
+from services.service_exceptions import wrap_service_methods
 from repositories.file_storage import FileStorageRepository
 
 logger = logging.getLogger(__name__)
 
+@wrap_service_methods
 class TodoService:
     """Service layer for managing TODO items."""
 

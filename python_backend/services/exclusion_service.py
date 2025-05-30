@@ -3,10 +3,13 @@
 import os
 import logging
 from typing import List
+from services.service_exceptions import wrap_service_methods
 from repositories.file_storage import FileStorageRepository
 
 logger = logging.getLogger(__name__)
 
+
+@wrap_service_methods
 class ExclusionService:
     """Service layer for managing global and local exclusions."""
 

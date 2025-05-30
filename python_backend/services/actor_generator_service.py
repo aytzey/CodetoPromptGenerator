@@ -9,12 +9,13 @@ from typing import Any, Dict, List, Optional, Tuple
 import httpx
 
 from models.actor_generate_request import ActorGenerateRequest
+from services.service_exceptions import wrap_service_methods
 from repositories.file_storage import FileStorageRepository
 from services.codemap_service import CodemapService
 
 logger = logging.getLogger(__name__)
 
-
+@wrap_service_methods
 class ActorGeneratorService:
     _URL: str = "https://openrouter.ai/api/v1/chat/completions"
     _DEFAULT_MODEL: str = "meta-llama/llama-4-maverick:free"

@@ -3,8 +3,11 @@ import json
 import os
 from typing import List, Dict, Optional, Any
 from datetime import datetime
+from services.service_exceptions import wrap_service_methods
 from repositories.file_storage import FileStorageRepository
 
+
+@wrap_service_methods
 class UserStoryService:
     def __init__(self, storage_repo: FileStorageRepository):
         self.storage = storage_repo

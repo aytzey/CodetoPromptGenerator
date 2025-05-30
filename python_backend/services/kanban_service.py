@@ -15,6 +15,7 @@ from typing import List, Dict, Any, Optional, Literal
 
 from pydantic import BaseModel, Field, ValidationError, validator
 
+from services.service_exceptions import wrap_service_methods
 from repositories.file_storage import FileStorageRepository
 
 # ──────────────────────────────────────────────
@@ -24,6 +25,7 @@ StatusT   = Literal["todo", "in-progress", "done"]
 PriorityT = Literal["low", "medium", "high"]
 
 
+@wrap_service_methods
 class KanbanItemModel(BaseModel):
     id:          int
     title:       str  = Field(min_length=1, max_length=256)
@@ -56,6 +58,8 @@ class KanbanItemModel(BaseModel):
 # ──────────────────────────────────────────────
 # Service layer
 # ──────────────────────────────────────────────
+
+@wrap_service_methods
 class KanbanService:
     def __init__(self, storage_repo: FileStorageRepository):
         self.storage = storage_repo

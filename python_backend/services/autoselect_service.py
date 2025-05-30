@@ -35,6 +35,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 import httpx
 
 from models.autoselect_request import AutoSelectRequest
+from services.service_exceptions import wrap_service_methods
 from repositories.file_storage import FileStorageRepository
 from services.codemap_service import CodemapService
 
@@ -55,6 +56,7 @@ class ConfigError(RuntimeError):
 # ─────────────────────────────────────────────────────────────────────────────
 # 2 · Service
 # ─────────────────────────────────────────────────────────────────────────────
+@wrap_service_methods
 class AutoselectService:
     _URL: str = "https://openrouter.ai/api/v1/chat/completions"
     _DEFAULT_MODEL: str = "meta-llama/llama-4-maverick:free"
