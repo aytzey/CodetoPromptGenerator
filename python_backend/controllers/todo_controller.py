@@ -1,91 +1,89 @@
-# File: python_backend/controllers/todo_controller.py
-# REFACTOR / OVERWRITE
-import os
+# python_backend/controllers/todo_controller.py
 import logging
-from flask import Blueprint, request, current_app
+import os
+from flask import Blueprint, request
+from pydantic import ValidationError
+
 from services.todo_service import TodoService
-from repositories.file_storage import FileStorageRepository # Need repo instance
+from repositories.file_storage import FileStorageRepository
 from utils.response_utils import success_response, error_response
+from models.request_models import TodoCreateRequest, TodoUpdateRequest  # NEW
 
 logger = logging.getLogger(__name__)
-todo_blueprint = Blueprint('todo_blueprint', __name__)
+todo_blueprint = Blueprint("todo_blueprint", __name__)
 
-# --- Dependency Setup ---
-storage_repo = FileStorageRepository()
-todo_service = TodoService(storage_repo=storage_repo)
-# --- End Dependency Setup ---
+# ─── dependencies ───────────────────────────────────────────────────────────
+_storage = FileStorageRepository()
+_todo_s  = TodoService(storage_repo=_storage)
+# ────────────────────────────────────────────────────────────────────────────
 
-@todo_blueprint.route('/api/todos', methods=['GET'])
+
+@todo_blueprint.get("/api/todos")
 def list_todos_endpoint():
-    """Lists todos, using projectPath query param if provided."""
-    project_path = request.args.get('projectPath') # Returns None if not present
+    project_path = request.args.get("projectPath")
     try:
-        items = todo_service.list_todos(project_path)
+        items = _todo_s.list_todos(project_path)
         return success_response(data=items)
-    except Exception as e:
-        logger.exception(f"Error listing todos for project: {project_path}")
-        return error_response(str(e), "Failed to list todos", 500)
+    except Exception as exc:
+        logger.exception("Error listing todos for project: %s", project_path)
+        return error_response(str(exc), "Failed to list todos", 500)
 
-@todo_blueprint.route('/api/todos', methods=['POST'])
+
+@todo_blueprint.post("/api/todos")
 def add_todo_endpoint():
-    """Adds a new todo, using projectPath query param if provided."""
-    project_path = request.args.get('projectPath')
-    payload = request.get_json()
-    if payload is None or 'text' not in payload:
-        return error_response("Missing 'text' in request body.", status_code=400)
-
-    text = payload.get('text', '').strip()
-    created_at = payload.get('createdAt') # Optional
+    project_path = request.args.get("projectPath")
+    payload = request.get_json(silent=True) or {}
+    try:
+        req = TodoCreateRequest(**payload)
+    except ValidationError as exc:
+        return error_response(f"Validation error: {exc.errors()}", 400)
 
     try:
-        new_item = todo_service.add_todo(text, project_path, created_at)
-        return success_response(data=new_item, status_code=201) # 201 Created
-    except ValueError as e: # Catches empty text error
-        return error_response(str(e), status_code=400)
-    except IOError as e:
-        logger.error(f"IOError adding todo for project {project_path}: {e}")
-        return error_response(str(e), "Failed to save todo", 500)
-    except Exception as e:
-        logger.exception(f"Error adding todo for project: {project_path}")
-        return error_response(str(e), "Failed to add todo", 500)
+        new_item = _todo_s.add_todo(req.text.strip(), project_path, req.createdAt)
+        return success_response(data=new_item, status_code=201)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    except IOError as exc:
+        logger.error("IOError adding todo for project %s: %s", project_path, exc)
+        return error_response(str(exc), "Failed to save todo", 500)
+    except Exception as exc:
+        logger.exception("Error adding todo for project: %s", project_path)
+        return error_response(str(exc), "Failed to add todo", 500)
 
 
-@todo_blueprint.route('/api/todos/<int:todo_id>', methods=['PUT'])
-def update_todo_endpoint(todo_id):
-    """Updates a todo's completion status."""
-    project_path = request.args.get('projectPath')
-    payload = request.get_json()
-    if payload is None or 'completed' not in payload or not isinstance(payload['completed'], bool):
-        return error_response("Invalid request body. Boolean 'completed' field required.", status_code=400)
-
-    completed = payload['completed']
+@todo_blueprint.put("/api/todos/<int:todo_id>")
+def update_todo_endpoint(todo_id: int):
+    project_path = request.args.get("projectPath")
+    payload = request.get_json(silent=True) or {}
+    try:
+        req = TodoUpdateRequest(**payload)
+    except ValidationError as exc:
+        return error_response(f"Validation error: {exc.errors()}", 400)
 
     try:
-        updated_item = todo_service.update_todo(todo_id, completed, project_path)
+        updated_item = _todo_s.update_todo(todo_id, req.completed, project_path)
         if updated_item is None:
-            return error_response("Todo not found.", status_code=404)
+            return error_response("Todo not found.", 404)
         return success_response(data=updated_item)
-    except IOError as e:
-        logger.error(f"IOError updating todo {todo_id} for project {project_path}: {e}")
-        return error_response(str(e), "Failed to save todo update", 500)
-    except Exception as e:
-        logger.exception(f"Error updating todo {todo_id} for project: {project_path}")
-        return error_response(str(e), "Failed to update todo", 500)
+    except IOError as exc:
+        logger.error("IOError updating todo %d for project %s: %s", todo_id, project_path, exc)
+        return error_response(str(exc), "Failed to save todo update", 500)
+    except Exception as exc:
+        logger.exception("Error updating todo %d for project: %s", todo_id, project_path)
+        return error_response(str(exc), "Failed to update todo", 500)
 
-@todo_blueprint.route('/api/todos/<int:todo_id>', methods=['DELETE'])
-def delete_todo_endpoint(todo_id):
-    """Deletes a todo."""
-    project_path = request.args.get('projectPath')
+
+@todo_blueprint.delete("/api/todos/<int:todo_id>")
+def delete_todo_endpoint(todo_id: int):
+    project_path = request.args.get("projectPath")
     try:
-        deleted = todo_service.delete_todo(todo_id, project_path)
+        deleted = _todo_s.delete_todo(todo_id, project_path)
         if not deleted:
-            return error_response("Todo not found.", status_code=404)
-        # Return 204 No Content on successful deletion is common practice
+            return error_response("Todo not found.", 404)
         return "", 204
-        # Or return success_response(message="Todo deleted.")
-    except IOError as e:
-         logger.error(f"IOError deleting todo {todo_id} for project {project_path}: {e}")
-         return error_response(str(e), "Failed to save after deletion", 500)
-    except Exception as e:
-        logger.exception(f"Error deleting todo {todo_id} for project: {project_path}")
-        return error_response(str(e), "Failed to delete todo", 500)
+    except IOError as exc:
+        logger.error("IOError deleting todo %d for project %s: %s", todo_id, project_path, exc)
+        return error_response(str(exc), "Failed to save after deletion", 500)
+    except Exception as exc:
+        logger.exception("Error deleting todo %d for project: %s", todo_id, project_path)
+        return error_response(str(exc), "Failed to delete todo", 500)
