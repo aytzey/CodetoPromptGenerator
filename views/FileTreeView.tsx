@@ -1,10 +1,11 @@
 // views/FileTreeView.tsx
 /**
- * Virtualised file‑tree · react‑window + auto‑sizer
+ * Virtualised file‑tree · Enhanced with modern UI
  * ──────────────────────────────────────────────────
- *   • supports tri‑state checkboxes
- *   • NEW: selecting a directory in a *filtered* view still toggles **all**
- *     of its file descendants, even those currently hidden.
+ *   • Beautiful hover effects and animations
+ *   • Improved visual hierarchy
+ *   • Modern color scheme
+ *   • Smooth transitions
  */
 
 import React, {
@@ -20,6 +21,12 @@ import {
   Folder,
   File,
   FolderOpen,
+  GitBranch,
+  Code,
+  Database,
+  Image,
+  FileText,
+  Package,
 } from "lucide-react";
 import AutoSizer from "react-virtualized-auto-sizer";
 import { FixedSizeList as List, ListChildComponentProps } from "react-window";
@@ -38,9 +45,6 @@ import { findNodeByPath } from "@/lib/fileFilters";
 
 /* ─────────── helpers ─────────── */
 
-/**
- * Recursively collect relative paths of *files* only within a node's subtree.
- */
 const collectFileDescendants = (node: FileNode): string[] => {
   if (node.type === "file") return [node.relativePath];
   if (!node.children?.length) return [];
@@ -54,13 +58,9 @@ export interface FileTreeViewHandle {
 }
 
 interface Props {
-  /** Tree already filtered for UI rendering */
   tree: FileNode[];
-  /** The complete, unfiltered project tree (needed for selection logic) */
   fullTree: FileNode[];
-  /** Currently‑selected file relative paths */
   selectedFiles: string[];
-  /** Callback when the set of selected files changes */
   onSelectFiles(paths: string[]): void;
 }
 
@@ -69,7 +69,7 @@ interface Row {
   depth: number;
 }
 
-const ROW_HEIGHT = 30;
+const ROW_HEIGHT = 36;
 
 const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
   ({ tree, fullTree, selectedFiles, onSelectFiles }, ref) => {
@@ -132,9 +132,8 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
     const selectedSet = useMemo(() => new Set(selectedFiles), [selectedFiles]);
 
     const toggleSelection = (n: FileNode) => {
-      /** Use the *original* node so we grab hidden descendants, too */
       const origin =
-        findNodeByPath(fullTree, n.relativePath) /* may be undefined */ ?? n;
+        findNodeByPath(fullTree, n.relativePath) ?? n;
 
       const pathsToToggle = collectFileDescendants(origin);
       if (!pathsToToggle.length) return;
@@ -148,6 +147,55 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
       onSelectFiles(Array.from(next));
     };
 
+    /* — icon helpers — */
+    const getFileIcon = (path: string) => {
+      const ext = path.split(".").pop()?.toLowerCase() ?? "";
+      
+      const iconMap: Record<string, JSX.Element> = {
+        ts: <Code className="h-4 w-4 text-[rgb(var(--color-primary))]" />,
+        tsx: <Code className="h-4 w-4 text-[rgb(var(--color-primary))]" />,
+        js: <Code className="h-4 w-4 text-[rgb(var(--color-accent-3))]" />,
+        jsx: <Code className="h-4 w-4 text-[rgb(var(--color-accent-3))]" />,
+        py: <Code className="h-4 w-4 text-[rgb(var(--color-secondary))]" />,
+        json: <Database className="h-4 w-4 text-[rgb(var(--color-accent-4))]" />,
+        yml: <Database className="h-4 w-4 text-[rgb(var(--color-accent-4))]" />,
+        yaml: <Database className="h-4 w-4 text-[rgb(var(--color-accent-4))]" />,
+        md: <FileText className="h-4 w-4 text-[rgb(var(--color-text-primary))]" />,
+        txt: <FileText className="h-4 w-4 text-[rgb(var(--color-text-secondary))]" />,
+        png: <Image className="h-4 w-4 text-[rgb(var(--color-accent-1))]" />,
+        jpg: <Image className="h-4 w-4 text-[rgb(var(--color-accent-1))]" />,
+        jpeg: <Image className="h-4 w-4 text-[rgb(var(--color-accent-1))]" />,
+        svg: <Image className="h-4 w-4 text-[rgb(var(--color-accent-1))]" />,
+        git: <GitBranch className="h-4 w-4 text-[rgb(var(--color-accent-4))]" />,
+        lock: <Package className="h-4 w-4 text-[rgb(var(--color-text-muted))]" />,
+      };
+      
+      return iconMap[ext] || <File className="h-4 w-4 text-[rgb(var(--color-text-secondary))]" />;
+    };
+
+    const getFileColour = (ext: string) => {
+      const colorMap: Record<string, string> = {
+        ts: "text-[rgb(var(--color-primary))]",
+        tsx: "text-[rgb(var(--color-primary))]",
+        js: "text-[rgb(var(--color-accent-3))]",
+        jsx: "text-[rgb(var(--color-accent-3))]",
+        py: "text-[rgb(var(--color-secondary))]",
+        rb: "text-[rgb(var(--color-error))]",
+        php: "text-[rgb(var(--color-tertiary))]",
+        json: "text-[rgb(var(--color-accent-4))]",
+        yml: "text-[rgb(var(--color-accent-4))]",
+        yaml: "text-[rgb(var(--color-accent-4))]",
+        xml: "text-[rgb(var(--color-accent-4))]",
+        md: "text-[rgb(var(--color-text-primary))]",
+        txt: "text-[rgb(var(--color-text-secondary))]",
+        css: "text-[rgb(var(--color-accent-2))]",
+        scss: "text-[rgb(var(--color-accent-1))]",
+        html: "text-[rgb(var(--color-accent-1))]",
+      };
+      
+      return colorMap[ext] || "text-[rgb(var(--color-text-secondary))]";
+    };
+
     /* — render row — */
     const RowRenderer = ({ index, style }: ListChildComponentProps) => {
       const { node, depth } = rows[index];
@@ -155,125 +203,127 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
       const isOpen = isDir && !collapsed.has(node.absolutePath);
       const rowId = node.absolutePath;
 
-      /** For checkbox state we again need the *original* node */
       const selectableFiles = useMemo(() => {
-        const origin =
-          findNodeByPath(fullTree, node.relativePath) ?? node;
+        const origin = findNodeByPath(fullTree, node.relativePath) ?? node;
         return collectFileDescendants(origin);
       }, [node, fullTree]);
+      
       const isEmpty = selectableFiles.length === 0;
-      const checked =
-        !isEmpty && selectableFiles.every((p) => selectedSet.has(p));
-      const partial =
-        !isEmpty && !checked && selectableFiles.some((p) => selectedSet.has(p));
+      const checked = !isEmpty && selectableFiles.every((p) => selectedSet.has(p));
+      const partial = !isEmpty && !checked && selectableFiles.some((p) => selectedSet.has(p));
+      const isHovered = hoveredRow === rowId;
 
-      /* Extension‑based colour */
-      const fileExt =
-        node.type === "file" ? node.name.split(".").pop()?.toLowerCase() ?? "" : "";
-
-      const getFileColour = (ext: string) => {
-        if (["js", "jsx", "ts", "tsx"].includes(ext)) return "text-[rgb(241,250,140)]";
-        if (["py"].includes(ext)) return "text-[rgb(80,250,123)]";
-        if (["json", "xml", "yml", "yaml"].includes(ext))
-          return "text-[rgb(255,184,108)]";
-        if (["md", "txt", "pdf"].includes(ext)) return "text-[rgb(224,226,240)]";
-        if (["css", "scss", "less", "sass"].includes(ext))
-          return "text-[rgb(139,233,253)]";
-        if (["html", "htm"].includes(ext)) return "text-[rgb(255,121,198)]";
-        return "text-[rgb(190,192,210)]";
-      };
+      const fileExt = node.type === "file" ? node.name.split(".").pop()?.toLowerCase() ?? "" : "";
 
       return (
         <div
-          style={{ ...style, paddingLeft: depth * 1.2 + "rem" }}
+          style={{ ...style, paddingLeft: depth * 1.5 + "rem" }}
           className={cn(
-            "flex items-center pr-3 transition-colors duration-150 relative",
-            checked && !isEmpty
-              ? "bg-[rgba(123,147,253,0.15)]"
-              : hoveredRow === rowId
-              ? "bg-[rgba(60,63,87,0.3)]"
-              : "",
+            "flex items-center pr-3 relative group transition-all duration-200",
+            isHovered && "bg-gradient-to-r from-[rgba(var(--color-primary),0.05)] to-transparent",
+            checked && !isEmpty && "bg-gradient-to-r from-[rgba(var(--color-primary),0.1)] to-[rgba(var(--color-primary),0.05)]",
           )}
           onMouseEnter={() => setHoveredRow(rowId)}
           onMouseLeave={() => setHoveredRow(null)}
         >
+          {/* Selection indicator */}
           {checked && !isEmpty && (
-            <div className="absolute left-0 top-0 h-full w-0.5 bg-[rgb(123,147,253)]" />
+            <div className="absolute left-0 top-0 h-full w-0.5 bg-gradient-to-b from-[rgb(var(--color-primary))] to-[rgb(var(--color-tertiary))]" />
           )}
 
-          {/* Collapse/expand chevron */}
+          {/* Collapse/expand button */}
           {isDir ? (
             <button
-              className="mr-1 p-0.5 text-[rgb(140,143,170)] hover:text-[rgb(123,147,253)] rounded-sm transition-colors"
+              className={cn(
+                "mr-1.5 p-1 rounded-md text-[rgb(var(--color-text-muted))] transition-all duration-200",
+                isHovered && "text-[rgb(var(--color-primary))] bg-[rgba(var(--color-primary),0.1)]",
+              )}
               onClick={() => toggleCollapse(node.absolutePath)}
             >
               {collapsed.has(node.absolutePath) ? (
-                <ChevronRight size={16} />
+                <ChevronRight size={16} className="transition-transform duration-200" />
               ) : (
-                <ChevronDown size={16} />
+                <ChevronDown size={16} className="transition-transform duration-200" />
               )}
             </button>
           ) : (
-            <span className="mr-5" />
+            <span className="mr-7" />
           )}
 
-          {/* Checkbox */}
-          <Checkbox
-            id={`chk-${node.absolutePath}`}
-            checked={checked}
-            data-state={partial ? "indeterminate" : checked ? "checked" : "unchecked"}
-            onCheckedChange={() => toggleSelection(node)}
-            disabled={isEmpty}
-            className={cn(
-              "rounded-sm transition-colors",
-              "data-[state=checked]:bg-[rgb(123,147,253)] data-[state=checked]:border-[rgb(123,147,253)]",
-              "data-[state=indeterminate]:bg-[rgba(123,147,253,0.5)] data-[state=indeterminate]:border-[rgba(123,147,253,0.5)]",
-              isEmpty &&
-                "opacity-40 cursor-not-allowed border-[rgba(60,63,87,0.7)]",
-            )}
-          />
+          {/* Enhanced checkbox */}
+          <div className="mr-2.5">
+            <Checkbox
+              id={`chk-${node.absolutePath}`}
+              checked={checked}
+              data-state={partial ? "indeterminate" : checked ? "checked" : "unchecked"}
+              onCheckedChange={() => toggleSelection(node)}
+              disabled={isEmpty}
+              className={cn(
+                "rounded-md transition-all duration-200 shadow-sm",
+                "data-[state=checked]:bg-gradient-to-br data-[state=checked]:from-[rgb(var(--color-primary))] data-[state=checked]:to-[rgb(var(--color-tertiary))]",
+                "data-[state=indeterminate]:bg-gradient-to-br data-[state=indeterminate]:from-[rgba(var(--color-primary),0.7)] data-[state=indeterminate]:to-[rgba(var(--color-tertiary),0.7)]",
+                "hover:shadow-md",
+                isEmpty && "opacity-30 cursor-not-allowed",
+              )}
+            />
+          </div>
 
-          {/* Icon + name */}
+          {/* Icon + name with enhanced styling */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <label
                   htmlFor={`chk-${node.absolutePath}`}
                   className={cn(
-                    "ml-2 truncate text-sm flex items-center gap-1.5 cursor-pointer font-medium transition-colors",
+                    "flex items-center gap-2 cursor-pointer font-medium transition-all duration-200 flex-1 min-w-0",
                     isDir
-                      ? "text-[rgb(255,184,108)]"
+                      ? "text-[rgb(var(--color-accent-4))]"
                       : getFileColour(fileExt),
-                    isEmpty && "opacity-50",
+                    isEmpty && "opacity-60",
+                    isHovered && "translate-x-0.5",
                   )}
                 >
-                  {isDir ? (
-                    isOpen ? (
-                      <FolderOpen size={16} className="shrink-0" />
+                  <div className={cn(
+                    "p-1.5 rounded-md transition-all duration-200",
+                    isHovered ? "bg-[rgba(var(--color-primary),0.1)]" : "bg-[rgba(var(--color-bg-tertiary),0.5)]",
+                  )}>
+                    {isDir ? (
+                      isOpen ? (
+                        <FolderOpen size={16} className="shrink-0" />
+                      ) : (
+                        <Folder size={16} className="shrink-0" />
+                      )
                     ) : (
-                      <Folder size={16} className="shrink-0" />
-                    )
-                  ) : (
-                    <File size={16} className="shrink-0" />
-                  )}
-                  <span className="truncate">{node.name}</span>
+                      getFileIcon(node.name)
+                    )}
+                  </div>
+                  <span className="truncate text-sm">{node.name}</span>
                 </label>
               </TooltipTrigger>
-              <TooltipContent side="right" className="font-mono text-xs break-all">
-                {node.relativePath}
+              <TooltipContent side="right" className="glass font-mono text-xs max-w-sm">
+                <p className="break-all">{node.relativePath}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
 
-          {/* Dir child‑count badge */}
+          {/* Enhanced directory badge */}
           {isDir && node.children?.length ? (
             <Badge
-              variant="outline"
-              className="ml-2 text-xs py-0 px-1.5 h-5 font-normal bg-[rgba(255,184,108,0.1)] text-[rgb(255,184,108)] border-[rgba(255,184,108,0.3)] rounded-md"
+              className={cn(
+                "ml-auto text-xs py-0.5 px-2 font-normal transition-all duration-200",
+                isHovered 
+                  ? "bg-gradient-to-r from-[rgba(var(--color-accent-4),0.2)] to-[rgba(var(--color-accent-4),0.1)] text-[rgb(var(--color-accent-4))] border-[rgba(var(--color-accent-4),0.3)]"
+                  : "bg-[rgba(var(--color-bg-tertiary),0.5)] text-[rgb(var(--color-text-muted))] border-[rgba(var(--color-border),0.3)]",
+              )}
             >
               {node.children.length}
             </Badge>
           ) : null}
+
+          {/* Hover effect line */}
+          {isHovered && (
+            <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[rgba(var(--color-primary),0.3)] to-transparent" />
+          )}
         </div>
       );
     };
@@ -281,11 +331,14 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
     /* — empty state — */
     if (!rows.length)
       return (
-        <div className="flex flex-col items-center justify-center h-full py-12 text-[rgb(140,143,170)]">
-          <Folder size={48} className="mb-4 opacity-50" />
-          <p className="text-lg">No files to display</p>
+        <div className="flex flex-col items-center justify-center h-full py-16 text-[rgb(var(--color-text-muted))] animate-fade-in">
+          <div className="relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-[rgba(var(--color-primary),0.2)] to-[rgba(var(--color-tertiary),0.2)] rounded-full blur-3xl animate-pulse"></div>
+            <Folder size={56} className="mb-4 opacity-50 relative z-10" />
+          </div>
+          <p className="text-lg font-medium text-[rgb(var(--color-text-secondary))]">No files to display</p>
           {tree.length > 0 && (
-            <p className="text-sm mt-1 text-[rgb(255,121,198)]">
+            <p className="text-sm mt-2 text-[rgb(var(--color-accent-1))]">
               Try adjusting your filters
             </p>
           )}
@@ -294,7 +347,7 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
 
     /* — main render — */
     return (
-      <div className="h-[350px] custom-scrollbar">
+      <div className="h-[400px] glass rounded-lg p-1">
         <AutoSizer>
           {({ height, width }) => (
             <List
@@ -302,8 +355,8 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
               width={width}
               itemCount={rows.length}
               itemSize={ROW_HEIGHT}
-              overscanCount={8}
-              className="scrollbar-thin"
+              overscanCount={10}
+              className="custom-scrollbar"
             >
               {RowRenderer}
             </List>
