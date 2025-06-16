@@ -3,8 +3,8 @@ import React from "react";
 import Head from "next/head";
 import { Loader2, Folder, KeyRound, PlusCircle, FileCode, Shield } from "lucide-react";
 
-// Import the main hook
-import { useHomePageLogic } from "@/lib/hooks/useHomePageLogic";
+// Import the refactored main hook
+import { useRefactoredHomePageLogic as useHomePageLogic } from "@/lib/hooks/useRefactoredHomePageLogic";
 
 // Import Layout Components
 import HeaderView from "@/views/layout/HeaderView";
