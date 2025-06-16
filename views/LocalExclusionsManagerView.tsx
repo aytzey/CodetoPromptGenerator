@@ -94,19 +94,19 @@ export default function LocalExclusionsManagerView() {
 
   /* ───── render ───── */
   return (
-    <Card className="overflow-hidden border-[rgba(60,63,87,0.7)] bg-[rgba(30,31,61,0.7)] backdrop-blur-sm shadow-[0_8px_30px_rgba(0,0,0,0.12)] animate-fade-in">
+    <Card className="glass animate-fade-in">
       {/* Header with project exclusions title */}
       <div className="p-5 border-b border-[rgba(60,63,87,0.7)] bg-gradient-to-r from-[rgba(22,23,46,0.9)] to-[rgba(30,31,61,0.9)]">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-[rgba(189,147,249,0.1)] backdrop-blur-sm border border-[rgba(189,147,249,0.2)] shadow-sm">
-              <FileX size={20} className="text-[rgb(189,147,249)]" />
+            <div className="p-2.5 rounded-xl bg-[rgba(var(--color-tertiary),0.1)] border border-[rgba(var(--color-tertiary),0.2)]">
+              <FileX size={20} className="text-[rgb(var(--color-tertiary))]" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-[rgb(189,147,249)] to-[rgb(255,121,198)]">
+              <h3 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-[rgb(var(--color-tertiary))] to-[rgb(var(--color-accent-1))]">
                 Project Exclusions
               </h3>
-              <p className="text-xs text-[rgb(140,143,170)] mt-0.5">
+              <p className="text-sm text-[rgb(var(--color-text-muted))] mt-1">
                 Patterns skipped by "Select All" in this project only
               </p>
             </div>

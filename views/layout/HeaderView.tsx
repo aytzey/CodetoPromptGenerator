@@ -11,6 +11,7 @@ import {
   ChevronRight,
   ExternalLink,
 } from "lucide-react";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -37,85 +38,83 @@ const HeaderView: React.FC<HeaderViewProps> = ({
   projectPath,
 }) => {
   return (
-    <header className="sticky top-0 z-30 backdrop-blur-xl bg-[rgba(var(--color-bg-primary),0.85)] border-b border-[rgba(var(--color-border),0.6)] shadow-lg">
-      {/* Top highlight line */}
-      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-[rgba(var(--color-primary),0)] via-[rgba(var(--color-primary),0.3)] to-[rgba(var(--color-primary),0)]"></div>
+    <header className="sticky top-0 z-30 backdrop-blur-[32px] bg-[rgba(var(--color-bg-primary),0.8)] border-b border-[rgba(var(--color-border),0.3)] shadow-[0_8px_32px_rgba(0,0,0,0.12)]">
+      {/* Refined top accent line */}
+      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[rgba(var(--color-primary),0.4)] to-transparent"></div>
       
-      <div className="container mx-auto px-4 sm:px-6 py-3">
+      <div className="container mx-auto px-6 py-4">
         <div className="flex justify-between items-center">
-          {/* Logo & Brand - Enhanced with animation and depth */}
-          <div className="flex items-center space-x-3.5">
-            <div className="p-2.5 bg-gradient-to-br from-[rgb(var(--color-primary))] to-[rgb(var(--color-tertiary))] rounded-xl shadow-[0_0_20px_rgba(var(--color-primary),0.4)] animate-float relative group">
-              {/* Inner shine effect */}
-              <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-white to-transparent opacity-20 group-hover:opacity-30 transition-opacity"></div>
-              <Terminal size={22} className="text-white relative z-10" strokeWidth={2.5} />
+          {/* Minimalist Logo & Brand */}
+          <div className="flex items-center space-x-4">
+            <div className="relative group">
+              <div className="p-2 bg-gradient-to-br from-[rgb(var(--color-primary))] to-[rgb(var(--color-tertiary))] rounded-lg shadow-[0_4px_16px_rgba(var(--color-primary),0.3)] animate-float">
+                <Terminal size={20} className="text-white" strokeWidth={2} />
+              </div>
+              {/* Subtle glow on hover */}
+              <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-[rgb(var(--color-primary))] to-[rgb(var(--color-tertiary))] opacity-0 group-hover:opacity-20 blur-md transition-opacity duration-300"></div>
             </div>
-            <div className="flex flex-col">
-              <h1 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[rgb(var(--color-primary))] to-[rgb(var(--color-tertiary))]">
+            <div>
+              <h1 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-[rgb(var(--color-primary))] to-[rgb(var(--color-tertiary))]">
                 Code to Prompt
               </h1>
-              <div className="flex items-center text-[rgb(var(--color-text-muted))] text-xs">
-                <span>Generator</span>
-                <ChevronRight size={12} className="mx-1 opacity-70" />
-                <span className="text-[rgb(var(--color-accent-2))]">v1.2</span>
+              <div className="flex items-center text-[rgb(var(--color-text-muted))] text-xs space-x-1">
+                <span className="opacity-80">Generator</span>
+                <span className="w-1 h-1 bg-[rgb(var(--color-text-muted))] rounded-full opacity-50"></span>
+                <span className="text-[rgb(var(--color-accent-2))] font-medium">v1.2</span>
               </div>
             </div>
           </div>
 
-          {/* Right Actions - Enhanced styling and hover effects */}
-          <div className="flex items-center space-x-2 sm:space-x-3">
-            {/* Smart-select with improved glow and animation */}
+          {/* Refined Action Buttons */}
+          <div className="flex items-center space-x-3">
+            {/* Smart-select with cleaner design */}
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     disabled={!projectPath || isSelecting}
                     onClick={onAutoSelect}
-                    className="relative overflow-hidden bg-gradient-to-r from-[rgb(var(--color-secondary))] to-[rgba(var(--color-secondary),0.9)] hover:from-[rgb(var(--color-secondary))] hover:to-[rgb(var(--color-accent-2))] text-[rgb(var(--color-bg-primary))] font-medium shadow-[0_0_15px_rgba(var(--color-secondary),0.25)] hover:shadow-[0_0_20px_rgba(var(--color-secondary),0.4)] rounded-lg px-4 h-9 transition-all active:scale-95"
+                    className="relative bg-gradient-to-r from-[rgb(var(--color-secondary))] to-[rgb(var(--color-secondary))] hover:to-[rgb(var(--color-accent-2))] text-white font-medium shadow-[0_4px_12px_rgba(var(--color-secondary),0.3)] hover:shadow-[0_6px_16px_rgba(var(--color-secondary),0.4)] rounded-lg px-4 h-9 transition-all duration-300 active:scale-95"
                   >
-                    <div className="relative z-10 flex items-center">
-                      {isSelecting ? (
-                        <RefreshCw size={18} className="animate-spin mr-2" />
-                      ) : (
-                        <Zap size={18} className="mr-2" />
-                      )}
-                      <span>{isSelecting ? "Processing..." : "Smart-Select"}</span>
-                    </div>
-                    {/* Animated shimmer effect */}
-                    <div className="absolute top-0 left-[-100%] w-full h-full bg-gradient-to-r from-transparent via-white to-transparent opacity-30 animate-[shimmer_2s_infinite]"></div>
+                    {isSelecting ? (
+                      <RefreshCw size={16} className="animate-spin mr-2" />
+                    ) : (
+                      <Zap size={16} className="mr-2" />
+                    )}
+                    <span className="text-sm">{isSelecting ? "Processing..." : "Smart-Select"}</span>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom" className="glass py-2 px-3 shadow-lg">
-                  <p className="text-[rgb(var(--color-text-secondary))]">Smart-Select files with Gemma-3</p>
+                <TooltipContent side="bottom" className="glass py-2 px-3 shadow-lg border-[rgba(var(--color-border),0.2)]">
+                  <p className="text-[rgb(var(--color-text-secondary))] text-xs">Smart-Select files with Gemma-3</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
 
-            {/* Actor Wizard */}
+            {/* Actor Wizard with refined styling */}
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     disabled={!projectPath || isGeneratingActors}
                     onClick={onGenerateActors}
-                    className="relative overflow-hidden bg-gradient-to-r from-[rgb(var(--color-accent-2))] to-[rgba(var(--color-accent-2),0.9)] hover:from-[rgb(var(--color-accent-2))] hover:to-[rgb(var(--color-secondary))] text-[rgb(var(--color-bg-primary))] font-medium shadow-[0_0_15px_rgba(var(--color-accent-2),0.25)] hover:shadow-[0_0_20px_rgba(var(--color-accent-2),0.4)] rounded-lg px-4 h-9 transition-all active:scale-95"
+                    className="relative bg-gradient-to-r from-[rgb(var(--color-accent-2))] to-[rgb(var(--color-accent-2))] hover:to-[rgb(var(--color-secondary))] text-white font-medium shadow-[0_4px_12px_rgba(var(--color-accent-2),0.3)] hover:shadow-[0_6px_16px_rgba(var(--color-accent-2),0.4)] rounded-lg px-4 h-9 transition-all duration-300 active:scale-95"
                   >
-                    <div className="relative z-10 flex items-center">
-                      {isGeneratingActors ? (
-                        <RefreshCw size={18} className="animate-spin mr-2" />
-                      ) : (
-                        <Users size={18} className="mr-2" />
-                      )}
-                      <span>{isGeneratingActors ? "Processing..." : "Actor Wizard"}</span>
-                    </div>
-                    <div className="absolute top-0 left-[-100%] w-full h-full bg-gradient-to-r from-transparent via-white to-transparent opacity-30 animate-[shimmer_2s_infinite]"></div>
+                    {isGeneratingActors ? (
+                      <RefreshCw size={16} className="animate-spin mr-2" />
+                    ) : (
+                      <Users size={16} className="mr-2" />
+                    )}
+                    <span className="text-sm">{isGeneratingActors ? "Processing..." : "Actor Wizard"}</span>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom" className="glass py-2 px-3 shadow-lg">
-                  <p className="text-[rgb(var(--color-text-secondary))]">Generate actors using Llama‑4</p>
+                <TooltipContent side="bottom" className="glass py-2 px-3 shadow-lg border-[rgba(var(--color-border),0.2)]">
+                  <p className="text-[rgb(var(--color-text-secondary))] text-xs">Generate actors using Llama‑4</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+
+            {/* Theme Toggle */}
+            <ThemeToggle />
 
             {/* Settings with hover animation */}
             <TooltipProvider>

@@ -7,14 +7,15 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import { Toaster } from "@/components/ui/toaster";
 
 export default function MyApp({ Component, pageProps }: AppProps) {
-  // Apply dark theme and additional visual enhancements on client mount
+  // Apply theme and additional visual enhancements on client mount
   useEffect(() => {
-    // Apply dark theme
-    document.documentElement.classList.add('dark');
-    document.documentElement.classList.remove('light');
+    // Check for saved theme preference or default to dark
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    document.documentElement.classList.add(savedTheme);
+    document.documentElement.classList.remove(savedTheme === 'dark' ? 'light' : 'dark');
     
     // Set color scheme for browser UI consistency
-    document.documentElement.style.colorScheme = 'dark';
+    document.documentElement.style.colorScheme = savedTheme;
     
     // Add subtle background grid pattern
     const gridOverlay = document.createElement('div');

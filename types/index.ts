@@ -37,6 +37,17 @@ export interface CodemapInfo {
   classes: string[];
   functions: string[];
   references: string[];
+  imports: Array<{
+    module: string;
+    symbols: string;
+    type: string;
+    raw: string;
+  }>;
+  exports: Array<{
+    symbols: string;
+    type: string;
+    raw: string;
+  }>;
   /** Populated when the backend failed for this file */
   error?: string;
   /** true ⇢ binary file, extraction skipped */

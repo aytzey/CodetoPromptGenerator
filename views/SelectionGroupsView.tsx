@@ -114,10 +114,12 @@ const SelectionGroupsView: React.FC<Props> = ({
   }
 
   return (
-    <Card className="overflow-hidden border-[rgba(60,63,87,0.7)] bg-[rgba(30,31,61,0.7)] backdrop-blur-sm shadow-[0_8px_30px_rgba(0,0,0,0.12)] animate-fade-in">
-      <CardHeader className="py-3 px-4 border-b border-[rgba(60,63,87,0.7)] bg-gradient-to-r from-[rgba(22,23,46,0.9)] to-[rgba(30,31,61,0.9)]">
-        <CardTitle className="text-base font-semibold flex items-center gap-2 text-transparent bg-clip-text bg-gradient-to-r from-[rgb(80,250,123)] to-[rgb(139,233,253)]">
-          <Library size={16} className="text-[rgb(80,250,123)]" />
+    <Card className="glass animate-fade-in">
+      <CardHeader className="glass-header">
+        <CardTitle className="text-lg font-semibold flex items-center gap-3 text-transparent bg-clip-text bg-gradient-to-r from-[rgb(var(--color-secondary))] to-[rgb(var(--color-accent-2))]">
+          <div className="p-2 rounded-lg bg-[rgba(var(--color-secondary),0.1)] border border-[rgba(var(--color-secondary),0.2)]">
+            <Library size={18} className="text-[rgb(var(--color-secondary))]" />
+          </div>
           Selection Groups
         </CardTitle>
       </CardHeader>

@@ -85,19 +85,19 @@ const ExclusionsManagerView: React.FC = () => {
   const currentList = isEditing ? localExclusionsEdit : globalExclusions;
 
   return (
-    <Card className="overflow-hidden border-[rgba(60,63,87,0.7)] bg-[rgba(30,31,61,0.7)] backdrop-blur-sm shadow-[0_8px_30px_rgba(0,0,0,0.12)] animate-fade-in">
+    <Card className="glass animate-fade-in">
       <div className="flex flex-col space-y-4 p-5">
         {/* Header Section */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-[rgba(255,85,85,0.1)] backdrop-blur-sm border border-[rgba(255,85,85,0.2)] shadow-sm">
-              <FolderMinus size={20} className="text-[rgb(255,85,85)]" />
+            <div className="p-2.5 rounded-xl bg-[rgba(var(--color-error),0.1)] border border-[rgba(var(--color-error),0.2)]">
+              <FolderMinus size={20} className="text-[rgb(var(--color-error))]" />
             </div>
             <div>
-              <Label className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-[rgb(255,85,85)] to-[rgb(255,121,198)]">
+              <Label className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-[rgb(var(--color-error))] to-[rgb(var(--color-accent-1))]">
                 Global Exclusions
               </Label>
-              <p className="text-xs text-[rgb(140,143,170)] mt-0.5">
+              <p className="text-sm text-[rgb(var(--color-text-muted))] mt-1">
                 Path patterns excluded from all projects
               </p>
             </div>

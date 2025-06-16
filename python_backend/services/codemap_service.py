@@ -115,6 +115,16 @@ _COMMON_NOISE = {
     "console", "log",
 }
 
+# C++ specific noise tokens (common types and keywords that aren't useful as references)
+_CPP_NOISE = {
+    "int", "char", "float", "double", "bool", "void", "long", "short", "unsigned", "signed",
+    "const", "static", "inline", "extern", "auto", "register", "volatile", "mutable",
+    "std", "string", "vector", "map", "set", "list", "deque", "stack", "queue", "pair",
+    "shared_ptr", "unique_ptr", "weak_ptr", "nullptr", "true", "false",
+    "cout", "cin", "endl", "cerr", "clog", "printf", "scanf", "malloc", "free",
+    "size_t", "ptrdiff_t", "wchar_t", "char16_t", "char32_t",
+}
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # 3 · Helpers
@@ -148,17 +158,35 @@ def _is_binary_sample(chunk: bytes) -> bool:
 class _SymbolCollector:
     """
     Depth-first walker that translates tree-sitter nodes → symbol buckets.
+    Enhanced with dependency extraction for imports/exports.
     """
 
     CLASS_NODES = {
         "class_declaration", "class_definition",           # JS / TS / Py
         "class_specifier", "struct_specifier",             # C++
+        "union_specifier", "enum_specifier",               # C++ unions and enums
+        "namespace_definition",                            # C++ namespaces
     }
 
     FUNC_NODES = {
         "function_declaration", "function_definition",     # JS / TS / Py / C / C++
         "method_definition",                               # JS / TS
         "function_declarator",                             # C / C++ – captures name
+        "constructor_declaration", "destructor_declaration", # C++ constructors/destructors
+        "operator_declaration",                            # C++ operator overloads
+        "template_declaration",                            # C++ templates
+    }
+
+    # Import/Export nodes for dependency analysis
+    IMPORT_NODES = {
+        "import_statement", "import_from_statement",       # Python
+        "import_declaration", "import_statement",          # JS/TS
+        "include_directive",                               # C/C++
+    }
+
+    EXPORT_NODES = {
+        "export_statement", "export_declaration",          # JS/TS
+        "export_default_declaration",                      # JS/TS
     }
 
     def __init__(self, source: bytes) -> None:
@@ -166,9 +194,11 @@ class _SymbolCollector:
         self.classes: List[str] = []
         self.funcs: List[str] = []
         self.refs_raw: List[str] = []
+        self.imports: List[Dict[str, str]] = []  # [{module, symbols, type}]
+        self.exports: List[Dict[str, str]] = []  # [{symbols, type}]
 
     # ---------------------------------------------------------- walk
-    def collect(self, node: Node) -> Tuple[List[str], List[str], List[str]]:
+    def collect(self, node: Node) -> Tuple[List[str], List[str], List[str], List[Dict[str, str]], List[Dict[str, str]]]:
         self._walk(node)
 
         # ① de-dupe classes / funcs immediately
@@ -179,39 +209,108 @@ class _SymbolCollector:
         freq: Dict[str, int] = {}
         for ident in self.refs_raw:
             ident_low = ident.lower()
+            
+            # Enhanced filtering for C++ and other languages
             if (
-                len(ident) < 3
+                len(ident) < 2  # Allow 2-char identifiers for C++ (like "id", "x", "y")
                 or ident_low in _COMMON_RESERVED
                 or ident_low in _COMMON_NOISE
+                or ident_low in _CPP_NOISE
+                or ident.isdigit()  # Skip pure numbers
+                or ident.startswith('_') and len(ident) < 4  # Skip short private identifiers
             ):
                 continue
-            freq[ident] = freq.get(ident, 0) + 1
+            
+            # Special handling for C++ constructs
+            if ident.startswith(('using ', 'typedef ', '#define ')):
+                # Always include these important C++ constructs
+                freq[ident] = freq.get(ident, 0) + 2  # Give them higher weight
+            else:
+                freq[ident] = freq.get(ident, 0) + 1
 
-        # keep identifiers that appear ≥2× or top-K
-        TOP_K = 15
+        # Enhanced filtering: keep identifiers that appear ≥2× or important single occurrences
+        TOP_K = 20  # Increased for C++ which has more symbols
         filtered = sorted(freq.items(), key=lambda t: (-t[1], t[0]))
-        refs = [name for name, cnt in filtered if cnt > 1][:TOP_K]
+        
+        # Include high-frequency items and important single occurrences
+        refs = []
+        for name, cnt in filtered:
+            if (cnt > 1 or 
+                name.startswith(('using ', 'typedef ', '#define ', 'template<>', 'namespace ', 'struct ', 'enum ')) or
+                (len(name) > 6 and cnt == 1)):  # Include longer unique identifiers
+                refs.append(name)
+        
+        refs = refs[:TOP_K]
         refs = _dedupe_preserve_order(refs)
 
-        return classes, funcs, refs
+        return classes, funcs, refs, self.imports, self.exports
 
     # ---------------------------------------------------------- DFS
     def _walk(self, node: Node) -> None:
         typ = node.type
 
-        # — classes
+        # — classes, structs, unions, enums, namespaces
         if typ in self.CLASS_NODES:
             name = node.child_by_field_name("name")
             if name:
-                self.classes.append(self._text(name))
+                class_name = self._text(name)
+                # Add type prefix for C++ constructs
+                if typ == "struct_specifier":
+                    class_name = f"struct {class_name}"
+                elif typ == "union_specifier":
+                    class_name = f"union {class_name}"
+                elif typ == "enum_specifier":
+                    class_name = f"enum {class_name}"
+                elif typ == "namespace_definition":
+                    class_name = f"namespace {class_name}"
+                self.classes.append(class_name)
 
-        # — functions
+        # — functions, methods, constructors, destructors, operators
         elif typ in self.FUNC_NODES:
             name = node.child_by_field_name("name")
             if name:
-                self.funcs.append(self._text(name))
+                func_name = self._text(name)
+                # Handle C++ specific function types
+                if typ == "constructor_declaration":
+                    func_name = f"{func_name}()" # Constructor
+                elif typ == "destructor_declaration":
+                    func_name = f"~{func_name}()" # Destructor
+                elif typ == "operator_declaration":
+                    func_name = f"operator{func_name}" # Operator overload
+                elif typ == "template_declaration":
+                    # For templates, try to get the actual function name
+                    for child in node.children:
+                        if child.type in self.FUNC_NODES:
+                            template_name = child.child_by_field_name("name")
+                            if template_name:
+                                func_name = f"template<> {self._text(template_name)}"
+                                break
+                self.funcs.append(func_name)
+            elif typ == "template_declaration":
+                # Handle template without explicit name
+                self.funcs.append("template<>")
 
-        # var foo = () => {}
+        # — C++ function definitions (more complex parsing)
+        elif typ == "function_definition":
+            # Try to extract function signature for C++
+            declarator = None
+            for child in node.children:
+                if child.type == "function_declarator":
+                    declarator = child
+                    break
+            
+            if declarator:
+                name_node = declarator.child_by_field_name("declarator")
+                if name_node and name_node.type == "identifier":
+                    func_name = self._text(name_node)
+                    # Try to get parameters for better signature
+                    params_node = declarator.child_by_field_name("parameters")
+                    if params_node:
+                        params_text = self._text(params_node)
+                        func_name = f"{func_name}{params_text}"
+                    self.funcs.append(func_name)
+
+        # var foo = () => {} (JavaScript)
         elif typ == "variable_declarator" and any(
             c.type == "arrow_function" for c in node.children
         ):
@@ -219,14 +318,196 @@ class _SymbolCollector:
             if nm:
                 self.funcs.append(self._text(nm))
 
+        # — imports
+        elif typ in self.IMPORT_NODES:
+            import_info = self._extract_import(node)
+            if import_info:
+                self.imports.append(import_info)
+
+        # — exports
+        elif typ in self.EXPORT_NODES:
+            export_info = self._extract_export(node)
+            if export_info:
+                self.exports.append(export_info)
+
+        # — C++ specific constructs
+        elif typ == "using_declaration":
+            # using std::vector;
+            for child in node.children:
+                if child.type == "qualified_identifier":
+                    using_name = self._text(child)
+                    self.refs_raw.append(f"using {using_name}")
+        
+        elif typ == "typedef_declaration":
+            # typedef int MyInt;
+            name_node = node.child_by_field_name("declarator")
+            if name_node:
+                typedef_name = self._text(name_node)
+                self.refs_raw.append(f"typedef {typedef_name}")
+        
+        elif typ == "type_alias_declaration":
+            # using MyType = int;
+            name_node = node.child_by_field_name("name")
+            if name_node:
+                alias_name = self._text(name_node)
+                self.refs_raw.append(f"using {alias_name}")
+        
+        elif typ == "macro_definition":
+            # #define MACRO_NAME
+            name_node = node.child_by_field_name("name")
+            if name_node:
+                macro_name = self._text(name_node)
+                self.refs_raw.append(f"#define {macro_name}")
+
         # — identifiers (potential refs)
         elif typ == "identifier":
             ident = self._text(node)
             if _IDENTIFIER_RE.fullmatch(ident):
                 self.refs_raw.append(ident)
+        
+        # — C++ type identifiers
+        elif typ == "type_identifier":
+            type_ident = self._text(node)
+            if _IDENTIFIER_RE.fullmatch(type_ident):
+                self.refs_raw.append(type_ident)
+        
+        # — C++ primitive types
+        elif typ == "primitive_type":
+            prim_type = self._text(node)
+            self.refs_raw.append(prim_type)
 
         for child in node.children:
             self._walk(child)
+
+    # ---------------------------------------------------------- dependency extraction
+    def _extract_import(self, node: Node) -> Optional[Dict[str, str]]:
+        """Extract import information from import nodes."""
+        typ = node.type
+        text = self._text(node).strip()
+        
+        if typ == "import_statement":  # Python: import module
+            # import os, sys
+            modules = []
+            for child in node.children:
+                if child.type == "dotted_name" or child.type == "identifier":
+                    modules.append(self._text(child))
+            if modules:
+                return {
+                    "module": ", ".join(modules),
+                    "symbols": "*",
+                    "type": "import",
+                    "raw": text
+                }
+                
+        elif typ == "import_from_statement":  # Python: from module import symbol
+            # from os import path
+            module = ""
+            symbols = []
+            for child in node.children:
+                if child.type == "dotted_name" and not module:
+                    module = self._text(child)
+                elif child.type == "import_list":
+                    for item in child.children:
+                        if item.type == "identifier":
+                            symbols.append(self._text(item))
+            if module:
+                return {
+                    "module": module,
+                    "symbols": ", ".join(symbols) if symbols else "*",
+                    "type": "from_import",
+                    "raw": text
+                }
+                
+        elif typ == "import_declaration":  # JS/TS: import { symbol } from 'module'
+            module = ""
+            symbols = []
+            for child in node.children:
+                if child.type == "string":
+                    module = self._text(child).strip('\'"')
+                elif child.type == "import_clause":
+                    for item in child.children:
+                        if item.type == "named_imports":
+                            for spec in item.children:
+                                if spec.type == "import_specifier":
+                                    name_node = spec.child_by_field_name("name")
+                                    if name_node:
+                                        symbols.append(self._text(name_node))
+                        elif item.type == "identifier":
+                            symbols.append(self._text(item))
+            if module:
+                return {
+                    "module": module,
+                    "symbols": ", ".join(symbols) if symbols else "default",
+                    "type": "es_import",
+                    "raw": text
+                }
+                
+        elif typ == "include_directive":  # C/C++: #include <header>
+            header = ""
+            include_type = "system"
+            
+            for child in node.children:
+                if child.type == "string":
+                    # #include "local_header.h"
+                    header = self._text(child).strip('"')
+                    include_type = "local"
+                elif child.type == "system_lib_string":
+                    # #include <system_header>
+                    header = self._text(child).strip('<>')
+                    include_type = "system"
+                elif child.type == "identifier":
+                    # Handle macro includes like #include MACRO_NAME
+                    header = self._text(child)
+                    include_type = "macro"
+            
+            if header:
+                return {
+                    "module": header,
+                    "symbols": "*",
+                    "type": f"include_{include_type}",
+                    "raw": text
+                }
+        
+        return None
+
+    def _extract_export(self, node: Node) -> Optional[Dict[str, str]]:
+        """Extract export information from export nodes."""
+        typ = node.type
+        text = self._text(node).strip()
+        
+        if typ == "export_declaration":  # JS/TS: export { symbol }
+            symbols = []
+            for child in node.children:
+                if child.type == "export_clause":
+                    for item in child.children:
+                        if item.type == "export_specifier":
+                            name_node = item.child_by_field_name("name")
+                            if name_node:
+                                symbols.append(self._text(name_node))
+                elif child.type in self.FUNC_NODES or child.type in self.CLASS_NODES:
+                    name_node = child.child_by_field_name("name")
+                    if name_node:
+                        symbols.append(self._text(name_node))
+            return {
+                "symbols": ", ".join(symbols) if symbols else "unknown",
+                "type": "named_export",
+                "raw": text
+            }
+            
+        elif typ == "export_default_declaration":  # JS/TS: export default
+            symbols = ["default"]
+            for child in node.children:
+                if child.type in self.FUNC_NODES or child.type in self.CLASS_NODES:
+                    name_node = child.child_by_field_name("name")
+                    if name_node:
+                        symbols = [self._text(name_node)]
+            return {
+                "symbols": ", ".join(symbols),
+                "type": "default_export",
+                "raw": text
+            }
+        
+        return None
 
     # ---------------------------------------------------------- utils
     def _text(self, node: Node) -> str:
@@ -286,15 +567,27 @@ class CodemapService:
         if lang == "txt":
             # quick regex fallback – grab headings & code fences
             heads = re.findall(r"^#+\s*(.+)$", content, flags=re.M)
-            return {"classes": [], "functions": [], "references": heads[:10]}
+            return {
+                "classes": [], 
+                "functions": [], 
+                "references": heads[:10],
+                "imports": [],
+                "exports": []
+            }
 
         parser = _get_parser(lang)
         src_bytes = content.encode("utf-8", errors="ignore")
         tree = parser.parse(src_bytes)
 
         collector = _SymbolCollector(src_bytes)
-        classes, funcs, refs = collector.collect(tree.root_node)
-        return {"classes": classes, "functions": funcs, "references": refs}
+        classes, funcs, refs, imports, exports = collector.collect(tree.root_node)
+        return {
+            "classes": classes, 
+            "functions": funcs, 
+            "references": refs,
+            "imports": imports,
+            "exports": exports
+        }
 
     # ---------------------------------------------------------------- public
     def extract_codemap(

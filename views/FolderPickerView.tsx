@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 
-import FolderBrowserView from './FolderBrowserView';
+import StunningFolderBrowserView from './StunningFolderBrowserView';
 import { useProjectStore } from '@/stores/useProjectStore';
 
 /* ————————————————————————— props ————————————————————————— */
@@ -116,20 +116,20 @@ const FolderPickerView: React.FC<FolderPickerProps> = ({
         onMouseLeave={() => setIsHovered(false)}
       >
         {/* Decorative element that appears on hover */}
-        <div className={`absolute -inset-3 bg-gradient-to-r from-[rgba(123,147,253,0.1)] to-[rgba(189,147,249,0.1)] rounded-xl blur-md transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`}></div>
+        <div className={`absolute -inset-3 bg-gradient-to-r from-primary/10 to-purple-500/10 rounded-xl blur-md transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`}></div>
         
         <div className="relative flex flex-col md:flex-row gap-3 z-10">
           {/* Text input with icon */}
           <div className="relative flex-1">
-            <div className="absolute left-0 top-0 bottom-0 w-10 flex items-center justify-center bg-[rgba(123,147,253,0.1)] border-r border-[rgba(60,63,87,0.7)] rounded-l-lg">
-              <Folder className="h-5 w-5 text-[rgb(123,147,253)]" />
+            <div className="absolute left-0 top-0 bottom-0 w-10 flex items-center justify-center bg-primary/10 border-r border-border rounded-l-lg">
+              <Folder className="h-5 w-5 text-primary" />
             </div>
             <Input
               placeholder="Enter project folder path..."
               value={inputValue}
               disabled={isLoading}
               onChange={(e) => setInputValue(e.target.value)}
-              className="pl-12 h-12 bg-[rgba(22,23,46,0.6)] border-[rgba(60,63,87,0.7)] focus:ring-2 focus:ring-[rgb(123,147,253)] focus:border-transparent text-[rgb(224,226,240)] font-medium"
+              className="pl-12 h-12 font-medium"
             />
           </div>
 
@@ -137,7 +137,7 @@ const FolderPickerView: React.FC<FolderPickerProps> = ({
           <Button
             type="submit"
             disabled={isLoading || !inputValue.trim()}
-            className="h-12 px-5 bg-gradient-to-r from-[rgb(123,147,253)] to-[rgb(123,147,253)] hover:from-[rgb(123,147,253)] hover:to-[rgb(189,147,249)] text-white font-medium shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-all duration-300"
+            className="h-12 px-5 bg-gradient-to-r from-primary to-primary hover:from-primary hover:to-purple-500 text-primary-foreground font-medium shadow-lg transition-all duration-300"
           >
             <ArrowRight size={18} className="mr-2" />
             Set Project
@@ -149,7 +149,7 @@ const FolderPickerView: React.FC<FolderPickerProps> = ({
             variant="outline"
             disabled={isLoading}
             onClick={() => setShowBrowser(true)}
-            className="h-12 px-5 border-[rgba(123,147,253,0.5)] bg-[rgba(123,147,253,0.1)] text-[rgb(123,147,253)] hover:bg-[rgba(123,147,253,0.2)] hover:text-[rgb(123,147,253)] hover:border-[rgba(123,147,253,0.7)] transition-all duration-300"
+            className="h-12 px-5 border-primary/50 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary hover:border-primary/70 transition-all duration-300"
           >
             {isLoading ? (
               <>
@@ -168,21 +168,21 @@ const FolderPickerView: React.FC<FolderPickerProps> = ({
 
       {/* Recent folders section with enhanced design */}
       {recent.length > 0 && (
-        <Card className="mt-5 overflow-hidden border-[rgba(60,63,87,0.5)] bg-[rgba(15,16,36,0.4)] backdrop-blur-sm animate-fade-in">
+        <Card className="mt-5 overflow-hidden backdrop-blur-sm animate-fade-in">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center">
-                <div className="p-1.5 rounded-md bg-[rgba(139,233,253,0.1)] mr-2">
-                  <Clock size={16} className="text-[rgb(139,233,253)]" />
+                <div className="p-1.5 rounded-md bg-primary/10 mr-2">
+                  <Clock size={16} className="text-primary" />
                 </div>
-                <span className="text-sm font-medium text-[rgb(224,226,240)]">Recent projects</span>
+                <span className="text-sm font-medium text-foreground">Recent projects</span>
               </div>
-              <Badge className="bg-[rgba(139,233,253,0.1)] text-[rgb(139,233,253)] border-[rgba(139,233,253,0.3)]">
+              <Badge variant="secondary">
                 {recent.length}
               </Badge>
             </div>
             
-            <Separator className="bg-[rgba(60,63,87,0.5)] mb-3" />
+            <Separator className="mb-3" />
             
             <ScrollArea className="h-24 pr-2">
               <ul className="space-y-2">
@@ -194,18 +194,18 @@ const FolderPickerView: React.FC<FolderPickerProps> = ({
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="w-full justify-start rounded-lg py-2 pl-3 pr-2 h-auto bg-[rgba(22,23,46,0.6)] hover:bg-[rgba(123,147,253,0.1)] border border-[rgba(60,63,87,0.5)] hover:border-[rgba(123,147,253,0.4)] transition-all duration-200 group"
+                            className="w-full justify-start rounded-lg py-2 pl-3 pr-2 h-auto bg-muted/50 hover:bg-primary/10 border border-border hover:border-primary/40 transition-all duration-200 group"
                             onClick={() => choosePath(p)}
                           >
                             <div className="flex items-center w-full">
-                              <HardDrive size={14} className="shrink-0 mr-2 text-[rgb(139,233,253)] group-hover:text-[rgb(123,147,253)]" />
-                              <span className="truncate font-medium text-[rgb(190,192,210)] group-hover:text-[rgb(224,226,240)]">{p}</span>
+                              <HardDrive size={14} className="shrink-0 mr-2 text-primary group-hover:text-primary" />
+                              <span className="truncate font-medium text-muted-foreground group-hover:text-foreground">{p}</span>
                             </div>
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent 
                           side="top" 
-                          className="font-mono max-w-xs break-all bg-[rgba(15,16,36,0.95)] border-[rgba(60,63,87,0.7)] shadow-xl backdrop-blur-lg"
+                          className="font-mono max-w-xs break-all"
                         >
                           {p}
                         </TooltipContent>
@@ -221,7 +221,7 @@ const FolderPickerView: React.FC<FolderPickerProps> = ({
 
       {/* folder‑browser modal */}
       {showBrowser && (
-        <FolderBrowserView
+        <StunningFolderBrowserView
           isOpen={showBrowser}
           onClose={() => setShowBrowser(false)}
           onSelect={(p) => {

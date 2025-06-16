@@ -9,35 +9,35 @@
 
 @layer base {
   :root {
-    /* Main background shades - using deeper, richer blues */
-    --color-bg-primary: 13, 14, 33;      /* Deeper background */
-    --color-bg-secondary: 20, 21, 44;    /* Slightly lighter background */
-    --color-bg-tertiary: 28, 29, 58;     /* Card backgrounds */
+    /* Refined background palette - more sophisticated gradients */
+    --color-bg-primary: 8, 10, 23;       /* Deep midnight blue */
+    --color-bg-secondary: 15, 18, 35;    /* Rich dark blue */
+    --color-bg-tertiary: 22, 26, 47;     /* Elevated surfaces */
 
-    /* UI element colors with better contrast */
-    --color-surface: 35, 36, 70;         /* Surface elements */
-    --color-border: 60, 63, 87;          /* Borders */
-    --color-border-highlight: 88, 91, 124; /* Highlighted borders */
+    /* Subtle surface variations */
+    --color-surface: 28, 32, 55;         /* Interactive surfaces */
+    --color-border: 45, 50, 75;          /* Refined borders */
+    --color-border-highlight: 65, 72, 105; /* Accent borders */
 
-    /* Text colors with improved contrast */
-    --color-text-primary: 230, 232, 245;  /* Brighter primary text */
-    --color-text-secondary: 195, 197, 215; /* Secondary text */
-    --color-text-muted: 145, 148, 175;    /* Muted text */
+    /* Harmonious text hierarchy */
+    --color-text-primary: 248, 250, 255;  /* Pure white text */
+    --color-text-secondary: 200, 205, 220; /* Soft secondary */
+    --color-text-muted: 130, 140, 165;    /* Elegant muted */
 
-    /* Refined accent colors */
-    --color-primary: 130, 155, 255;      /* Brighter primary blue */
-    --color-secondary: 85, 255, 130;     /* Vibrant green */
-    --color-tertiary: 195, 155, 255;     /* Richer purple */
-    --color-accent-1: 255, 125, 205;     /* Vivid pink */
-    --color-accent-2: 145, 240, 255;     /* Brighter cyan */
-    --color-accent-3: 245, 255, 145;     /* Brighter yellow */
-    --color-accent-4: 255, 190, 115;     /* Warmer orange */
+    /* Sophisticated accent palette */
+    --color-primary: 99, 125, 255;       /* Refined blue */
+    --color-secondary: 52, 211, 153;     /* Modern emerald */
+    --color-tertiary: 168, 85, 247;      /* Elegant purple */
+    --color-accent-1: 244, 114, 182;     /* Soft pink */
+    --color-accent-2: 34, 197, 255;      /* Bright cyan */
+    --color-accent-3: 250, 204, 21;      /* Warm amber */
+    --color-accent-4: 251, 146, 60;      /* Vibrant orange */
 
-    /* Semantic colors */
-    --color-success: 85, 255, 130;       /* Success green */
-    --color-warning: 255, 190, 115;      /* Warning orange */
-    --color-error: 255, 90, 90;          /* Error red */
-    --color-info: 145, 240, 255;         /* Info blue */
+    /* Semantic colors with better harmony */
+    --color-success: 52, 211, 153;       /* Emerald success */
+    --color-warning: 251, 146, 60;       /* Amber warning */
+    --color-error: 239, 68, 68;          /* Red error */
+    --color-info: 34, 197, 255;          /* Cyan info */
 
     /* Shadcn UI specific overrides */
     --background: var(--color-bg-primary);
@@ -79,6 +79,61 @@
   }
   html.dark {
     color-scheme: dark;
+  }
+
+  html.light {
+    color-scheme: light;
+    
+    /* Light theme color palette */
+    --color-bg-primary: 248, 250, 252;       /* Soft white */
+    --color-bg-secondary: 241, 245, 249;     /* Light gray */
+    --color-bg-tertiary: 255, 255, 255;      /* Pure white */
+
+    /* Light theme surfaces */
+    --color-surface: 226, 232, 240;          /* Light surface */
+    --color-border: 203, 213, 225;           /* Light borders */
+    --color-border-highlight: 148, 163, 184; /* Accent borders */
+
+    /* Light theme text */
+    --color-text-primary: 15, 23, 42;        /* Dark text */
+    --color-text-secondary: 51, 65, 85;      /* Medium text */
+    --color-text-muted: 100, 116, 139;       /* Muted text */
+
+    /* Light theme accents - keeping same hues but adjusted */
+    --color-primary: 79, 70, 229;            /* Indigo */
+    --color-secondary: 16, 185, 129;         /* Emerald */
+    --color-tertiary: 139, 92, 246;          /* Violet */
+    --color-accent-1: 236, 72, 153;          /* Pink */
+    --color-accent-2: 6, 182, 212;           /* Cyan */
+    --color-accent-3: 245, 158, 11;          /* Amber */
+    --color-accent-4: 249, 115, 22;          /* Orange */
+
+    /* Light theme semantics */
+    --color-success: 16, 185, 129;           /* Emerald */
+    --color-warning: 245, 158, 11;           /* Amber */
+    --color-error: 239, 68, 68;              /* Red */
+    --color-info: 6, 182, 212;               /* Cyan */
+
+    /* Update shadcn variables for light theme */
+    --background: var(--color-bg-primary);
+    --foreground: var(--color-text-primary);
+    --card: var(--color-bg-tertiary);
+    --card-foreground: var(--color-text-primary);
+    --popover: var(--color-bg-tertiary);
+    --popover-foreground: var(--color-text-primary);
+    --primary: var(--color-primary);
+    --primary-foreground: 255, 255, 255;
+    --secondary: var(--color-secondary);
+    --secondary-foreground: 255, 255, 255;
+    --muted: var(--color-surface);
+    --muted-foreground: var(--color-text-muted);
+    --accent: var(--color-tertiary);
+    --accent-foreground: var(--color-text-primary);
+    --destructive: var(--color-error);
+    --destructive-foreground: 255, 255, 255;
+    --border: var(--color-border);
+    --input: var(--color-border);
+    --ring: var(--color-primary);
   }
   body {
     @apply font-sans antialiased bg-[rgb(var(--color-bg-primary))] text-[rgb(var(--color-text-primary))] min-h-screen;
@@ -134,11 +189,31 @@
     hover:translate-y-[-3px] transition-all duration-300;
   }
   
-  /* Advanced glass-like effects */
+  /* Refined glass-like effects */
   .glass {
-    @apply bg-[rgba(var(--color-bg-tertiary),0.65)] backdrop-blur-xl border border-[rgba(var(--color-border),0.35)] shadow-[0_4px_20px_rgba(0,0,0,0.08)];
+    @apply bg-[rgba(var(--color-bg-tertiary),0.25)] backdrop-blur-[24px] border border-[rgba(var(--color-border),0.15)];
     position: relative;
     overflow: hidden;
+    box-shadow: 
+      0 8px 32px rgba(0, 0, 0, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  html.light .glass {
+    background: rgba(var(--color-bg-tertiary), 0.7);
+    backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(var(--color-border), 0.3);
+    box-shadow: 
+      0 8px 32px rgba(0, 0, 0, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+  
+  .glass::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, transparent 50%);
+    pointer-events: none;
   }
   
   .glass::before {
@@ -159,9 +234,28 @@
   }
   
   .glass-header {
-    @apply bg-[rgba(var(--color-bg-tertiary),0.8)] backdrop-blur-xl border-b border-[rgba(var(--color-border),0.5)];
+    @apply bg-[rgba(var(--color-bg-secondary),0.6)] backdrop-blur-[28px] border-b border-[rgba(var(--color-border),0.2)];
     position: relative;
     overflow: hidden;
+  }
+
+  html.light .glass-header {
+    background: rgba(var(--color-bg-secondary), 0.8);
+    backdrop-filter: blur(28px) saturate(200%);
+    border-bottom: 1px solid rgba(var(--color-border), 0.4);
+  }
+  
+  .glass-header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, 
+      transparent 0%, 
+      rgba(var(--color-primary), 0.3) 50%, 
+      transparent 100%);
   }
   
   .glass-header::after {
@@ -385,23 +479,23 @@
 }
 
 @keyframes slideUp {
-  from { transform: translateY(15px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from { transform: translateY(16px) scale(0.98); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
 }
 
 @keyframes slideInRight {
-  from { transform: translateX(15px); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  from { transform: translateX(16px) scale(0.98); opacity: 0; }
+  to { transform: translateX(0) scale(1); opacity: 1; }
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-7px); }
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-4px); }
 }
 
-@keyframes pulseSlow {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.8; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.02); }
 }
 
 @keyframes shimmer {

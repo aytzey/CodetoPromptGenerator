@@ -42,11 +42,12 @@ module.exports = {
         },
       },
       animation: {
-        'float': 'float 4s ease-in-out infinite',
+        'float': 'float 6s ease-in-out infinite',
         'shimmer': 'shimmer 2.5s infinite',
-        'pulse-slow': 'pulseSlow 3s infinite',
-        'slide-up': 'slideUp 0.5s cubic-bezier(0.215, 0.61, 0.355, 1)',
-        'slide-in-right': 'slideInRight 0.5s cubic-bezier(0.215, 0.61, 0.355, 1)',
+        'pulse-glow': 'pulseGlow 4s ease-in-out infinite',
+        'slide-up': 'slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
+        'slide-in-right': 'slideInRight 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
+        'fade-in': 'fadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
         'background-shift': 'backgroundShift 10s ease infinite',
       },
       boxShadow: {

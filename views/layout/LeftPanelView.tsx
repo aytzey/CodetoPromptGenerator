@@ -36,9 +36,9 @@ import { cn } from "@/lib/utils";
 
 import FileTreeView, { FileTreeViewHandle } from "@/views/FileTreeView";
 import SelectedFilesListView from "@/views/SelectedFilesListView";
-import SelectionGroupsView from "@/views/SelectionGroupsView";
-import ExclusionsManagerView from "@/views/ExclusionsManagerView";
-import LocalExclusionsManagerView from "@/views/LocalExclusionsManagerView";
+import RefinedSelectionGroupsView from "@/views/RefinedSelectionGroupsView";
+import RefinedExclusionsManagerView from "@/views/RefinedExclusionsManagerView";
+import RefinedLocalExclusionsManagerView from "@/views/RefinedLocalExclusionsManagerView";
 import KanbanBoardView from "@/views/KanbanBoardView";
 import TodoListView from "@/views/TodoListView";
 import UserStoryListView from "@/views/UserStoryListView";
@@ -322,11 +322,11 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
               <div className="flex-grow h-px bg-[rgba(var(--color-border),0.6)]"></div>
             </div>
             
-            <SelectionGroupsView
+            <RefinedSelectionGroupsView
               projectPath={projectPath}
               fileTree={fileTree}
-              selectedPaths={selectedFilePaths}
-              onSelectPaths={setSelectedFilePaths}
+              selectedFilePaths={selectedFilePaths}
+              setSelectedFilePaths={setSelectedFilePaths}
             />
           </CardContent>
         </Card>
@@ -334,8 +334,8 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
 
       {/* OPTIONS TAB */}
       <TabsContent value="options" className="mt-6 space-y-8 animate-fade-in">
-        <ExclusionsManagerView />
-        {projectPath && <LocalExclusionsManagerView />}
+        <RefinedExclusionsManagerView />
+        {projectPath && <RefinedLocalExclusionsManagerView />}
       </TabsContent>
 
       {/* TASKS TAB */}
