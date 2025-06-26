@@ -1,26 +1,5 @@
-# python_backend/services/autoselect_service.py
-# --------------------------------------------------------------------------- #
-#   AutoselectService – vNext (2025-05-06 patch-6)                            #
-# --------------------------------------------------------------------------- #
 """
-Graph-aware automatic file selection
-====================================
-
-* Supplies the LLM with **both** a compact textual project tree *and*
-  detailed code-map summaries (Tree-sitter) for better recall.
-* Guarantees codemap usage – if Tree-sitter isn’t available we raise,
-  so the issue is visible during testing.
-* Optional debugging: returning ``debug=1`` from the controller
-  attaches the raw codemap for each analysed file.
-
-Public API
-----------
-
-    autoselect_paths(request, *, timeout=20.0, return_debug=False)
-        → (selected_paths, raw_llm_reply, codemap_debug | None)
-
-The rest of the logic (JSON extraction, fuzzy path resolution, …)
-remains 100 % compatible with the previous release.
+AutoselectService – now 3-stage (embeddings → heuristics → LLM)
 """
 from __future__ import annotations
 
@@ -28,13 +7,13 @@ import json
 import logging
 import os
 import pathlib
+from typing import Any, Dict, List, Optional, Tuple
 import re
-from functools import lru_cache
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
-
 import httpx
-
+from functools import lru_cache 
 from models.autoselect_request import AutoSelectRequest
+from services.autoselect_heuristics import rank_candidates
+from services.embeddings_service import EmbeddingsService
 from services.service_exceptions import wrap_service_methods
 from repositories.file_storage import FileStorageRepository
 from services.codemap_service import CodemapService
@@ -42,178 +21,155 @@ from services.codemap_service import CodemapService
 logger = logging.getLogger(__name__)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 1 · Exceptions
-# ─────────────────────────────────────────────────────────────────────────────
-class UpstreamError(RuntimeError):
-    """Transport / HTTP / format issues talking to OpenRouter."""
+class UpstreamError(RuntimeError): ...
+class ConfigError(RuntimeError): ...
 
 
-class ConfigError(RuntimeError):
-    """Mis-configuration (e.g. missing API key)."""
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 2 · Service
-# ─────────────────────────────────────────────────────────────────────────────
 @wrap_service_methods
 class AutoselectService:
-    _URL: str = "https://openrouter.ai/api/v1/chat/completions"
-    _DEFAULT_MODEL: str = "meta-llama/llama-4-maverick:free"
+    _URL = "https://openrouter.ai/api/v1/chat/completions"
+    _MODEL = os.getenv("AUTOSELECT_MODEL", "meta-llama/llama-4-maverick:free")
 
-    # Strict JSON schema expected from the model
     _SCHEMA: Dict[str, Any] = {
-        "name": "selected_paths",
+        "name": "smart_select_v2",
         "strict": True,
         "schema": {
             "type": "object",
             "properties": {
                 "selected": {"type": "array", "items": {"type": "string"}},
+                "ask":      {"type": "array", "items": {"type": "string"}},
+                "confidence": {"type": "number"},
             },
             "required": ["selected"],
             "additionalProperties": False,
         },
     }
 
-    # Prompt-building tunables
-    _TOKEN_HARD_LIMIT: int = 45_000           # Max tokens we’re willing to send
-    _SUMMARY_MAX_CHARS: int = 10_000             # Max characters in a one-file summary
-    _TREE_MAX_LINES: int = 30_000              # Truncate huge project trees
-
-    # ------------------------------------------------------------------ init
+    _SUMMARY_MAX_CHARS: int = 20_000          # ← ADD (used by _cheap_summary)
+    _TOKEN_HARD_LIMIT: int = 750_000
+    _TREE_MAX_LINES: int = 50_000
     def __init__(self) -> None:
-        self.api_key: Optional[str] = os.getenv("OPENROUTER_API_KEY")
-        self.model: str = os.getenv("AUTOSELECT_MODEL", self._DEFAULT_MODEL)
-
-        if not self.api_key:
-            logger.warning(
-                "AutoselectService started WITHOUT OPENROUTER_API_KEY – "
-                "autoselect calls will fail."
-            )
-
-        self._storage = FileStorageRepository()
-        self._codemap = CodemapService(storage_repo=self._storage)
-
-        print("AutoselectService: %s", self._codemap)
-
-        # Holds last-run codemap info for optional debugging
-        self._debug_map: Dict[str, Dict[str, Any]] = {}
-
-        logger.info("AutoselectService ready (model = %s)", self.model)
+            self.api_key = os.getenv("OPENROUTER_API_KEY")
+            if not self.api_key:
+                raise ConfigError("OPENROUTER_API_KEY is not set")
+            self._storage = FileStorageRepository()
+            self._codemap = CodemapService(storage_repo=self._storage)
+            self._debug_map: Dict[str, Dict[str, Any]] = {}   # ← add
 
     # ───────────────────────────────────────── public API ────────────────────
     def autoselect_paths(
         self,
-        request_obj: AutoSelectRequest,
+        req: AutoSelectRequest,
         *,
-        timeout: float = 20.0,
-        return_debug: bool = False,
-    ) -> Tuple[List[str], str, Optional[Dict[str, Dict[str, Any]]]]:
+        timeout: float = 25.0,
+        clarifications: Optional[Dict[str, str]] = None,
+    ) -> Tuple[List[str], Dict[str, Any]]:
         """
-        Call OpenRouter with a project-graph prompt and post-process its reply.
-
-        Parameters
-        ----------
-        request_obj
-            Pydantic-validated payload from the controller.
-        timeout
-            Network timeout in **seconds**.
-        return_debug
-            If *True* the third tuple element contains a mapping
-            ``{ rel_path: CodemapInfo | {"error": …} }``.
-
-        Returns
-        -------
-        (selected_paths, raw_llm_reply, codemap_debug | None)
+        Main entry; returns (selected_paths, raw_json_reply).
         """
-        self._debug_map.clear()
-        if not self.api_key:
-            raise ConfigError("OPENROUTER_API_KEY is not set on the server")
+        emb_svc = EmbeddingsService(req.baseDir)
+        if not emb_svc._paths:        # cold index build
+            summaries = {
+                rel: self._file_summary(os.path.join(req.baseDir, rel), rel)
+                for rel in req.treePaths
+            }
+            emb_svc.index(summaries)
 
-        prompt: str = self._build_prompt(request_obj)
+        lang_pref = (
+            {f".{l.lower()}" for l in req.languages or []}
+            or {".py", ".cpp", ".cc", ".hpp", ".ts", ".tsx", ".js", ".jsx"}
+        )
 
-        logger.info("▶︎ Autoselect prompt (first 1 000 chars)\n%s", prompt[:100000])
+        # Stage 0+1  → shortlist ≤ 120
+        shortlist = rank_candidates(
+            req.baseDir,
+            req.treePaths,
+            req.instructions,
+            self._file_summary,
+            embedding_svc=emb_svc,
+            lang_bias=lang_pref,
+            keep_top=120,
+        )
 
-        payload: Dict[str, Any] = {
-            "model": self.model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a strict JSON generator. "
-                        "Return ONLY the JSON matching the schema."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            "temperature": 0.0,
-            "max_tokens": 256,
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": self._SCHEMA,
-            },
-            "structured_outputs": True,
-        }
-        headers: Dict[str, str] = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
+        # Stage 2  → LLM
+        prompt = self._build_prompt(req, shortlist, clarifications)
+        llm_json = self._call_openrouter(prompt, timeout)
+        selected = self._massage(llm_json.get("selected", []), shortlist)
+        conf = float(llm_json.get("confidence", 0.0))
 
-        try:
-            with httpx.Client(timeout=timeout) as client:
-                rsp = client.post(self._URL, json=payload, headers=headers)
-        except httpx.HTTPError as exc:
-            logger.error("Transport error calling OpenRouter: %s", exc)
-            raise UpstreamError("OpenRouter unreachable") from exc
+        # auto question if low-confidence and not already in clarify mode
+        if conf < 0.95 and clarifications is None:
+            questions = llm_json.get("ask", [])
+            return selected, {"selected": selected, "ask": questions, "confidence": conf}
 
-        if rsp.status_code != 200:
-            logger.warning(
-                "OpenRouter autoselect error %s → %.200s",
-                rsp.status_code,
-                rsp.text,
-            )
-            raise UpstreamError(f"Upstream HTTP {rsp.status_code}")
-
-        try:
-            raw_reply: str = rsp.json()["choices"][0]["message"]["content"]
-        except Exception as exc:
-            logger.error("Failed to parse OpenRouter response: %s", exc)
-            raise UpstreamError("Malformed upstream JSON") from exc
-
-        logger.debug("↩ OpenRouter (trimmed): %s", raw_reply[:350].replace("\n", " ⏎ "))
-
-        parsed_json: Any = self._extract_json(raw_reply)
-
-        if parsed_json is not None:
-            selected = self._normalise_parsed(parsed_json, request_obj.treePaths)
-        else:
-            # Fallback legacy line-scanner
-            selected = self._legacy_parse(raw_reply, request_obj.treePaths)
-
-        if return_debug:
-            # Return a *copy* so callers can mutate safely
-            return selected, raw_reply, dict(self._debug_map)
-
-        return selected, raw_reply, None
+        return selected, {"selected": selected, "confidence": conf}
 
     # ───────────────────────────────────── prompt helpers ────────────────────
-    def _build_prompt(self, req: AutoSelectRequest) -> str:
-        tree_block: str = self._tree_text(req.treePaths)
-        graph_block: str = self._build_graph(req)
 
-        preamble: str = (
-            "You are a code-aware assistant. "
-            "Given the project *file graph* and the user's task, "
-            "decide which **relative paths** must be read entirely. "
-            "Return ONLY those paths inside the required JSON.\n\n"
-        )
+    def _build_prompt(
+        self,
+        req: AutoSelectRequest,
+        shortlist: List[str],
+        clarifications: Optional[Dict[str, str]],
+    ) -> str:
+        clar_block = ""
+        if clarifications:
+            pretty = json.dumps(clarifications, ensure_ascii=False, indent=2)
+            clar_block = f"### Clarifications\n{pretty}\n\n"
 
         return (
-            f"{preamble}"
+            "You are a code-aware assistant.\n"
+            "Select the *minimal* set of candidate files that fully covers the user's task.\n"
+            "If you need more info respond with {\"ask\":[...]}. "
+            "Respond ONLY with valid JSON matching the schema.\n\n"
             f"### Task\n{req.instructions}\n\n"
-            f"### Project Tree (truncated)\n{tree_block}\n\n"
-            f"### File Graph (summaries)\n{graph_block}"
+            f"{clar_block}"
+            "### Candidate Files\n"
+            + "\n".join(f"• {p}" for p in shortlist)
         )
+    
+    def _call_openrouter(self, content: str, timeout: float) -> Dict[str, Any]:
+        """
+        Send prompt → return parsed JSON object (never a raw str).
+
+        OpenRouter **always** wraps the LLM output as a *string* in
+        `choices[0].message.content` even when we request
+        `response_format = json_schema`.  This helper now handles both:
+          • already-parsed dict  (future-proof)
+          • JSON string          (current behaviour, needs json.loads)
+        """
+        headers = {
+            "Authorization": f"Bearer {self.api_key}" if self.api_key else "",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self._MODEL,
+            "temperature": 0,
+            "max_tokens": 800,
+            "messages": [
+                {"role": "system", "content": "You are a strict JSON generator."},
+                {"role": "user", "content": content},
+            ],
+            "response_format": {"type": "json_schema", "json_schema": self._SCHEMA},
+            "structured_outputs": True,
+        }
+        with httpx.Client(timeout=timeout) as client:
+            rsp = client.post(self._URL, json=payload, headers=headers)
+        if rsp.status_code != 200:
+            raise UpstreamError(f"OpenRouter HTTP {rsp.status_code}")
+
+        raw = rsp.json()["choices"][0]["message"]["content"]
+
+        if isinstance(raw, dict):          # rare but future-compatible
+            return raw
+        if isinstance(raw, str):
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError as exc:
+                logger.error("Malformed JSON from OpenRouter: %.200s", raw)
+                raise UpstreamError("Upstream returned invalid JSON") from exc
+
+        raise UpstreamError("Unexpected upstream payload type")
 
     # ---------- textual tree -------------------------------------------------
     def _tree_text(self, paths: List[str]) -> str:
@@ -231,14 +187,14 @@ class AutoselectService:
         return "\n".join(out)
 
     # ---------- graph block (unchanged except for lowered try/except) -------
-    def _build_graph(self, req: AutoSelectRequest) -> str:
+    def _build_graph(self, req: AutoSelectRequest, only: List[str]) -> str:
         if not req.baseDir or not os.path.isdir(req.baseDir):
             return ""
 
         blocks: List[str] = []
         used_tokens: int = 0
 
-        for rel in req.treePaths:
+        for rel in only:
             abs_path: str = os.path.normpath(os.path.join(req.baseDir, rel))
             if not os.path.isfile(abs_path):
                 continue

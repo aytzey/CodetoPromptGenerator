@@ -21,7 +21,6 @@ import {
   import { useTodoService } from "@/services/todoServiceHooks";
   import { useAutoSelectService } from "@/services/autoSelectServiceHooks";
   import { useActorWizardService } from "@/services/actorWizardServiceHooks";
-
   import {
     applyExtensionFilter,
     applySearchFilter,
@@ -36,7 +35,6 @@ import {
     const setError = useAppStore((s) => s.setError);
     const openSettingsModal = useAppStore((s) => s.openSettingsModal);   // Get action from store
     const closeSettingsModal = useAppStore((s) => s.closeSettingsModal); // Get action from store
-
 
     const projectPath = useProjectStore((s) => s.projectPath);
     const setProjectPath = useProjectStore((s) => s.setProjectPath);
@@ -182,7 +180,7 @@ import {
     const handlePathSelected = useCallback((path: string) => {
         setProjectPath(path);
     }, [setProjectPath]);
-
+    const handleSmartSelect = () => autoSelect(/* internal hook now adds langs */);
 
     // --- Return values needed by the UI ---
     return {

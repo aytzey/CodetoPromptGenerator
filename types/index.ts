@@ -47,12 +47,19 @@ export type CodemapResponse = Record<string, CodemapInfo>;
 
 /* ═══════════════ Auto‑select models ═══════════════ */
 export interface AutoSelectRequest {
-  projectPath: string;
+  baseDir: string;
+  treePaths: string[];
   instructions: string;
-  treePaths: string[];               // flattened *relative* paths
+  languages?: string[];
 }
 
-export type AutoSelectResponse = string[];            // list of *relative* paths
+export interface AutoSelectResponse {
+  selected: string[];
+  confidence: number;
+  ask?: string[];
+  llmRaw?: string;
+  codemap?: Record<string, unknown>;
+}
 
 /* █████  KANBAN  ██████████████████████████████████████████████████████ */
 export const KanbanStatusValues   = ['todo', 'in-progress', 'done'] as const;

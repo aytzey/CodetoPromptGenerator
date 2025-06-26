@@ -770,3 +770,7 @@
   0%, 100% { opacity: 0.3; transform: scale(1); }
   50% { opacity: 0.7; transform: scale(1.03); }
 }
+
+.smart-select-dialog {
+  overscroll-behavior: contain;
+}

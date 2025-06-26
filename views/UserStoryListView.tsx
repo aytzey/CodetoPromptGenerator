@@ -1,4 +1,3 @@
-// FILE: views/UserStoryListView.tsx
 // views/UserStoryListView.tsx
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
@@ -8,11 +7,15 @@ import {
   Task, 
   KanbanPriority,
   KanbanStatus,
+  Actor,
 } from '@/types';
 import { useUserStoryStore } from '@/stores/useUserStoryStore';
 import { useUserStoryService } from '@/services/userStoryServiceHooks';
 import { useKanbanStore } from '@/stores/useKanbanStore'; 
 import { useKanbanService } from '@/services/kanbanServiceHooks'; 
+import { useAppStore } from '@/stores/useAppStore'; 
+import { useActorStore } from '@/stores/useActorStore'; 
+import { usePromptStore } from '@/stores/usePromptStore'; // Ensure this is used for main instructions
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 
@@ -21,6 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox'; 
 import {
   Tooltip,
   TooltipProvider,
@@ -45,7 +49,12 @@ import {
   ClipboardList, 
   Link2, 
   Circle, 
-  Unlink, 
+  Unlink,
+  FileText, 
+  XCircle, 
+  CheckSquare, 
+  Square, 
+  Check, 
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -120,11 +129,19 @@ const UserStoryListView: React.FC = () => {
   const isLoading = useUserStoryStore(s => s.isLoading);
   const isSaving = useUserStoryStore(s => s.isSaving);
   const getStoryById = useUserStoryStore(s => s.getStoryById);
+  const selectedStoryIds = useUserStoryStore(s => s.selectedStoryIds); 
+  const toggleStorySelection = useUserStoryStore(s => s.toggleStorySelection); 
+  const setSelectedStoryIdsBatch = useUserStoryStore(s => s.setSelectedStoryIdsBatch); 
+  const clearSelectedStories = useUserStoryStore(s => s.clearSelectedStories); 
 
   const { loadStories, createStory, updateStory, deleteStory, addTaskToStory, removeTaskFromStory } = useUserStoryService();
   
   const allKanbanTasks = useKanbanStore(s => s.items); 
   const { create: createKanbanTask, load: loadKanbanTasks } = useKanbanService(); 
+
+  const { setNotification } = useAppStore(); // Only get setNotification from useAppStore
+  const { setMainInstructions } = usePromptStore(); // Get setMainInstructions from usePromptStore
+  const { getActorById } = useActorStore(); 
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPriority, setFilterPriority] = useState<KanbanPriority | null>(null);
@@ -247,6 +264,127 @@ const UserStoryListView: React.FC = () => {
     }
   };
 
+  const generateInstructionFromStories = useCallback((selectedStories: UserStory[]): string => {
+    console.log("[UserStoryListView] generateInstructionFromStories called with:", selectedStories);
+    if (!selectedStories.length) {
+      console.log("[UserStoryListView] No stories provided to generateInstructionFromStories.");
+      return "No user stories selected.";
+    }
+
+    let instruction = "## Generated Instruction from User Stories ##\n\n";
+    instruction += "The following user stories have been selected to guide the next development task:\n\n";
+
+    selectedStories.forEach((story, index) => {
+      let actorName = 'N/A';
+      if (story.actorId) {
+        try {
+          const actor = getActorById(story.actorId);
+          if (actor && actor.name) {
+            actorName = actor.name;
+          } else if (actor) { // Actor exists but no name
+            actorName = `Actor ID ${story.actorId} (Name not found)`;
+            console.warn(`[UserStoryListView] Actor ID ${story.actorId} found but has no name.`);
+          } else { // Actor not found
+            actorName = `Actor ID ${story.actorId} (Actor not found)`;
+            console.warn(`[UserStoryListView] Actor ID ${story.actorId} not found in store.`);
+          }
+        } catch (e) {
+          console.error(`[UserStoryListView] Error fetching actor with ID ${story.actorId}:`, e);
+          actorName = `Actor ID ${story.actorId} (Error fetching actor details)`;
+        }
+      }
+
+      instruction += `---
+**USER STORY ${index + 1} (ID: ${story.id})**
+**Title:** ${story.title}
+**As a:** ${actorName}
+**I want to:** ${story.description || 'N/A'}
+
+**Acceptance Criteria:**
+${story.acceptanceCriteria ? story.acceptanceCriteria.split('\n').map(ac => `- ${ac.trim()}`).join('\n') : '- N/A'}
+
+**Priority:** ${story.priority}
+**Status:** ${story.status}
+**Points:** ${story.points ?? 'N/A'}
+**Associated Tasks Count:** ${story.taskIds?.length || 0}
+---\n\n`;
+    });
+
+    instruction += `**General Considerations:**
+- Ensure all acceptance criteria for the selected stories are met.
+- Pay attention to the specified priorities and story points for effort estimation.
+- Consider the user actors involved to maintain a user-centric approach.
+`;
+    console.log("[UserStoryListView] Generated instruction string:", instruction);
+    return instruction;
+  }, [getActorById]);
+
+  const handleGenerateInstruction = useCallback(() => {
+    console.log("[UserStoryListView] handleGenerateInstruction called. Selected IDs:", selectedStoryIds);
+
+    const storiesToProcess = selectedStoryIds
+      .map(id => {
+        const story = getStoryById(id);
+        if (!story) console.warn(`[UserStoryListView] Story with ID ${id} not found in store.`);
+        return story;
+      })
+      .filter((s): s is UserStory => s !== undefined);
+
+    console.log("[UserStoryListView] Stories to process:", storiesToProcess);
+
+    if (storiesToProcess.length === 0) {
+      console.log("[UserStoryListView] No stories to process, returning.");
+      setNotification({ type: 'warning', message: 'No stories selected to generate instruction.' });
+      return;
+    }
+
+    const instructionText = generateInstructionFromStories(storiesToProcess);
+    
+    try {
+      // Use setMainInstructions from usePromptStore
+      setMainInstructions(instructionText); // Corrected: Directly use setMainInstructions from usePromptStore
+      console.log("[UserStoryListView] setMainInstructions (from usePromptStore) called successfully."); // Updated log
+    } catch (e) {
+      console.error("[UserStoryListView] Error calling setMainInstructions (from usePromptStore):", e);
+      setNotification({ type: 'error', message: 'Failed to update main instruction. Check console.' });
+      return; 
+    }
+    
+    try {
+      setNotification({ type: 'success', message: `Instruction generated from ${storiesToProcess.length} user stor${storiesToProcess.length === 1 ? 'y' : 'ies'} and copied to main instructions.` });
+      console.log("[UserStoryListView] setNotification called successfully.");
+    } catch (e) {
+      console.error("[UserStoryListView] Error calling setNotification:", e);
+    }
+
+    clearSelectedStories();
+    console.log("[UserStoryListView] clearSelectedStories called.");
+  }, [selectedStoryIds, getStoryById, generateInstructionFromStories, setMainInstructions, setNotification, clearSelectedStories]); // Added setMainInstructions to dependencies
+
+  const handleToggleSelectAllVisible = useCallback(() => {
+    const visibleStoryIds = filteredStories.map(s => s.id);
+    if (visibleStoryIds.length === 0) return;
+
+    const allVisibleAreSelected = visibleStoryIds.every(id => selectedStoryIds.includes(id));
+
+    if (allVisibleAreSelected) {
+      const newSelection = selectedStoryIds.filter(id => !visibleStoryIds.includes(id));
+      setSelectedStoryIdsBatch(newSelection);
+    } else {
+      const newSelection = Array.from(new Set([...selectedStoryIds, ...visibleStoryIds]));
+      setSelectedStoryIdsBatch(newSelection);
+    }
+  }, [filteredStories, selectedStoryIds, setSelectedStoryIdsBatch]);
+
+  const allVisibleSelected = useMemo(() => {
+    if (filteredStories.length === 0) return false;
+    return filteredStories.every(s => selectedStoryIds.includes(s.id));
+  }, [filteredStories, selectedStoryIds]);
+
+  const someVisibleSelected = useMemo(() => {
+    return filteredStories.some(s => selectedStoryIds.includes(s.id));
+  }, [filteredStories, selectedStoryIds]);
+
 
   if (isLoading && !stories.length) {
     return (
@@ -284,7 +422,28 @@ const UserStoryListView: React.FC = () => {
         </div>
 
         {/* Search and filters */}
-        <div className="flex gap-2 mb-2">
+        <div className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-2 mb-2 items-center">
+          {filteredStories.length > 0 && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Checkbox
+                    id="select-all-visible"
+                    checked={allVisibleSelected ? true : (someVisibleSelected ? 'indeterminate' : false)}
+                    onCheckedChange={handleToggleSelectAllVisible}
+                    aria-label={allVisibleSelected ? "Deselect all visible stories" : "Select all visible stories"}
+                    className="mr-2 border-[rgba(var(--color-border),0.7)] data-[state=checked]:bg-[rgb(var(--color-primary))] data-[state=indeterminate]:bg-[rgb(var(--color-primary),0.6)]"
+                  />
+                </TooltipTrigger>
+                <TooltipContent>
+                  {allVisibleSelected ? "Deselect all visible" : "Select all visible"} ({filteredStories.length} storie{filteredStories.length === 1 ? 's' : ''})
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          {filteredStories.length === 0 && <div/>} {/* Placeholder for grid alignment */}
+
+
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[rgb(var(--color-text-muted))]" />
             <Input
@@ -377,6 +536,43 @@ const UserStoryListView: React.FC = () => {
             )}
           </div>
         )}
+
+        {/* Contextual Action Bar for Selected Stories */}
+        {selectedStoryIds.length > 0 && (
+          <div className="my-3 p-2.5 rounded-lg bg-[rgba(var(--color-bg-tertiary),0.6)] border border-[rgba(var(--color-border),0.4)] flex items-center justify-between gap-3 shadow-sm">
+            <span className="text-sm font-medium text-[rgb(var(--color-text-secondary))]">
+              {selectedStoryIds.length} storie{selectedStoryIds.length === 1 ? '' : 's'} selected
+            </span>
+            <div className="flex items-center gap-2">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      onClick={handleGenerateInstruction} 
+                      size="sm"
+                      className="bg-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary),0.9)] text-white"
+                    >
+                      <FileText size={15} className="mr-1.5" />
+                      Generate Instruction
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Generate instruction from selected stories</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" size="sm" onClick={clearSelectedStories}>
+                      <XCircle size={15} className="mr-1.5" />
+                      Clear Selection
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Deselect all stories</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* User Story List */}
@@ -393,98 +589,120 @@ const UserStoryListView: React.FC = () => {
               </p>
             </div>
           ) : (
-            <div className="space-y-4 py-1">
+            <div className="space-y-3 py-1"> {/* Reduced space-y for tighter packing with checkboxes */}
               {filteredStories.map((story) => (
                 <div
                   key={story.id}
-                  className="group relative bg-[rgba(var(--color-bg-secondary),0.3)] hover:bg-[rgba(var(--color-bg-secondary),0.5)] border border-[rgba(var(--color-border),0.4)] hover:border-[rgba(var(--color-border),0.6)] rounded-lg p-4 transition-all duration-200 ease-out hover:shadow-sm"
+                  className={cn(
+                    "group relative bg-[rgba(var(--color-bg-secondary),0.3)] hover:bg-[rgba(var(--color-bg-secondary),0.5)] border border-[rgba(var(--color-border),0.4)] hover:border-[rgba(var(--color-border),0.6)] rounded-lg p-3 transition-all duration-200 ease-out hover:shadow-sm cursor-pointer", 
+                    selectedStoryIds.includes(story.id) && "ring-2 ring-[rgb(var(--color-primary))] bg-[rgba(var(--color-primary),0.05)] shadow-md" 
+                  )}
+                  onClick={(e) => { 
+                     const target = e.target as HTMLElement;
+                     if (target.closest('button, a, [role="button"], [data-no-propagate="true"], input[type="checkbox"]')) { // Updated to include checkbox
+                       return;
+                     }
+                     toggleStorySelection(story.id);
+                  }}
                 >
                   {/* Priority indicator line */}
                   <div
                     className={cn(
                       'absolute top-0 left-0 w-1 h-full rounded-l-lg transition-all duration-200',
-                      PRIORITY_CONFIG[story.priority].bgColor.replace('/10', '/40'), // Make it stronger for the line
+                      PRIORITY_CONFIG[story.priority].bgColor.replace('/10', '/40'), 
                     )}
                   />
+                  
+                  <div className="flex items-start gap-3 pl-1"> 
+                    <Checkbox
+                      id={`story-select-${story.id}`}
+                      checked={selectedStoryIds.includes(story.id)}
+                      onCheckedChange={() => toggleStorySelection(story.id)}
+                      className="mt-[5px] flex-shrink-0 border-[rgba(var(--color-border),0.7)] data-[state=checked]:bg-[rgb(var(--color-primary))]"
+                      aria-label={`Select story titled ${story.title}`}
+                      data-no-propagate="true" 
+                    />
+                    <div className="flex-1 min-w-0"> 
+                      <h3 className="text-base font-medium text-[rgb(var(--color-text-primary))] line-clamp-2 mb-1.5">
+                        {story.title}
+                      </h3>
+                      {story.description && (
+                        <p className="text-sm text-[rgb(var(--color-text-muted))] line-clamp-2 mb-1.5">
+                          {story.description}
+                        </p>
+                      )}
+                      {story.acceptanceCriteria && (
+                        <div className="mt-1.5 text-xs text-[rgb(var(--color-text-muted))] border-t border-[rgba(var(--color-border),0.3)] pt-1.5">
+                          <span className="font-semibold text-[rgb(var(--color-text-secondary))]">Acceptance Criteria:</span>
+                          <p className="line-clamp-2">{story.acceptanceCriteria}</p>
+                        </div>
+                      )}
 
-                  <div className="pl-2">
-                    <h3 className="text-base font-medium text-[rgb(var(--color-text-primary))] line-clamp-2 mb-2">
-                      {story.title}
-                    </h3>
-                    {story.description && (
-                      <p className="text-sm text-[rgb(var(--color-text-muted))] line-clamp-3 mb-2">
-                        {story.description}
-                      </p>
-                    )}
-                    {story.acceptanceCriteria && (
-                      <div className="mt-2 text-xs text-[rgb(var(--color-text-muted))] border-t border-[rgba(var(--color-border),0.3)] pt-2">
-                        <span className="font-semibold text-[rgb(var(--color-text-secondary))]">Acceptance Criteria:</span>
-                        <p className="line-clamp-2">{story.acceptanceCriteria}</p>
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between flex-wrap gap-2 mt-3">
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            'h-5 px-1.5 text-[10px] font-medium border',
-                            PRIORITY_CONFIG[story.priority].bgColor,
-                            PRIORITY_CONFIG[story.priority].borderColor,
-                            PRIORITY_CONFIG[story.priority].color
-                          )}
-                        >
-                          {PRIORITY_CONFIG[story.priority].icon}
-                          <span className="ml-0.5">{PRIORITY_CONFIG[story.priority].label}</span>
-                        </Badge>
-                        {story.points && (
+                      <div className="flex items-center justify-between flex-wrap gap-2 mt-2.5">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <Badge
                             variant="outline"
-                            className="h-5 px-1.5 text-[10px] font-medium bg-purple-500/10 border-purple-500/30 text-purple-400"
-                          >
-                            <Hash size={10} className="mr-0.5" />
-                            {story.points} pts
-                          </Badge>
-                        )}
-                        <Badge
-                            variant="outline"
                             className={cn(
-                                'h-5 px-1.5 text-[10px] font-medium border',
-                                STATUS_CONFIG[story.status].bgColor,
-                                STATUS_CONFIG[story.status].borderColor,
-                                STATUS_CONFIG[story.status].color
+                              'h-5 px-1.5 text-[10px] font-medium border',
+                              PRIORITY_CONFIG[story.priority].bgColor,
+                              PRIORITY_CONFIG[story.priority].borderColor,
+                              PRIORITY_CONFIG[story.priority].color
                             )}
-                        >
-                            <div className={cn('w-2 h-2 rounded-full mr-1', STATUS_CONFIG[story.status].color.replace('text-', 'bg-'))} />
-                            {STATUS_CONFIG[story.status].label}
-                        </Badge>
-                        {story.taskIds && story.taskIds.length > 0 && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Badge
-                                  variant="secondary"
-                                  className="h-5 px-1.5 text-[10px] font-medium cursor-pointer"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleViewAssociatedTasks(story);
-                                  }}
-                                >
-                                  <ListTodo size={10} className="mr-0.5" />
-                                  {story.taskIds.length} tasks
-                                </Badge>
-                              </TooltipTrigger>
-                              <TooltipContent side="top">
-                                <p className="text-xs">Linked to {story.taskIds.length} user {story.taskIds.length === 1 ? 'task' : 'tasks'}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                      </div>
-                      
-                      <div className="text-xs text-[rgb(var(--color-text-muted))] flex items-center gap-1.5">
-                        <Calendar size={10} />
-                        Created: {format(new Date(story.createdAt), 'MMM d, yyyy')}
+                          >
+                            {PRIORITY_CONFIG[story.priority].icon}
+                            <span className="ml-0.5">{PRIORITY_CONFIG[story.priority].label}</span>
+                          </Badge>
+                          {story.points && (
+                            <Badge
+                              variant="outline"
+                              className="h-5 px-1.5 text-[10px] font-medium bg-purple-500/10 border-purple-500/30 text-purple-400"
+                            >
+                              <Hash size={10} className="mr-0.5" />
+                              {story.points} pts
+                            </Badge>
+                          )}
+                          <Badge
+                              variant="outline"
+                              className={cn(
+                                  'h-5 px-1.5 text-[10px] font-medium border',
+                                  STATUS_CONFIG[story.status].bgColor,
+                                  STATUS_CONFIG[story.status].borderColor,
+                                  STATUS_CONFIG[story.status].color
+                              )}
+                          >
+                              <div className={cn('w-2 h-2 rounded-full mr-1', STATUS_CONFIG[story.status].color.replace('text-', 'bg-'))} />
+                              {STATUS_CONFIG[story.status].label}
+                          </Badge>
+                          {story.taskIds && story.taskIds.length > 0 && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="secondary"
+                                    size="sm" 
+                                    className="h-5 px-1.5 text-[10px] font-medium"
+                                    onClick={(e) => {
+                                      e.stopPropagation(); 
+                                      handleViewAssociatedTasks(story);
+                                    }}
+                                    data-no-propagate="true"
+                                  >
+                                    <ListTodo size={10} className="mr-0.5" />
+                                    {story.taskIds.length} task{story.taskIds.length === 1 ? '' : 's'}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                  <p className="text-xs">View linked tasks ({story.taskIds.length})</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </div>
+                        
+                        <div className="text-xs text-[rgb(var(--color-text-muted))] flex items-center gap-1.5">
+                          <Calendar size={10} />
+                          Created: {format(new Date(story.createdAt), 'MMM d, yyyy')}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -499,9 +717,10 @@ const UserStoryListView: React.FC = () => {
                             size="icon"
                             className="h-7 w-7 bg-[rgb(var(--color-bg-primary))] border-[rgba(var(--color-border),0.5)] hover:border-[rgba(var(--color-tertiary),0.5)] hover:text-[rgb(var(--color-tertiary))]"
                             onClick={(e) => {
-                              e.stopPropagation();
+                              e.stopPropagation(); 
                               handleEditStory(story);
                             }}
+                            data-no-propagate="true"
                           >
                             <Edit2 size={12} />
                           </Button>
@@ -518,9 +737,10 @@ const UserStoryListView: React.FC = () => {
                             size="icon"
                             className="h-7 w-7 bg-[rgb(var(--color-bg-primary))] border-[rgba(var(--color-border),0.5)] hover:border-rose-500/50 hover:text-rose-400"
                             onClick={(e) => {
-                              e.stopPropagation();
+                              e.stopPropagation(); 
                               handleDeleteStory(story.id);
                             }}
+                            data-no-propagate="true"
                           >
                             <Trash2 size={12} />
                           </Button>
@@ -529,6 +749,12 @@ const UserStoryListView: React.FC = () => {
                       </Tooltip>
                     </TooltipProvider>
                   </div>
+                   {/* Selected checkmark overlay */}
+                  {selectedStoryIds.includes(story.id) && (
+                    <div className="absolute top-2 right-2 p-0.5 bg-[rgb(var(--color-primary))] text-white rounded-full pointer-events-none" data-no-propagate="true">
+                      <Check size={10} />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

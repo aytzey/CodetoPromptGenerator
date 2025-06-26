@@ -1,50 +1,77 @@
 // stores/useAppStore.ts
 import { create } from "zustand";
-import type { CodemapResponse } from "@/types"; // Import CodemapResponse
+import { devtools } from 'zustand/middleware'; 
+import { immer } from 'zustand/middleware/immer'; 
+import type { CodemapResponse } from "@/types"; 
+
+export interface AppNotification {
+  id?: string; 
+  type: 'success' | 'error' | 'warning' | 'info';
+  message: string;
+  duration?: number; 
+}
 
 interface AppState {
   error: string | null;
-  setError(e: string | null): void;
-  clearError(): void;
+  setError: (e: string | null) => void;
+  clearError: () => void;
 
   isLoading: boolean;
-  setIsLoading(b: boolean): void;
+  setIsLoading: (b: boolean) => void;
 
   codemapFilterEmpty: boolean;
-  toggleCodemapFilterEmpty(): void;
+  toggleCodemapFilterEmpty: () => void;
 
-  // State for settings modal
   isSettingsModalOpen: boolean;
   openSettingsModal: () => void;
   closeSettingsModal: () => void;
 
-  // State for Codemap modal
   isCodemapModalOpen: boolean;
   codemapModalData: CodemapResponse | null;
   openCodemapModal: (data: CodemapResponse) => void;
   closeCodemapModal: () => void;
+
+  notification: AppNotification | null;
+  setNotification: (notification: AppNotification | null) => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
-  error: null,
-  setError: (e) => set({ error: e }),
-  clearError: () => set({ error: null }),
+export const useAppStore = create<AppState>()(
+  devtools( 
+    immer((set) => ({ 
+      error: null,
+      setError: (e) => set((state) => { state.error = e; }),
+      clearError: () => set((state) => { state.error = null; }),
 
-  isLoading: false,
-  setIsLoading: (b) => set({ isLoading: b }),
+      isLoading: false,
+      setIsLoading: (b) => set((state) => { state.isLoading = b; }),
 
-  codemapFilterEmpty: false,
-  toggleCodemapFilterEmpty: () =>
-    set((s) => ({ codemapFilterEmpty: !s.codemapFilterEmpty })),
+      codemapFilterEmpty: false,
+      toggleCodemapFilterEmpty: () =>
+        set((state) => { state.codemapFilterEmpty = !state.codemapFilterEmpty; }),
 
-  // Settings modal state and actions
-  isSettingsModalOpen: false,
-  openSettingsModal: () => set({ isSettingsModalOpen: true }),
-  closeSettingsModal: () => set({ isSettingsModalOpen: false }),
+      isSettingsModalOpen: false,
+      openSettingsModal: () => set((state) => { state.isSettingsModalOpen = true; }),
+      closeSettingsModal: () => set((state) => { state.isSettingsModalOpen = false; }),
 
-  // Codemap modal state and actions
-  isCodemapModalOpen: false,
-  codemapModalData: null,
-  openCodemapModal: (data) => set({ isCodemapModalOpen: true, codemapModalData: data }),
-  closeCodemapModal: () => set({ isCodemapModalOpen: false, codemapModalData: null }),
-}));
+      isCodemapModalOpen: false,
+      codemapModalData: null,
+      openCodemapModal: (data) => set((state) => {
+        state.isCodemapModalOpen = true;
+        state.codemapModalData = data;
+      }),
+      closeCodemapModal: () => set((state) => {
+        state.isCodemapModalOpen = false;
+        state.codemapModalData = null;
+      }),
+
+      notification: null, 
+      setNotification: (notification: AppNotification | null) => set((state) => {
+        // The console log you saw (useAppStore.ts:87 for notification) would be here
+        // console.log('[useAppStore] setNotification called with:', notification); 
+        state.notification = notification;
+      }),
+      // Line 80 of the original useAppStore.ts might have been here if it was the setMainInstruction log.
+      // If mainInstruction and setMainInstruction were removed, this line number would shift or be gone for that specific log.
+    })),
+  ),
+);
