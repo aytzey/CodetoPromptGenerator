@@ -5,6 +5,7 @@ from services.actor_suggest_service import ActorSuggestService
 from repositories.file_storage import FileStorageRepository
 from utils.response_utils import success_response, error_response
 from pydantic import ValidationError # Import Pydantic's ValidationError
+from services.service_exceptions import InvalidInputError, ResourceNotFoundError
 import logging
 
 logger = logging.getLogger(__name__)
@@ -34,8 +35,8 @@ def actors_collection():
             actors = actor_service.list_actors(project_path)
             # Convert Pydantic models to dictionaries for JSON serialization
             return success_response(data=[a.dict() for a in actors])
-        except ValueError as e: # Catch invalid project path
-            return error_response(str(e), status_code=400)
+        except InvalidInputError as e:
+            return error_response(str(e), str(e), status_code=400)
         except Exception as e:
             logger.exception(f"Error listing actors for project: {project_path}")
             return error_response(str(e), "Failed to list actors", 500)
@@ -47,7 +48,7 @@ def actors_collection():
         return success_response(data=new_actor.dict(), status_code=201)
     except ValidationError as e:
         return error_response(f"Validation error: {e.json()}", status_code=400)
-    except ValueError as e:
+    except (InvalidInputError, ValueError) as e:
         return error_response(str(e), status_code=400)
     except Exception as e:
         logger.exception(f"Error creating actor for project: {project_path}")
@@ -82,8 +83,8 @@ def actor_item(actor_id: int):
             if actor is None:
                 return error_response("Actor not found", status_code=404)
             return success_response(data=actor.dict())
-        except ValueError as e: # Catch invalid project path
-            return error_response(str(e), status_code=400)
+        except InvalidInputError as e:
+            return error_response(str(e), str(e), status_code=400)
         except Exception as e:
             logger.exception(f"Error getting actor {actor_id} for project: {project_path}")
             return error_response(str(e), "Failed to retrieve actor", 500)
@@ -110,8 +111,8 @@ def actor_item(actor_id: int):
             if not deleted:
                 return error_response("Actor not found", status_code=404)
             return "", 204 # 204 No Content
-        except ValueError as e: # Catch invalid project path
-            return error_response(str(e), status_code=400)
+        except InvalidInputError as e:
+            return error_response(str(e), str(e), status_code=400)
         except Exception as e:
             logger.exception(f"Error deleting actor {actor_id} for project: {project_path}")
             return error_response(str(e), "Failed to delete actor", 500)

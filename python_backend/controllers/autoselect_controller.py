@@ -44,4 +44,18 @@ def api_autoselect_clarify():
     payload = data.get("payload") or {}
     answers = data.get("answers") or {}
     payload["clarifications"] = answers
-    return api_autoselect.__wrapped__(payload)  # type: ignore
+    
+    # Validate and process the payload same as api_autoselect
+    try:
+        req = _validate(payload)
+    except Exception as exc:
+        return error_response(str(exc), 400)
+    
+    try:
+        selected, meta = svc.autoselect_paths(req, clarifications=answers)
+    except ConfigError as exc:
+        return error_response(str(exc), 500)
+    except UpstreamError as exc:
+        return error_response(str(exc), 502)
+    
+    return success_response(data={**meta, "selected": selected})

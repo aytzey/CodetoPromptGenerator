@@ -171,9 +171,12 @@ class ActorService:
         if actor_index is None:
             return None
         
+        # Remove 'id' from updates to prevent ID changes
+        updates_without_id = {k: v for k, v in updates.items() if k != 'id'}
+        
         # Apply updates and re-validate the entire model
         existing_actor = actors[actor_index].dict()  # Get dict representation
-        updated_data = {**existing_actor, **updates}
+        updated_data = {**existing_actor, **updates_without_id}
         
         try:
             updated_actor = ActorModel(**updated_data)
