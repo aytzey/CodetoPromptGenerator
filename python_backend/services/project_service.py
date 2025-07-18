@@ -153,6 +153,16 @@ class ProjectService:
             logger.error("Directory vanished: %s", cur_dir)
             raise ResourceNotFoundError(f"Directory not found: {cur_dir}") from exc
 
+    def _sort_tree_recursive(self, nodes: List[Dict[str, Any]]) -> None:
+        """Sort tree nodes recursively, directories first, then by name (case-insensitive)."""
+        # Sort current level
+        nodes.sort(key=lambda n: (n["type"] != "directory", n["name"].lower()))
+        
+        # Sort children recursively
+        for node in nodes:
+            if node.get("type") == "directory" and node.get("children"):
+                self._sort_tree_recursive(node["children"])
+
     def get_project_tree(self, root_dir: str) -> List[Dict[str, Any]]:
         if not root_dir:
             raise InvalidInputError("rootDir must not be empty.")
@@ -169,7 +179,7 @@ class ProjectService:
 
         tree: List[Dict[str, Any]] = []
         self._walk(root_dir, root_dir, spec, tree)
-        tree.sort(key=lambda n: (n["type"] != "directory", n["name"].lower()))
+        self._sort_tree_recursive(tree)
         return tree
 
     # ───────────── candidate-path expander ───────────── #

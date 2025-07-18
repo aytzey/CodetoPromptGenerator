@@ -170,11 +170,12 @@ def test_multiple_items_unique_ids(client: FlaskClient, tmp_project):
 
 def test_special_characters_in_title(client: FlaskClient, tmp_project):
     # Test with special characters
-    payload = {"title": "Task with yŠW& <¯ <script>alert('xss')</script>"}
+    payload = {"title": "Task with ä½ å¥½ & <script>alert('xss')</script> Ã©mojis ğŸ¯"}
     resp = client.post(_url(tmp_project), json=payload)
     assert resp.status_code == 201
-    assert "yŠW&" in resp.json["data"]["title"]
-    assert "<¯" in resp.json["data"]["title"]
+    assert "ä½ å¥½" in resp.json["data"]["title"]
+    assert "<script>" in resp.json["data"]["title"]
+    assert "ğŸ¯" in resp.json["data"]["title"]
 
 
 def test_whitespace_title(client: FlaskClient, tmp_project):

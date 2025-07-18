@@ -7,7 +7,7 @@ import json
 import logging
 import os
 import pathlib
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union, Set
 import re
 import httpx
 from functools import lru_cache 
@@ -69,10 +69,36 @@ class AutoselectService:
         """
         emb_svc = EmbeddingsService(req.baseDir)
         if not emb_svc._paths:        # cold index build
-            summaries = {
-                rel: self._file_summary(os.path.join(req.baseDir, rel), rel)
-                for rel in req.treePaths
-            }
+            # Build comprehensive summaries for embedding
+            summaries = {}
+            for rel in req.treePaths:
+                abs_path = os.path.join(req.baseDir, rel)
+                
+                # Get both simple summary and codemap data
+                simple_summary = self._file_summary(abs_path, rel)
+                
+                # Try to get richer context from codemap
+                try:
+                    codemap = self._codemap.extract_codemap(
+                        os.path.dirname(abs_path), [os.path.basename(abs_path)]
+                    )
+                    codemap_info = codemap.get(os.path.basename(abs_path), {})
+                    
+                    # Build enriched summary combining path, codemap data, and content summary
+                    parts = [rel]  # Include path for context
+                    if codemap_info.get("classes"):
+                        parts.append(f"classes: {' '.join(codemap_info['classes'])}")
+                    if codemap_info.get("functions"):
+                        parts.append(f"functions: {' '.join(codemap_info['functions'])}")
+                    if codemap_info.get("references"):
+                        parts.append(f"refs: {' '.join(codemap_info['references'][:20])}")
+                    parts.append(simple_summary)
+                    
+                    summaries[rel] = " ".join(parts)
+                except:
+                    # Fallback to simple summary
+                    summaries[rel] = f"{rel} {simple_summary}"
+                    
             emb_svc.index(summaries)
 
         lang_pref = (
@@ -117,14 +143,24 @@ class AutoselectService:
             pretty = json.dumps(clarifications, ensure_ascii=False, indent=2)
             clar_block = f"### Clarifications\n{pretty}\n\n"
 
+        # Build comprehensive RAG context with code summaries
+        summaries_block = self._build_summaries_block(req, shortlist[:30])  # Top 30 files
+        
+        # Build code snippets from top semantic matches
+        code_block = self._build_code_snippets_block(req, shortlist[:10])  # Top 10 files
+
         return (
-            "You are a code-aware assistant.\n"
+            "You are a code-aware assistant analyzing a software project.\n"
             "Select the *minimal* set of candidate files that fully covers the user's task.\n"
+            "Use the provided code summaries and snippets to make an informed decision.\n"
             "If you need more info respond with {\"ask\":[...]}. "
             "Respond ONLY with valid JSON matching the schema.\n\n"
             f"### Task\n{req.instructions}\n\n"
             f"{clar_block}"
-            "### Candidate Files\n"
+            f"### Code Intelligence (RAG Context)\n\n"
+            f"{summaries_block}\n\n"
+            f"{code_block}\n\n"
+            "### All Candidate Files\n"
             + "\n".join(f"• {p}" for p in shortlist)
         )
     
@@ -170,6 +206,104 @@ class AutoselectService:
                 raise UpstreamError("Upstream returned invalid JSON") from exc
 
         raise UpstreamError("Unexpected upstream payload type")
+
+    def _build_summaries_block(self, req: AutoSelectRequest, top_files: List[str]) -> str:
+        """Build a block of file summaries with extracted symbols."""
+        if not top_files:
+            return "No file summaries available."
+        
+        summaries = []
+        for rel_path in top_files:
+            abs_path = os.path.join(req.baseDir, rel_path)
+            if not os.path.isfile(abs_path):
+                continue
+                
+            # Get codemap info from debug map or extract fresh
+            codemap_info = self._debug_map.get(rel_path)
+            if not codemap_info or "error" in codemap_info:
+                try:
+                    codemap = self._codemap.extract_codemap(
+                        os.path.dirname(abs_path), [os.path.basename(abs_path)]
+                    )
+                    codemap_info = codemap.get(os.path.basename(abs_path), {})
+                except:
+                    codemap_info = {}
+            
+            # Build structured summary
+            parts = [f"**{rel_path}**"]
+            
+            if codemap_info.get("classes"):
+                parts.append(f"  Classes: {', '.join(codemap_info['classes'][:10])}")
+            if codemap_info.get("functions"):
+                parts.append(f"  Functions: {', '.join(codemap_info['functions'][:10])}")
+            if codemap_info.get("references"):
+                parts.append(f"  Key refs: {', '.join(codemap_info['references'][:10])}")
+                
+            if len(parts) > 1:  # Has content beyond just the path
+                summaries.append("\n".join(parts))
+        
+        return "#### File Summaries\n" + "\n\n".join(summaries[:20])  # Limit to 20
+
+    def _build_code_snippets_block(self, req: AutoSelectRequest, top_files: List[str]) -> str:
+        """Build code snippets from most relevant files."""
+        if not top_files:
+            return "No code snippets available."
+            
+        snippets = []
+        total_chars = 0
+        MAX_SNIPPET_CHARS = 50000  # Limit total snippet size
+        
+        for rel_path in top_files:
+            if total_chars > MAX_SNIPPET_CHARS:
+                break
+                
+            abs_path = os.path.join(req.baseDir, rel_path)
+            if not os.path.isfile(abs_path):
+                continue
+                
+            try:
+                content = self._storage.read_text(abs_path)
+                if not content:
+                    continue
+                    
+                # Extract first 1000 chars or important sections
+                snippet = self._extract_key_sections(content, rel_path)
+                if snippet:
+                    lang = pathlib.Path(rel_path).suffix.lstrip('.') or 'txt'
+                    snippets.append(f"**{rel_path}**\n```{lang}\n{snippet}\n```")
+                    total_chars += len(snippet)
+            except:
+                continue
+                
+        return "#### Code Snippets\n" + "\n\n".join(snippets)
+    
+    def _extract_key_sections(self, content: str, rel_path: str = "") -> str:
+        """Extract key sections from file content."""
+        lines = content.splitlines()
+        if len(lines) <= 30:
+            return content[:1500]  # Small file, return most of it
+            
+        # For larger files, try to extract imports and key definitions
+        key_lines = []
+        
+        # Get imports/includes (first 20 lines usually)
+        for i, line in enumerate(lines[:20]):
+            if any(kw in line for kw in ['import', 'from', '#include', 'require', 'use']):
+                key_lines.append(line)
+                
+        # Look for class/function definitions
+        for i, line in enumerate(lines):
+            if any(kw in line for kw in ['class ', 'def ', 'function ', 'const ', 'export ']):
+                # Include the definition line and next few lines
+                key_lines.extend(lines[i:i+5])
+                if len(key_lines) > 30:
+                    break
+                    
+        if key_lines:
+            return '\n'.join(key_lines[:40])
+        else:
+            # Fallback to first N chars
+            return content[:1500]
 
     # ---------- textual tree -------------------------------------------------
     def _tree_text(self, paths: List[str]) -> str:

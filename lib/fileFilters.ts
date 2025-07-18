@@ -181,3 +181,88 @@ export function findNodeByPath(
   }
   return undefined
 }
+
+/**
+ * List of text file extensions that should be included in "Select All"
+ * This excludes binary files, images, videos, etc.
+ */
+const TEXT_FILE_EXTENSIONS = [
+  // Programming languages
+  '.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.c', '.cpp', '.cc', '.cxx', 
+  '.h', '.hpp', '.cs', '.php', '.rb', '.go', '.rs', '.swift', '.kt', '.scala',
+  '.r', '.m', '.mm', '.pl', '.pm', '.lua', '.dart', '.elm', '.clj', '.cljs',
+  '.ex', '.exs', '.erl', '.hrl', '.fs', '.fsx', '.fsi', '.ml', '.mli', '.nim',
+  '.v', '.vh', '.vhd', '.vhdl', '.jl', '.cr', '.zig', '.hx', '.hxml',
+  
+  // Web technologies
+  '.html', '.htm', '.css', '.scss', '.sass', '.less', '.styl',
+  '.vue', '.svelte', '.astro', '.njk', '.ejs', '.pug', '.hbs', '.mustache',
+  
+  // Data formats and configs
+  '.json', '.jsonc', '.json5', '.xml', '.yaml', '.yml', '.toml', '.ini',
+  '.conf', '.config', '.cfg', '.properties', '.env', '.env.local', '.env.production',
+  '.env.development', '.env.test', '.gitignore', '.gitattributes', '.editorconfig',
+  '.prettierrc', '.eslintrc', '.babelrc', '.npmrc', '.yarnrc',
+  
+  // Documentation
+  '.md', '.mdx', '.rst', '.txt', '.text', '.asciidoc', '.adoc', '.tex',
+  '.latex', '.org', '.pod', '.rdoc',
+  
+  // Shell scripts
+  '.sh', '.bash', '.zsh', '.fish', '.ps1', '.psm1', '.psd1', '.bat', '.cmd',
+  
+  // Build files
+  '.mk', '.make', '.makefile', '.cmake', '.gradle', '.maven',
+  '.bazel', '.bzl', '.sbt', '.mill',
+  
+  // Other source files
+  '.sql', '.graphql', '.gql', '.proto', '.thrift', '.avsc',
+  '.dockerfile', '.containerfile', '.tf', '.tfvars', '.hcl',
+  
+  // Log files (optional - you might want to exclude these)
+  '.log',
+  
+  // Common config files without extensions
+  'dockerfile', 'makefile', 'rakefile', 'gemfile', 'guardfile', 
+  'gulpfile', 'gruntfile', 'vagrantfile', 'jenkinsfile', 'procfile',
+  
+  // License and readme files
+  'license', 'licence', 'readme', 'changelog', 'contributing',
+  'authors', 'contributors', 'copying', 'install', 'news', 'thanks',
+  'history', 'notice', 'manifest'
+];
+
+/**
+ * Check if a file is a text file based on its extension or name
+ */
+export function isTextFile(fileName: string): boolean {
+  const lowerName = fileName.toLowerCase();
+  
+  // Check if it's a known config file without extension
+  const nameWithoutPath = lowerName.split('/').pop() || '';
+  if (TEXT_FILE_EXTENSIONS.some(name => 
+    typeof name === 'string' && 
+    !name.startsWith('.') && 
+    nameWithoutPath === name
+  )) {
+    return true;
+  }
+  
+  // Check extensions
+  return TEXT_FILE_EXTENSIONS.some(ext => 
+    ext.startsWith('.') && lowerName.endsWith(ext)
+  );
+}
+
+/**
+ * Filter an array of paths to only include text files
+ */
+export function filterTextFiles(paths: string[]): string[] {
+  return paths.filter(path => {
+    // Skip directories
+    if (path.endsWith('/')) return false;
+    
+    // Check if it's a text file
+    return isTextFile(path);
+  });
+}

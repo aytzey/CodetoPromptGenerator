@@ -52,13 +52,13 @@ class TodoUpdateRequest(BaseModel):
 
 # ─────────────────────────── kanban ───────────────────────────────
 class KanbanCreateRequest(_FlexibleModel):
-    title: str = Field(..., min_length=1)
+    title: str = Field(..., min_length=1, max_length=256)
     description: Optional[str] = None
     status: Optional[str] = None
 
 
 class KanbanUpdateRequest(_FlexibleModel):
-    title: Optional[str] = None
+    title: Optional[str] = Field(None, min_length=1, max_length=256)
     description: Optional[str] = None
     status: Optional[str] = None
 

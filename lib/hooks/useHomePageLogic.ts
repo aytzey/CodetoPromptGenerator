@@ -25,6 +25,7 @@ import {
     applyExtensionFilter,
     applySearchFilter,
     flattenTree,
+    filterTextFiles,
   } from "@/lib/fileFilters";
   import type { FileTreeViewHandle } from "@/views/FileTreeView";
 
@@ -151,8 +152,10 @@ import {
       const allVisibleFiles = flattenTree(filteredTree).filter(
         (p) => !p.endsWith("/"),
       );
+      // Filter to only include text files
+      const textFilesOnly = filterTextFiles(allVisibleFiles);
       selectAllFiles(
-        allVisibleFiles,
+        textFilesOnly,
         new Set(globalExclusions),
         localExclusionsSet,
       );
@@ -180,7 +183,6 @@ import {
     const handlePathSelected = useCallback((path: string) => {
         setProjectPath(path);
     }, [setProjectPath]);
-    const handleSmartSelect = () => autoSelect(/* internal hook now adds langs */);
 
     // --- Return values needed by the UI ---
     return {
