@@ -28,7 +28,7 @@ class ConfigError(RuntimeError): ...
 @wrap_service_methods
 class AutoselectService:
     _URL = "https://openrouter.ai/api/v1/chat/completions"
-    _MODEL = os.getenv("AUTOSELECT_MODEL", "meta-llama/llama-4-maverick:free")
+    _MODEL = os.getenv("AUTOSELECT_MODEL", "google/gemma-3-27b-it:free")
 
     _SCHEMA: Dict[str, Any] = {
         "name": "smart_select_v2",
@@ -44,6 +44,8 @@ class AutoselectService:
             "additionalProperties": False,
         },
     }
+    
+    _TOKEN_LIMIT: int = 50_000  # 50k token limit for selected files
 
     _SUMMARY_MAX_CHARS: int = 20_000          # ← ADD (used by _cheap_summary)
     _TOKEN_HARD_LIMIT: int = 750_000
@@ -120,7 +122,17 @@ class AutoselectService:
         # Stage 2  → LLM
         prompt = self._build_prompt(req, shortlist, clarifications)
         llm_json = self._call_openrouter(prompt, timeout)
-        selected = self._massage(llm_json.get("selected", []), shortlist)
+        # Handle null or missing 'selected' field
+        raw_selected = llm_json.get("selected", [])
+        if raw_selected is None:
+            raw_selected = []
+        
+        # Massage to get valid paths ordered by relevance
+        ordered_files = self._massage(raw_selected, shortlist)
+        
+        # Apply token limit - select files until we hit 50k tokens
+        selected = self._apply_token_limit(req.baseDir, ordered_files)
+        
         conf = float(llm_json.get("confidence", 0.0))
 
         # auto question if low-confidence and not already in clarify mode
@@ -129,6 +141,44 @@ class AutoselectService:
             return selected, {"selected": selected, "ask": questions, "confidence": conf}
 
         return selected, {"selected": selected, "confidence": conf}
+
+    def _apply_token_limit(self, base_dir: str, ordered_files: List[str]) -> List[str]:
+        """
+        Select files from the ordered list until we reach the token limit.
+        Estimates tokens as chars/4 (rough approximation).
+        """
+        selected = []
+        total_tokens = 0
+        
+        for rel_path in ordered_files:
+            abs_path = os.path.join(base_dir, rel_path)
+            
+            # Estimate file size in tokens
+            try:
+                if os.path.isfile(abs_path):
+                    file_size = os.path.getsize(abs_path)
+                    estimated_tokens = file_size // 4  # Rough estimate: 1 token ≈ 4 chars
+                    
+                    # Check if adding this file would exceed the limit
+                    if total_tokens + estimated_tokens > self._TOKEN_LIMIT:
+                        # If we haven't selected any files yet, at least include this one
+                        if not selected:
+                            selected.append(rel_path)
+                        break
+                    
+                    selected.append(rel_path)
+                    total_tokens += estimated_tokens
+                else:
+                    # If file doesn't exist, still include it (might be a test scenario)
+                    selected.append(rel_path)
+            except (OSError, IOError):
+                # Include the file anyway if we can't read its size
+                selected.append(rel_path)
+        
+        logger.info("Selected %d files with ~%d tokens (limit: %d)", 
+                    len(selected), total_tokens, self._TOKEN_LIMIT)
+        
+        return selected
 
     # ───────────────────────────────────── prompt helpers ────────────────────
 
@@ -151,8 +201,10 @@ class AutoselectService:
 
         return (
             "You are a code-aware assistant analyzing a software project.\n"
-            "Select the *minimal* set of candidate files that fully covers the user's task.\n"
-            "Use the provided code summaries and snippets to make an informed decision.\n"
+            "Return ALL files that are related to the user's task, ordered by relevance.\n"
+            "Put the MOST relevant files first, then moderately relevant, then slightly relevant.\n"
+            "Include any file that might be useful, even if only tangentially related.\n"
+            "Use the provided code summaries and snippets to understand relationships.\n"
             "If you need more info respond with {\"ask\":[...]}. "
             "Respond ONLY with valid JSON matching the schema.\n\n"
             f"### Task\n{req.instructions}\n\n"
@@ -178,20 +230,27 @@ class AutoselectService:
             "Authorization": f"Bearer {self.api_key}" if self.api_key else "",
             "Content-Type": "application/json",
         }
+        # Check if model supports structured outputs
+        supports_structured = not any(x in self._MODEL for x in ["gemma", "mixtral", "qwen"])
+        
         payload = {
             "model": self._MODEL,
             "temperature": 0,
             "max_tokens": 800,
             "messages": [
-                {"role": "system", "content": "You are a strict JSON generator."},
-                {"role": "user", "content": content},
+                {"role": "system", "content": "You are a strict JSON generator. Always respond with valid JSON only."},
+                {"role": "user", "content": content + "\n\nRespond ONLY with JSON matching this schema:\n" + json.dumps(self._SCHEMA["schema"], indent=2)},
             ],
-            "response_format": {"type": "json_schema", "json_schema": self._SCHEMA},
-            "structured_outputs": True,
         }
+        
+        # Only add structured output params for models that support it
+        if supports_structured:
+            payload["response_format"] = {"type": "json_schema", "json_schema": self._SCHEMA}
+            payload["structured_outputs"] = True
         with httpx.Client(timeout=timeout) as client:
             rsp = client.post(self._URL, json=payload, headers=headers)
         if rsp.status_code != 200:
+            logger.error("OpenRouter error: %s %s", rsp.status_code, rsp.text[:500])
             raise UpstreamError(f"OpenRouter HTTP {rsp.status_code}")
 
         raw = rsp.json()["choices"][0]["message"]["content"]
@@ -200,7 +259,32 @@ class AutoselectService:
             return raw
         if isinstance(raw, str):
             try:
-                return json.loads(raw)
+                # Try to extract JSON from markdown code blocks
+                clean_raw = raw.strip()
+                if clean_raw.startswith("```"):
+                    # Extract content between ```json and ```
+                    import re
+                    match = re.search(r'```(?:json)?\s*\n(.*?)\n```', clean_raw, re.DOTALL)
+                    if match:
+                        clean_raw = match.group(1).strip()
+                    else:
+                        # Fallback: remove first and last lines
+                        lines = clean_raw.split('\n')
+                        if len(lines) > 2:
+                            clean_raw = '\n'.join(lines[1:-1])
+                
+                parsed = json.loads(clean_raw)
+                # Ensure parsed result is a dict matching our schema
+                if not isinstance(parsed, dict):
+                    logger.error("LLM returned non-dict JSON: %.200s", raw)
+                    # Return minimal valid response
+                    return {"selected": [], "confidence": 0.0}
+                # Validate required fields exist
+                if "selected" not in parsed:
+                    parsed["selected"] = []
+                if not isinstance(parsed.get("selected"), list):
+                    parsed["selected"] = []
+                return parsed
             except json.JSONDecodeError as exc:
                 logger.error("Malformed JSON from OpenRouter: %.200s", raw)
                 raise UpstreamError("Upstream returned invalid JSON") from exc
@@ -389,7 +473,14 @@ class AutoselectService:
                 return s[: self._SUMMARY_MAX_CHARS] if len(s) > self._SUMMARY_MAX_CHARS else s
 
         # Fallback – cheap regex headlines
-        return self._cheap_summary(self._storage.read_text(abs_path) or "")
+        try:
+            content = self._storage.read_text(abs_path)
+            if content is None:
+                return "[Unable to read file]"
+            return self._cheap_summary(content)
+        except (UnicodeDecodeError, IOError) as e:
+            logger.debug("Cannot read file %s for summary: %s", rel_path, e)
+            return "[Binary or unreadable file]"
 
     def _cheap_summary(self, text: str, max_len: int = _SUMMARY_MAX_CHARS) -> str:
         if not text:

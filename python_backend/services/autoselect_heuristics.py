@@ -79,4 +79,8 @@ def rank_candidates(
     ranked.sort(key=lambda t: (-t[0], t[1]))
     top = [rel for sc, rel in ranked[:keep_top]]
 
+    # Handle empty tree_paths
+    if not ranked:
+        return []
+    
     return top if ranked[0][0] > 0 else tree_paths[:keep_top]
