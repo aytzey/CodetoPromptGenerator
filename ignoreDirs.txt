@@ -12,3 +12,4 @@ externalLibs
 out
 dummy_tests
 dist
+.pytest_cache
