@@ -4,7 +4,7 @@ import { useCallback } from 'react';
 import { useTodoStore } from '@/stores/useTodoStore';
 import { useProjectStore } from '@/stores/useProjectStore';
 import { useAppStore } from '@/stores/useAppStore';
-import { fetchApi } from './apiService';
+import { unifiedService as ipcService } from './unifiedService';
 import { TodoItem } from '@/types'; // Define TodoItem in types/index.ts or similar
 
 export function useTodoService() {
@@ -28,8 +28,7 @@ export function useTodoService() {
 
         setIsLoading(true);
         setError(null);
-        const url = `/api/todos?projectPath=${encodeURIComponent(currentProjectPath)}`;
-        const result = await fetchApi<TodoItem[]>(url);
+        const result = await ipcService.todo.list(currentProjectPath);
         if (result) {
             setTodos(result);
         } else {
@@ -59,11 +58,7 @@ export function useTodoService() {
         // addTodoOptimistic(optimisticTodo);
 
         const body = { text: trimmedText, createdAt: new Date().toISOString() };
-        const url = `/api/todos?projectPath=${encodeURIComponent(currentProjectPath)}`;
-        const result = await fetchApi<TodoItem>(url, {
-            method: 'POST',
-            body: JSON.stringify(body),
-        });
+        const result = await ipcService.todo.create(currentProjectPath, body);
 
         if (result) {
             // If using optimistic update, you might just refresh the list or update the temp ID
@@ -91,12 +86,7 @@ export function useTodoService() {
         // Optimistic update
         updateTodoOptimistic(id, !currentStatus);
 
-        const body = { completed: !currentStatus };
-        const url = `/api/todos/${id}?projectPath=${encodeURIComponent(currentProjectPath)}`;
-        const result = await fetchApi<TodoItem>(url, {
-            method: 'PUT',
-            body: JSON.stringify(body),
-        });
+        const result = await ipcService.todo.toggle(currentProjectPath, id);
 
         if (!result) {
             // Revert optimistic update on failure
@@ -124,9 +114,8 @@ export function useTodoService() {
         // Optimistic update
         removeTodoOptimistic(id);
 
-        const url = `/api/todos/${id}?projectPath=${encodeURIComponent(currentProjectPath)}`;
-        // fetchApi returns null for 204 No Content, which is expected for DELETE success
-        const response = await fetchApi<null>(url, { method: 'DELETE' });
+        // ipcService returns success status for DELETE
+        const response = await ipcService.todo.delete(currentProjectPath, id);
 
         // If fetchApi didn't set an error, the DELETE was likely successful (returned 204 or ok=true)
         // If fetchApi *did* set an error, we need to revert.
@@ -163,8 +152,7 @@ export function useTodoService() {
         let allSucceeded = true;
         // Sequentially delete completed todos
         for (const todo of completedTodos) {
-            const url = `/api/todos/${todo.id}?projectPath=${encodeURIComponent(currentProjectPath)}`;
-            const response = await fetchApi<null>(url, { method: 'DELETE' });
+            const response = await ipcService.todo.delete(currentProjectPath, todo.id);
              const wasErrorSet = useAppStore.getState().error !== null;
              if (wasErrorSet) {
                  allSucceeded = false;

@@ -15,7 +15,8 @@
 
 import useSWRMutation from "swr/mutation";
 import { useProjectStore } from "@/stores/useProjectStore";
-import { fetchApi } from "./apiService";
+// import { fetchApi } from "./apiService";
+import { ipcService } from "./ipcService";
 import type { CodemapRequest, CodemapResponse } from "@/types";
 
 export function useCodemapExtractor() {
@@ -29,13 +30,15 @@ export function useCodemapExtractor() {
     if (!projectPath) {
       throw new Error("Project path missing – cannot extract codemap.");
     }
-    const body: CodemapRequest = { baseDir: projectPath, paths: arg.paths };
-    const res = await fetchApi<CodemapResponse>(
-      "/api/codemap/extract",
-      { method: "POST", body: JSON.stringify(body) },
-    );
-    if (!res) throw new Error("Codemap extraction failed – see global error.");
-    return res;
+    // TODO: Implement codemap extraction in IPC handler
+    // const body: CodemapRequest = { baseDir: projectPath, paths: arg.paths };
+    // const res = await fetchApi<CodemapResponse>(
+    //   "/api/codemap/extract",
+    //   { method: "POST", body: JSON.stringify(body) },
+    // );
+    // if (!res) throw new Error("Codemap extraction failed – see global error.");
+    // return res;
+    throw new Error("Codemap extraction not implemented in IPC handler yet");
   };
 
   return useSWRMutation<CodemapResponse, Error, string>("/api/codemap/extract", poster);

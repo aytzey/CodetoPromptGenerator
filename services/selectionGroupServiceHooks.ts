@@ -5,7 +5,8 @@
  *  – POST /api/selectionGroups?projectPath=<abs>   { groups: { … } }
  */
 import { useCallback } from 'react';
-import { fetchApi } from './apiService';
+// import { fetchApi } from './apiService';
+import { unifiedService as ipcService } from './unifiedService';
 import { useSelectionGroupStore } from '@/stores/useSelectionGroupStore';
 import { useAppStore } from '@/stores/useAppStore';
 
@@ -17,9 +18,11 @@ export function useSelectionGroupService() {
   const loadGroups = useCallback(
     async (projectPath: string) => {
       if (!projectPath) return;
-      const res = await fetchApi<Record<string, string[]>>(
-        `/api/selectionGroups?projectPath=${encodeURIComponent(projectPath)}`,
-      );
+      // TODO: Implement selection groups in IPC handler
+      // const res = await fetchApi<Record<string, string[]>>(
+      //   `/api/selectionGroups?projectPath=${encodeURIComponent(projectPath)}`,
+      // );
+      const res = null; // Temporarily disabled - not implemented in IPC yet
       if (res) {
         setGroupsForProject(projectPath, res);
       }
@@ -35,10 +38,12 @@ export function useSelectionGroupService() {
         return false;
       }
       const groups = listGroups(projectPath);
-      const ok = await fetchApi<Record<string, string[]>>(
-        `/api/selectionGroups?projectPath=${encodeURIComponent(projectPath)}`,
-        { method: 'POST', body: JSON.stringify({ groups }) },
-      );
+      // TODO: Implement selection groups save in IPC handler
+      // const ok = await fetchApi<Record<string, string[]>>(
+      //   `/api/selectionGroups?projectPath=${encodeURIComponent(projectPath)}`,
+      //   { method: 'POST', body: JSON.stringify({ groups }) },
+      // );
+      const ok = null; // Temporarily disabled - not implemented in IPC yet
       return !!ok;
     },
     [listGroups, setError],

@@ -1,7 +1,7 @@
 // FILE: services/kanbanServiceHooks.ts
 import { useCallback } from "react";
 import { z } from "zod";
-import { fetchApi } from "@/services/apiService";
+import { ipcService } from "@/services/ipcService";
 import { useKanbanStore } from "@/stores/useKanbanStore";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useAppStore } from "@/stores/useAppStore";
@@ -49,7 +49,7 @@ export function useKanbanService() {
        return;
     }
     setLoading(true);
-    const raw  = await fetchApi<unknown>(`${baseEndpoint}?${baseQueryParam}`);
+    const raw  = await ipcService.kanban.list(projectPath);
     const data = safeParse(ArrSchema, raw); // ArrSchema now uses the correct KanbanItemSchema
     setAll(data ?? []);
     setLoading(false);
@@ -61,10 +61,7 @@ export function useKanbanService() {
     setSaving(true);
     setError(null); 
     
-    const raw  = await fetchApi<unknown>(`${baseEndpoint}?${baseQueryParam}`, {
-      method: "POST",
-      body:   JSON.stringify(draft),
-    });
+    const raw  = await ipcService.kanban.create(projectPath, draft);
     
     const item = safeParse(KanbanItemSchema, raw); // Use KanbanItemSchema directly
     
@@ -83,10 +80,7 @@ export function useKanbanService() {
      
      const url = `${baseEndpoint}/${itemData.id}?${baseQueryParam}`;
      
-     const raw = await fetchApi<unknown>(url, {
-       method: "PUT",
-       body: JSON.stringify(itemData),
-     });
+     const raw = await ipcService.kanban.update(projectPath, itemData.id, itemData);
      
      const updatedItem = safeParse(KanbanItemSchema, raw); // Use KanbanItemSchema directly
 
@@ -107,8 +101,7 @@ export function useKanbanService() {
     setSaving(true);
     setError(null);
 
-    const url = `${baseEndpoint}/${itemId}?${baseQueryParam}`;
-    await fetchApi<null>(url, { method: 'DELETE' }); 
+    await ipcService.kanban.delete(projectPath, itemId); 
 
     setSaving(false);
     const errorState = useAppStore.getState().error;

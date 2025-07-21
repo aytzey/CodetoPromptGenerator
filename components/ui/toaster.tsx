@@ -76,4 +76,12 @@ export default Toaster
 // Named export to satisfy `import { Toaster } …`
 export { Toaster }
 
+// Export toast function for use in other components
+export const toast = (msg: string, options?: { variant?: "default" | "success" | "error" | "warning" }) => {
+  const variant = options?.variant === "warning" ? "default" : (options?.variant ?? "default")
+  if (typeof window !== "undefined" && (window as any).toast) {
+    (window as any).toast(msg, { variant })
+  }
+}
+
 /* ------------------------------------------------------------------------- */

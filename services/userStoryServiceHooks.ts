@@ -1,7 +1,7 @@
 // services/userStoryServiceHooks.ts
 import { useCallback } from "react";
 import { z } from "zod";
-import { fetchApi } from "@/services/apiService";
+import { ipcService } from "./ipcService";
 import { useUserStoryStore } from "@/stores/useUserStoryStore";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useAppStore } from "@/stores/useAppStore";
@@ -34,9 +34,6 @@ export function useUserStoryService() {
   
   const { setError } = useAppStore();
 
-  const baseQueryParam = projectPath ? `projectPath=${encodeURIComponent(projectPath)}` : '';
-  const baseEndpoint = "/api/user-stories";
-
   /* ---------------- list stories ---------------- */
   const loadStories = useCallback(async () => {
     if (!projectPath) {
@@ -44,11 +41,16 @@ export function useUserStoryService() {
       return;
     }
     setLoading(true);
-    const raw = await fetchApi<unknown>(`${baseEndpoint}?${baseQueryParam}`);
-    const data = safeParse(ArraySchema, raw);
-    setStories(data ?? []);
+    try {
+      const raw = await ipcService.userstory.list(projectPath);
+      const data = safeParse(ArraySchema, raw);
+      setStories(data ?? []);
+    } catch (error) {
+      console.error("Failed to load stories:", error);
+      setStories([]);
+    }
     setLoading(false);
-  }, [projectPath, setStories, setLoading, baseQueryParam]);
+  }, [projectPath, setStories, setLoading]);
 
   /* ---------------- create story ---------------- */
   const createStory = useCallback(async (draft: Omit<UserStory, "id" | "createdAt">) => {
@@ -56,19 +58,21 @@ export function useUserStoryService() {
     setSaving(true);
     setError(null);
     
-    const raw = await fetchApi<unknown>(`${baseEndpoint}?${baseQueryParam}`, {
-      method: "POST",
-      body: JSON.stringify(draft),
-    });
-    
-    const story = safeParse(UserStorySchema, raw);
-    
-    if (story) {
-      await loadStories();
+    try {
+      const raw = await ipcService.userstory.create(projectPath, draft);
+      const story = safeParse(UserStorySchema, raw);
+      
+      if (story) {
+        await loadStories();
+      }
+      setSaving(false);
+      return story;
+    } catch (error) {
+      setSaving(false);
+      console.error("Failed to create story:", error);
+      return null;
     }
-    setSaving(false);
-    return story;
-  }, [projectPath, loadStories, setSaving, setError, baseQueryParam]);
+  }, [projectPath, loadStories, setSaving, setError]);
 
   /* ---------------- update story ---------------- */
   const updateStory = useCallback(async (storyData: Partial<UserStory> & Pick<UserStory, 'id'>) => {
@@ -76,21 +80,21 @@ export function useUserStoryService() {
     setSaving(true);
     setError(null);
     
-    const url = `${baseEndpoint}/${storyData.id}?${baseQueryParam}`;
-    
-    const raw = await fetchApi<unknown>(url, {
-      method: "PUT",
-      body: JSON.stringify(storyData),
-    });
-    
-    const updatedStory = safeParse(UserStorySchema, raw);
+    try {
+      const raw = await ipcService.userstory.update(projectPath, String(storyData.id), storyData);
+      const updatedStory = safeParse(UserStorySchema, raw);
 
-    if (updatedStory) {
-      await loadStories();
+      if (updatedStory) {
+        await loadStories();
+      }
+      setSaving(false);
+      return updatedStory;
+    } catch (error) {
+      setSaving(false);
+      console.error("Failed to update story:", error);
+      return null;
     }
-    setSaving(false);
-    return updatedStory;
-  }, [projectPath, loadStories, setSaving, setError, baseQueryParam]);
+  }, [projectPath, loadStories, setSaving, setError]);
   
   /* ---------------- delete story ---------------- */
   const deleteStory = useCallback(async (storyId: number) => {
@@ -98,79 +102,34 @@ export function useUserStoryService() {
     setSaving(true);
     setError(null);
 
-    const url = `${baseEndpoint}/${storyId}?${baseQueryParam}`;
-    await fetchApi<null>(url, { method: 'DELETE' });
-
-    setSaving(false);
-    const errorState = useAppStore.getState().error;
-    if (errorState) {
+    try {
+      await ipcService.userstory.delete(projectPath, String(storyId));
+      setSaving(false);
+      await loadStories();
+      return true;
+    } catch (error) {
+      setSaving(false);
+      console.error("Failed to delete story:", error);
       return false;
     }
-    
-    await loadStories();
-    return true;
-  }, [projectPath, loadStories, setSaving, setError, baseQueryParam]);
+  }, [projectPath, loadStories, setSaving, setError]);
 
   /* ---------------- manage task associations ---------------- */
+  // TODO: These endpoints are not implemented in IPC handler yet
   const updateStoryTasks = useCallback(async (storyId: number, taskIds: number[]) => {
-    if (!projectPath) return false;
-    setSaving(true);
-    setError(null);
-
-    const url = `${baseEndpoint}/${storyId}/tasks?${baseQueryParam}`;
-    await fetchApi<unknown>(url, {
-      method: 'PUT',
-      body: JSON.stringify({ taskIds }),
-    });
-
-    setSaving(false);
-    const errorState = useAppStore.getState().error;
-    if (errorState) {
-      return false;
-    }
-    
-    await loadStories();
-    return true;
-  }, [projectPath, loadStories, setSaving, setError, baseQueryParam]);
+    console.warn("updateStoryTasks not implemented in IPC handler");
+    return false;
+  }, []);
 
   const addTaskToStory = useCallback(async (storyId: number, taskId: number) => {
-    if (!projectPath) return false;
-    setSaving(true);
-    setError(null);
-
-    const url = `${baseEndpoint}/${storyId}/tasks?${baseQueryParam}`;
-    await fetchApi<unknown>(url, {
-      method: 'POST',
-      body: JSON.stringify({ taskId }),
-    });
-
-    setSaving(false);
-    const errorState = useAppStore.getState().error;
-    if (errorState) {
-      return false;
-    }
-    
-    await loadStories();
-    return true;
-  }, [projectPath, loadStories, setSaving, setError, baseQueryParam]);
+    console.warn("addTaskToStory not implemented in IPC handler");
+    return false;
+  }, []);
 
   const removeTaskFromStory = useCallback(async (storyId: number, taskId: number) => {
-    if (!projectPath) return false;
-    setSaving(true);
-    setError(null);
-
-    const url = `${baseEndpoint}/${storyId}/tasks/${taskId}?${baseQueryParam}`;
-    await fetchApi<null>(url, { method: 'DELETE' });
-
-    setSaving(false);
-    const errorState = useAppStore.getState().error;
-    if (errorState) {
-      return false;
-    }
-    
-    await loadStories();
-    return true;
-  }, [projectPath, loadStories, setSaving, setError, baseQueryParam]);
+    console.warn("removeTaskFromStory not implemented in IPC handler");
+    return false;
+  }, []);
 
   return {
     loadStories,

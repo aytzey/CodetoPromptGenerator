@@ -4,7 +4,7 @@ import { useCallback } from 'react';
 import { useExclusionStore } from '@/stores/useExclusionStore';
 import { useProjectStore } from '@/stores/useProjectStore'; // To trigger tree reload
 import { useAppStore } from '@/stores/useAppStore';
-import { fetchApi } from './apiService';
+import { unifiedService as ipcService } from './unifiedService';
 import { useProjectService } from './projectServiceHooks'; // To get reload function
 
 export function useExclusionService() {
@@ -20,7 +20,7 @@ export function useExclusionService() {
     const fetchGlobalExclusions = useCallback(async () => {
         setIsLoadingGlobal(true);
         setError(null);
-        const result = await fetchApi<string[]>(`/api/exclusions`);
+        const result = await ipcService.exclusion.list('');
         if (result) {
             setGlobalExclusions(result);
         } else {
@@ -32,10 +32,7 @@ export function useExclusionService() {
     const updateGlobalExclusions = useCallback(async (exclusions: string[]) => {
         setIsSavingGlobal(true);
         setError(null);
-        const result = await fetchApi<string[]>(`/api/exclusions`, {
-            method: 'POST',
-            body: JSON.stringify({ exclusions }),
-        });
+        const result = await ipcService.exclusion.save('', exclusions);
         if (result) {
             setGlobalExclusions(result);
             // Refresh project tree as global exclusions changed
@@ -60,9 +57,7 @@ export function useExclusionService() {
 
         setIsLoadingLocal(true);
         setError(null);
-        const result = await fetchApi<string[]>(
-            `/api/localExclusions?projectPath=${encodeURIComponent(currentProjectPath)}`
-        );
+        const result = await ipcService.exclusion.list(currentProjectPath);
         if (result) {
             setLocalExclusions(result);
         } else {
@@ -81,12 +76,7 @@ export function useExclusionService() {
 
         setIsSavingLocal(true); // Use a specific saving state if needed
         setError(null);
-        const result = await fetchApi<string[]>(
-            `/api/localExclusions?projectPath=${encodeURIComponent(currentProjectPath)}`, {
-                method: 'POST',
-                body: JSON.stringify({ localExclusions: exclusions }),
-            }
-        );
+        const result = await ipcService.exclusion.save(currentProjectPath, exclusions);
         if (result) {
             setLocalExclusions(result);
         }

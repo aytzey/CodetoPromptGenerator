@@ -3,7 +3,7 @@
 import { useCallback, useState } from 'react';
 import { usePromptStore } from '@/stores/usePromptStore';
 import { useAppStore } from '@/stores/useAppStore';
-import { fetchApi } from './apiService';
+import { unifiedService as ipcService } from './unifiedService';
 
 // Type for the refine API response
 interface RefinePromptResponse {
@@ -21,10 +21,11 @@ export function usePromptService() {
     const fetchMetaPromptList = useCallback(async () => {
         setIsLoadingMetaList(true);
         setError(null);
-        const result = await fetchApi<string[]>(`/api/metaprompts?action=list`);
-        if (result) {
-            setMetaPromptFiles(result);
-        } else {
+        try {
+            const result = await ipcService.metaprompt.list();
+            setMetaPromptFiles(result || []);
+        } catch (error) {
+            console.error("Failed to fetch metaprompt list:", error);
             setMetaPromptFiles([]);
         }
         setIsLoadingMetaList(false);
@@ -36,12 +37,15 @@ export function usePromptService() {
 
         setIsLoadingMetaContent(true);
         setError(null);
-        const result = await fetchApi<{ content: string }>(
-            `/api/metaprompts?action=load&file=${encodeURIComponent(currentSelectedFile)}`
-        );
-        if (result) {
-            setMetaPrompt(result.content ?? '');
-        } else {
+        try {
+            const result = await ipcService.metaprompt.load(currentSelectedFile);
+            if (result && result.content) {
+                setMetaPrompt(result.content);
+            } else {
+                setMetaPrompt('');
+            }
+        } catch (error) {
+            console.error("Failed to load metaprompt:", error);
             setMetaPrompt('');
         }
         setIsLoadingMetaContent(false);
@@ -60,15 +64,15 @@ export function usePromptService() {
 
         setIsSavingMeta(true);
         setError(null);
-        const result = await fetchApi<{ message: string }>(`/api/metaprompts`, {
-            method: 'POST',
-            body: JSON.stringify({ filename: fileName, content: currentMetaPrompt }),
-        });
-
-        if (result) {
-            console.log(result.message || `Meta prompt saved as ${fileName}`);
-            setNewMetaFileName('');
-            await fetchMetaPromptList();
+        try {
+            const result = await ipcService.metaprompt.save(fileName, currentMetaPrompt);
+            if (result) {
+                console.log(result.message || `Meta prompt saved as ${fileName}`);
+                setNewMetaFileName('');
+                await fetchMetaPromptList();
+            }
+        } catch (error) {
+            console.error("Failed to save metaprompt:", error);
         }
         setIsSavingMeta(false);
     }, [setError, setIsSavingMeta, setNewMetaFileName, fetchMetaPromptList]);
@@ -88,13 +92,10 @@ export function usePromptService() {
             setIsRefining(true);
             setError(null);
 
-            // Include treeText in the request body if provided
-            const body = { text: textToRefine, treeText: treeText };
+            // Include treeText in the context if provided
+            const context = treeText ? { treeText } : {};
 
-            const result = await fetchApi<RefinePromptResponse>(`/api/prompt/refine`, {
-                method: 'POST',
-                body: JSON.stringify(body), // Send updated body
-            });
+            const result = await ipcService.prompt.refine(textToRefine, context);
 
             setIsRefining(false);
 

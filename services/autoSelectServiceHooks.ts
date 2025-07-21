@@ -1,6 +1,6 @@
 // services/autoSelectServiceHooks.ts
 import { useCallback, useState } from "react";
-import { fetchApi } from "./apiService";
+import { ipcService } from "./ipcService";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { usePromptStore } from "@/stores/usePromptStore";
 import { flattenTree } from "@/lib/fileFilters";
@@ -65,11 +65,23 @@ export function useAutoSelectService() {
       payload: any,
       clar = false,
     ): Promise<AutoSelectResponse> => {
-      const url = clar ? "/api/autoselect/clarify" : "/api/autoselect";
-      return fetchApi<AutoSelectResponse>(url, {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
+      if (clar) {
+        return ipcService.autoselect.clarify(
+          payload.instructions,
+          payload.baseDir,
+          payload.treePaths,
+          payload.clarifications
+        );
+      } else {
+        return ipcService.autoselect.process(
+          payload.instructions,
+          payload.baseDir,
+          {
+            treePaths: payload.treePaths,
+            languages: payload.languages,
+          }
+        );
+      }
     };
 
     try {

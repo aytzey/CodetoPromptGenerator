@@ -1,85 +1,100 @@
-# File: python_backend/services/metaprompt_service.py
-# NEW FILE
 import os
-import logging
-from typing import List, Optional
-from services.service_exceptions import wrap_service_methods
+import json
+from typing import List, Dict, Optional
+from pathlib import Path
 from repositories.file_storage import FileStorageRepository
+from services.service_exceptions import ServiceError, InvalidInputError, ResourceNotFoundError
 
-logger = logging.getLogger(__name__)
-
-
-
-@wrap_service_methods
-class MetapromptService:
-    """Service layer for managing meta prompt files."""
-
+class MetaPromptService:
+    """Service for managing meta prompt files."""
+    
     def __init__(self, storage_repo: FileStorageRepository):
         self.storage_repo = storage_repo
-        # Default directory relative to project root (adjust if needed)
-        self.default_dir_relative = os.path.join('sample_project', 'meta_prompts')
-        self.project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-
-    def _get_base_dir(self, dir_param: Optional[str]) -> str:
-        """Determines the base directory for meta prompts."""
-        if dir_param:
-            base_dir = os.path.abspath(dir_param)
-        else:
-            base_dir = os.path.join(self.project_root, self.default_dir_relative)
-
+        # Meta prompts are stored in a special directory
+        self.metaprompts_dir = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), 
+            'metaprompts'
+        )
         # Ensure the directory exists
+        os.makedirs(self.metaprompts_dir, exist_ok=True)
+    
+    def list_metaprompts(self) -> List[str]:
+        """List all available meta prompt files."""
         try:
-            os.makedirs(base_dir, exist_ok=True)
-        except OSError as e:
-            logger.error(f"Failed to create meta prompts directory {base_dir}: {e}")
-            raise IOError(f"Cannot access or create meta prompts directory: {base_dir}") from e
-        return base_dir
-
-    def list_metaprompts(self, dir_param: Optional[str]) -> List[str]:
-        """Lists all .txt files in the meta prompt directory."""
-        base_dir = self._get_base_dir(dir_param)
-        try:
-            return self.storage_repo.list_files(base_dir, extension='.txt')
+            if not os.path.exists(self.metaprompts_dir):
+                return []
+            
+            files = []
+            for filename in os.listdir(self.metaprompts_dir):
+                if filename.endswith('.txt') or filename.endswith('.md'):
+                    files.append(filename)
+            
+            return sorted(files)
         except Exception as e:
-            logger.error(f"Error listing meta prompts in {base_dir}: {e}")
-            return []
-
-    def load_metaprompt(self, filename: str, dir_param: Optional[str]) -> Optional[str]:
-        """Loads the content of a specific meta prompt file."""
-        if not filename or not filename.lower().endswith('.txt'):
-            logger.warning(f"Invalid filename for loading meta prompt: {filename}")
-            return None # Or raise ValueError
-
-        base_dir = self._get_base_dir(dir_param)
-        file_path = os.path.join(base_dir, filename)
-
-        try:
-            content = self.storage_repo.read_text(file_path)
-            if content is None:
-                 logger.warning(f"Meta prompt file not found: {file_path}")
-            return content
-        except Exception as e:
-            logger.error(f"Error loading meta prompt {file_path}: {e}")
-            return None # Or raise
-
-    def save_metaprompt(self, filename: str, content: str, dir_param: Optional[str]):
-        """Saves content to a meta prompt file."""
+            raise ServiceError(f"Failed to list metaprompts: {str(e)}")
+    
+    def load_metaprompt(self, filename: str) -> Dict[str, str]:
+        """Load content of a specific meta prompt file."""
         if not filename:
-            raise ValueError("Filename cannot be empty for saving meta prompt.")
-        if not isinstance(content, str):
-             # Or handle potential non-string content appropriately
-            raise ValueError("Content must be a string.")
-
-        # Ensure .txt extension
-        if not filename.lower().endswith('.txt'):
-            filename += '.txt'
-
-        base_dir = self._get_base_dir(dir_param)
-        file_path = os.path.join(base_dir, filename)
-
+            raise InvalidInputError("Filename cannot be empty")
+        
+        # Sanitize filename to prevent directory traversal
+        filename = os.path.basename(filename)
+        filepath = os.path.join(self.metaprompts_dir, filename)
+        
         try:
-            self.storage_repo.write_text(file_path, content)
-            logger.info(f"Meta prompt saved successfully to {file_path}")
-        except IOError as e:
-            logger.error(f"Failed to save meta prompt to {file_path}: {e}")
-            raise # Re-raise IOErrors
+            if not os.path.exists(filepath):
+                raise ResourceNotFoundError(f"Meta prompt file '{filename}' not found")
+            
+            with open(filepath, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            return {"content": content, "filename": filename}
+        except ResourceNotFoundError:
+            raise
+        except Exception as e:
+            raise ServiceError(f"Failed to load metaprompt: {str(e)}")
+    
+    def save_metaprompt(self, filename: str, content: str) -> Dict[str, str]:
+        """Save a meta prompt file."""
+        if not filename:
+            raise InvalidInputError("Filename cannot be empty")
+        if not content or not content.strip():
+            raise InvalidInputError("Content cannot be empty")
+        
+        # Sanitize filename
+        filename = os.path.basename(filename)
+        
+        # Ensure it has a proper extension
+        if not filename.endswith('.txt') and not filename.endswith('.md'):
+            filename += '.txt'
+        
+        filepath = os.path.join(self.metaprompts_dir, filename)
+        
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            return {"message": f"Meta prompt saved as {filename}", "filename": filename}
+        except Exception as e:
+            raise ServiceError(f"Failed to save metaprompt: {str(e)}")
+    
+    def delete_metaprompt(self, filename: str) -> Dict[str, str]:
+        """Delete a meta prompt file."""
+        if not filename:
+            raise InvalidInputError("Filename cannot be empty")
+        
+        # Sanitize filename
+        filename = os.path.basename(filename)
+        filepath = os.path.join(self.metaprompts_dir, filename)
+        
+        try:
+            if not os.path.exists(filepath):
+                raise ResourceNotFoundError(f"Meta prompt file '{filename}' not found")
+            
+            os.remove(filepath)
+            return {"message": f"Meta prompt '{filename}' deleted successfully"}
+        except ResourceNotFoundError:
+            raise
+        except Exception as e:
+            raise ServiceError(f"Failed to delete metaprompt: {str(e)}")

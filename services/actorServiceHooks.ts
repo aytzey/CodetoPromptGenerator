@@ -1,7 +1,7 @@
 // services/actorServiceHooks.ts
 import { useCallback } from "react";
 import { z } from "zod";
-import { fetchApi } from "@/services/apiService";
+import { ipcService } from "@/services/ipcService";
 import { useActorStore } from "@/stores/useActorStore";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useAppStore } from "@/stores/useAppStore";
@@ -44,7 +44,7 @@ export function useActorService() {
   const loadActors = useCallback(async () => {
     // Actors can be global or project-specific
     setLoading(true);
-    const raw = await fetchApi<unknown>(`${baseEndpoint}?${baseQueryParam}`);
+    const raw = await ipcService.actor.list(projectPath || '');
     const data = safeParse(ArraySchema, raw);
     setActors(data ?? []);
     setLoading(false);
@@ -61,10 +61,7 @@ export function useActorService() {
     const optimisticActor: Actor = { id: tempId, ...draft };
     addActorOptimistic(optimisticActor);
 
-    const raw = await fetchApi<unknown>(`${baseEndpoint}?${baseQueryParam}`, {
-      method: "POST",
-      body: JSON.stringify(draft),
-    });
+    const raw = await ipcService.actor.create(projectPath || '', draft);
     
     const actor = safeParse(ActorSchema, raw);
     
@@ -92,10 +89,7 @@ export function useActorService() {
 
     const url = `${baseEndpoint}/${actorData.id}?${baseQueryParam}`;
     
-    const raw = await fetchApi<unknown>(url, {
-      method: "PUT",
-      body: JSON.stringify(actorData),
-    });
+    const raw = await ipcService.actor.update(projectPath || '', actorData.id, actorData);
     
     const updatedActor = safeParse(ActorSchema, raw);
 
@@ -118,9 +112,8 @@ export function useActorService() {
     // Optimistic update
     removeActorOptimistic(actorId);
 
-    const url = `${baseEndpoint}/${actorId}?${baseQueryParam}`;
-    // fetchApi returns null for 204 No Content, which is expected for DELETE success
-    const response = await fetchApi<null>(url, { method: 'DELETE' });
+    // ipcService returns success status for DELETE
+    const response = await ipcService.actor.delete(projectPath || '', actorId);
 
     setSaving(false);
     const wasErrorSet = useAppStore.getState().error !== null;

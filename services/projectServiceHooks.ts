@@ -2,7 +2,7 @@
 // FULL FILE – Correction applied
 import { useCallback } from 'react';
 import { useProjectStore } from '@/stores/useProjectStore';
-import { fetchApi } from './apiService';
+import { unifiedService as ipcService } from './unifiedService';
 import type { FileNode, FileData } from '@/types';
 
 /* ───────── helper ────────── */
@@ -21,9 +21,7 @@ export function useProjectService() {
     if (!path) return;
 
     st.getState().setIsLoadingTree(true);
-    const tree = await fetchApi<FileNode[]>(
-      `/api/projects/tree?rootDir=${encodeURIComponent(path)}`,
-    );
+    const tree = await ipcService.project.getTree(path);
     st.getState().setIsLoadingTree(false);
     st.getState().setFileTree(tree ?? []);
   }, [st]); // Dependency on stable store reference
@@ -44,10 +42,7 @@ export function useProjectService() {
     }
 
     st.getState().setIsLoadingContents(true);
-    const res = await fetchApi<FileData[]>('/api/projects/files', {
-      method: 'POST',
-      body : JSON.stringify({ baseDir: projectPath, paths: pathsToFetch }),
-    });
+    const res = await ipcService.project.getFiles(projectPath, pathsToFetch);
     st.getState().setIsLoadingContents(false);
     if (!res) return; // error already surfaced
 

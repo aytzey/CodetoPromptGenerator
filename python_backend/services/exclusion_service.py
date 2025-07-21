@@ -48,12 +48,18 @@ class ExclusionService:
 
     def _get_local_exclusions_path(self, project_path: str) -> str:
         """Constructs the path to the local exclusions file for a project."""
-        if not project_path or not os.path.isdir(project_path):
-             raise ValueError("Invalid project path provided.")
+        if not project_path:
+            raise ValueError("No project path provided.")
+        if not os.path.isdir(project_path):
+            raise ValueError(f"Invalid project path provided: '{project_path}' does not exist or is not a directory.")
         return os.path.join(project_path, self.codetoprompt_dir_name, self.local_exclusions_filename)
 
     def get_local_exclusions(self, project_path: str) -> List[str]:
         """Reads local exclusions for a specific project."""
+        # Return empty list if no project path provided (app just started)
+        if not project_path:
+            return []
+        
         file_path = self._get_local_exclusions_path(project_path)
         try:
             # Default to empty list if file doesn't exist or is invalid

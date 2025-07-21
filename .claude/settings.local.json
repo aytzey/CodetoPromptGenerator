@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npm run cleanup-port:*)",
+      "Bash(npm run:*)",
+      "Bash(rm:*)",
+      "Bash(./venv/bin/pip install pathspec)",
+      "Bash(lsof:*)",
+      "Bash(fuser:*)",
+      "Bash(kill:*)",
+      "mcp__sequential-thinking__sequentialthinking",
+      "Bash(touch:*)",
+      "Bash(mkdir:*)",
+      "Bash(sed:*)"
+    ],
+    "deny": []
+  }
+}
