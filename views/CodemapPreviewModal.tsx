@@ -66,7 +66,7 @@ export default function CodemapPreviewModal({}: Props) { // Props destructured a
   const [searchQuery, setSearchQuery] = useState("");
   const [hoveredRowIndex, setHoveredRowIndex] = useState<number | null>(null);
   
-  const dataToDisplay = codemapModalData || {}; // Use data from store
+  const dataToDisplay = useMemo(() => codemapModalData || {}, [codemapModalData]); // Use data from store
 
   // Count totals for stats display
   const totalFiles = Object.keys(dataToDisplay).length;

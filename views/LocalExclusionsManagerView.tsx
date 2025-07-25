@@ -107,7 +107,7 @@ export default function LocalExclusionsManagerView() {
                 Project Exclusions
               </h3>
               <p className="text-xs text-[rgb(140,143,170)] mt-0.5">
-                Patterns skipped by "Select All" in this project only
+                Patterns skipped by &ldquo;Select All&rdquo; in this project only
               </p>
             </div>
           </div>
@@ -304,7 +304,7 @@ export default function LocalExclusionsManagerView() {
             <Info size={12} className="text-[rgb(189,147,249)]" />
             <span className="font-medium">About project exclusions:</span>
           </div>
-          These patterns will be excluded when using "Select All" in this project only.
+          These patterns will be excluded when using &ldquo;Select All&rdquo; in this project only.
           <span className="block mt-1">Use patterns like <code className="bg-[rgba(15,16,36,0.5)] px-1.5 py-0.5 rounded text-[rgb(255,121,198)]">*.test.js</code> or specific file paths.</span>
         </div>
       </div>

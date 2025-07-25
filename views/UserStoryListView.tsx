@@ -512,7 +512,7 @@ ${story.acceptanceCriteria ? story.acceptanceCriteria.split('\n').map(ac => `- $
             <span>Active filters:</span>
             {searchTerm && (
               <Badge variant="secondary" className="text-xs">
-                Search: "{searchTerm}"
+                Search: &ldquo;{searchTerm}&rdquo;
                 <Button variant="ghost" size="icon" className="h-3 w-3 ml-1" onClick={() => setSearchTerm('')}>
                   <X size={10} />
                 </Button>
@@ -780,7 +780,7 @@ ${story.acceptanceCriteria ? story.acceptanceCriteria.split('\n').map(ac => `- $
                 <DialogHeader className="pb-3 border-b border-[rgba(var(--color-border),0.5)]">
                     <DialogTitle className="text-[rgb(var(--color-primary))] flex items-center gap-2">
                         <ClipboardList size={18} />
-                        Tasks for Story: "{storyTaskAssociation.title}"
+                        Tasks for Story: &ldquo;{storyTaskAssociation.title}&rdquo;
                     </DialogTitle>
                 </DialogHeader>
                 <div className="flex flex-col gap-4 py-4">

@@ -18,7 +18,7 @@ async function startDevServer() {
     });
     
     // Start Python HTTP backend
-    const pythonProcess = spawn('python', [
+    const pythonProcess = spawn(path.join(__dirname, '..', 'venv', 'bin', 'python'), [
       path.join(__dirname, '..', 'python_backend', 'app_http.py')
     ], {
       stdio: 'inherit',

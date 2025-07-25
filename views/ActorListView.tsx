@@ -163,7 +163,7 @@ const ActorListView: React.FC = () => {
           <div className="flex items-center gap-2 mt-2 text-xs text-[rgb(var(--color-text-muted))]">
             <span>Active filter:</span>
             <Badge variant="secondary" className="text-xs">
-              Search: "{searchTerm}"
+              Search: &ldquo;{searchTerm}&rdquo;
               <Button variant="ghost" size="icon" className="h-3 w-3 ml-1" onClick={() => setSearchTerm('')}>
                 <X size={10} />
               </Button>

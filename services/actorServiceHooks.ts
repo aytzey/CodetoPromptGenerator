@@ -37,9 +37,6 @@ export function useActorService() {
   
   const { setError } = useAppStore();
 
-  const baseQueryParam = projectPath ? `projectPath=${encodeURIComponent(projectPath)}` : '';
-  const baseEndpoint = "/api/actors";
-
   /* ---------------- list actors ---------------- */
   const loadActors = useCallback(async () => {
     // Actors can be global or project-specific
@@ -48,7 +45,7 @@ export function useActorService() {
     const data = safeParse(ArraySchema, raw);
     setActors(data ?? []);
     setLoading(false);
-  }, [projectPath, setActors, setLoading, baseQueryParam]); // projectPath is a dependency for baseQueryParam
+  }, [projectPath, setActors, setLoading]);
 
   /* ---------------- create actor ---------------- */
   const createActor = useCallback(async (draft: Omit<Actor, "id">) => {
@@ -77,7 +74,7 @@ export function useActorService() {
     }
     setSaving(false);
     return actor;
-  }, [addActorOptimistic, loadActors, removeActorOptimistic, setSaving, setError, baseQueryParam]);
+  }, [addActorOptimistic, loadActors, removeActorOptimistic, setSaving, setError, projectPath]);
 
   /* ---------------- update actor ---------------- */
   const updateActor = useCallback(async (actorData: Partial<Actor> & Pick<Actor, 'id'>) => {
@@ -86,8 +83,6 @@ export function useActorService() {
     
     // Optimistic update
     updateActorOptimistic(actorData.id, actorData);
-
-    const url = `${baseEndpoint}/${actorData.id}?${baseQueryParam}`;
     
     const raw = await ipcService.actor.update(projectPath || '', actorData.id, actorData);
     
@@ -102,7 +97,7 @@ export function useActorService() {
     }
     setSaving(false);
     return updatedActor;
-  }, [updateActorOptimistic, loadActors, setSaving, setError, baseQueryParam]);
+  }, [updateActorOptimistic, loadActors, setSaving, setError, projectPath]);
   
   /* ---------------- delete actor ---------------- */
   const deleteActor = useCallback(async (actorId: number) => {
@@ -123,7 +118,7 @@ export function useActorService() {
       return false;
     }
     return true; // Success
-  }, [removeActorOptimistic, loadActors, setSaving, setError, baseQueryParam]);
+  }, [removeActorOptimistic, loadActors, setSaving, setError, projectPath]);
 
   return {
     loadActors,

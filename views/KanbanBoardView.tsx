@@ -712,7 +712,7 @@ const KanbanBoardView: React.FC = () => {
             <span className="text-xs text-[rgb(var(--color-text-muted))]">Active filters:</span>
             {searchTerm && (
               <Badge variant="secondary" className="text-xs">
-                Search: "{searchTerm}"
+                Search: &ldquo;{searchTerm}&rdquo;
                 <Button
                   variant="ghost"
                   size="icon"

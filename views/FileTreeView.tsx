@@ -162,10 +162,10 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
         yaml: <Database className="h-4 w-4 text-[rgb(var(--color-accent-4))]" />,
         md: <FileText className="h-4 w-4 text-[rgb(var(--color-text-primary))]" />,
         txt: <FileText className="h-4 w-4 text-[rgb(var(--color-text-secondary))]" />,
-        png: <Image className="h-4 w-4 text-[rgb(var(--color-accent-1))]" />,
-        jpg: <Image className="h-4 w-4 text-[rgb(var(--color-accent-1))]" />,
-        jpeg: <Image className="h-4 w-4 text-[rgb(var(--color-accent-1))]" />,
-        svg: <Image className="h-4 w-4 text-[rgb(var(--color-accent-1))]" />,
+        png: <Image className="h-4 w-4 text-[rgb(var(--color-accent-1))]" aria-hidden="true" />, // eslint-disable-line jsx-a11y/alt-text
+        jpg: <Image className="h-4 w-4 text-[rgb(var(--color-accent-1))]" aria-hidden="true" />, // eslint-disable-line jsx-a11y/alt-text
+        jpeg: <Image className="h-4 w-4 text-[rgb(var(--color-accent-1))]" aria-hidden="true" />, // eslint-disable-line jsx-a11y/alt-text
+        svg: <Image className="h-4 w-4 text-[rgb(var(--color-accent-1))]" aria-hidden="true" />, // eslint-disable-line jsx-a11y/alt-text
         git: <GitBranch className="h-4 w-4 text-[rgb(var(--color-accent-4))]" />,
         lock: <Package className="h-4 w-4 text-[rgb(var(--color-text-muted))]" />,
       };
@@ -206,7 +206,7 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
       const selectableFiles = useMemo(() => {
         const origin = findNodeByPath(fullTree, node.relativePath) ?? node;
         return collectFileDescendants(origin);
-      }, [node, fullTree]);
+      }, [node]);
       
       const isEmpty = selectableFiles.length === 0;
       const checked = !isEmpty && selectableFiles.every((p) => selectedSet.has(p));

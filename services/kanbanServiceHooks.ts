@@ -39,9 +39,6 @@ export function useKanbanService() {
    
   const { setError } = useAppStore();
 
-  const baseQueryParam = projectPath ? `projectPath=${encodeURIComponent(projectPath)}` : '';
-  const baseEndpoint = "/api/kanban";
-
   /* ---------------- list ---------------- */
   const load = useCallback(async () => {
     if (!projectPath) { 
@@ -53,7 +50,7 @@ export function useKanbanService() {
     const data = safeParse(ArrSchema, raw); // ArrSchema now uses the correct KanbanItemSchema
     setAll(data ?? []);
     setLoading(false);
-  }, [projectPath, setAll, setLoading, baseQueryParam]);
+  }, [projectPath, setAll, setLoading]);
 
   /* ---------------- create -------------- */
    const create = useCallback(async (draft: Omit<KanbanItem, "id" | "createdAt">) => {
@@ -70,15 +67,13 @@ export function useKanbanService() {
     }
     setSaving(false);
     return item;
-  }, [projectPath, load, setSaving, setError, baseQueryParam]);
+  }, [projectPath, load, setSaving, setError]);
 
  /* ---------------- update/patch -------------- */
   const patch = useCallback(async (itemData: Partial<KanbanItem> & Pick<KanbanItem, 'id'>) => {
      if (!projectPath) return null;
      setSaving(true);
      setError(null);
-     
-     const url = `${baseEndpoint}/${itemData.id}?${baseQueryParam}`;
      
      const raw = await ipcService.kanban.update(projectPath, itemData.id, itemData);
      
@@ -93,7 +88,7 @@ export function useKanbanService() {
      }
       setSaving(false);
       return updatedItem;
-   }, [projectPath, load, setSaving, setError, baseQueryParam]);
+   }, [projectPath, load, setSaving, setError]);
    
   /* ---------------- delete -------------- */
   const deleteItem = useCallback(async (itemId: number) => {
@@ -111,7 +106,7 @@ export function useKanbanService() {
     
     await load(); 
     return true; 
-  }, [projectPath, load, setSaving, setError, baseQueryParam]);
+  }, [projectPath, load, setSaving, setError]);
 
   /* ---------------- move (dnd) ---------- */
    const relocate = useCallback((itemId: number, newStatus: KanbanStatus, newIndex?: number) => {

@@ -12,7 +12,10 @@
       "mcp__sequential-thinking__sequentialthinking",
       "Bash(touch:*)",
       "Bash(mkdir:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(npm ci:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)"
     ],
     "deny": []
   }

@@ -16,8 +16,9 @@ A tool for quickly assembling Large Language Model (LLM) prompts from a local fi
 5. [Usage](#usage)
 6. [Building for Production / Distribution](#building-for-production--distribution)
 7. [Testing](#testing)
-8. [Troubleshooting](#troubleshooting)
-9. [Project Structure](#project-structure)
+8. [Code Quality & ESLint](#code-quality--eslint)
+9. [Troubleshooting](#troubleshooting)
+10. [Project Structure](#project-structure)
 
 ---
 
@@ -158,11 +159,13 @@ If these are not provided, default Electron icons will be used.
 
 ### 2. Build the Next.js Frontend
 
-This step generates the static assets for your application into the out/ directory.
+This step runs ESLint validation and generates the static assets for your application into the out/ directory.
 
 ```    
 npm run build
 ```
+
+**Note**: The build will fail if there are any ESLint errors or warnings. Run `npm run lint` first to check for issues.
     
 ### 3. Package with Electron Builder
 
@@ -231,6 +234,31 @@ In a separate terminal, run the tests:
 
     
 A summary of passed/failed tests will be printed.
+
+## Code Quality & ESLint
+
+This project enforces code quality standards using ESLint with strict mode during the build process.
+
+### ESLint Configuration
+- The project uses Next.js ESLint rules with TypeScript support
+- ESLint is automatically run before each build with zero tolerance for errors or warnings
+- Configuration can be found in `.eslintrc.js`
+
+### Available Scripts
+- `npm run lint` - Run ESLint and report any issues
+- `npm run lint:strict` - Run ESLint with `--max-warnings 0` (used in build process)
+- `npm run build` - Runs `lint:strict` before building; fails if any ESLint issues are found
+
+### Development Workflow
+1. During development, run `npm run lint` regularly to check for issues
+2. Fix all ESLint errors and warnings before committing code
+3. The build process will automatically fail if any ESLint issues are present
+
+### Common ESLint Rules Enforced
+- React Hook dependency arrays must be correctly specified
+- React components must use proper HTML entities for quotes
+- Deprecated React APIs must be updated to current versions
+- Images must have appropriate alt attributes for accessibility
 
 ## Troubleshooting
 

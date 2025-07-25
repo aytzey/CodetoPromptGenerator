@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import ReactDOM from "react-dom";
+import { createRoot } from "react-dom/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
@@ -54,9 +56,10 @@ export function openSmartSelectDialog(questions: string[]): Promise<Record<strin
   return new Promise(resolve => {
     const div = document.createElement("div");
     document.body.appendChild(div);
+    const root = createRoot(div);
 
     const handleDone = (ans: Record<number, string> | null) => {
-      React.unmountComponentAtNode(div);
+      root.unmount();
       div.remove();
       resolve(
         ans
@@ -65,6 +68,6 @@ export function openSmartSelectDialog(questions: string[]): Promise<Record<strin
       );
     };
 
-    React.render(<SmartSelectDialog questions={questions} onDone={handleDone} />, div);
+    root.render(<SmartSelectDialog questions={questions} onDone={handleDone} />);
   });
 }
