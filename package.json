@@ -84,6 +84,7 @@
     "jest-fetch-mock": "^3.0.3",
     "kill-port": "^2.0.1",
     "postcss": "^8.4.49",
+    "tailwind-scrollbar": "^3.0.5",
     "tailwindcss": "^3.4.16",
     "wait-on": "^7.0.1",
     "xvfb": "^0.2.1"
