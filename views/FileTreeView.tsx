@@ -112,8 +112,18 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
     );
 
     const flatten = useCallback(
-      (nodes: FileNode[], depth = 0): Row[] =>
-        nodes.flatMap((n) => {
+      (nodes: FileNode[], depth = 0): Row[] => {
+        // Sort nodes: directories first, then files, both alphabetically
+        const sortedNodes = [...nodes].sort((a, b) => {
+          // First sort by type (directories before files)
+          if (a.type !== b.type) {
+            return a.type === "directory" ? -1 : 1;
+          }
+          // Then sort alphabetically by name (case-insensitive)
+          return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+        });
+        
+        return sortedNodes.flatMap((n) => {
           const rows: Row[] = [{ node: n, depth }];
           if (
             n.type === "directory" &&
@@ -123,7 +133,8 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
             rows.push(...flatten(n.children, depth + 1));
           }
           return rows;
-        }),
+        });
+      },
       [collapsed],
     );
 

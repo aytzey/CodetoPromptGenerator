@@ -140,6 +140,8 @@ class ProjectService:
                             )
                             if not node["children"]:
                                 continue  # drop empty dirs post-exclude
+                            # Sort children: directories first, then files, both alphabetically
+                            node["children"].sort(key=lambda n: (n["type"] != "directory", n["name"].lower()))
                         out.append(node)
                     except PermissionError as exc:
                         logger.error("Permission denied reading %s: %s", entry.path, exc)
