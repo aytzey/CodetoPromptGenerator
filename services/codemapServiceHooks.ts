@@ -38,5 +38,8 @@ export function useCodemapExtractor() {
     return res;
   };
 
-  return useSWRMutation<CodemapResponse, Error, string>("/api/codemap/extract", poster);
+  return useSWRMutation<CodemapResponse, Error, string, Pick<CodemapRequest, "paths">>(
+    "/api/codemap/extract",
+    poster,
+  );
 }

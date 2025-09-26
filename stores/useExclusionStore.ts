@@ -7,13 +7,11 @@ interface ExclusionState {
   setGlobalExclusions: (exclusions: string[]) => void;
   localExclusions: string[];
   setLocalExclusions: (exclusions: string[]) => void;
-  extensionFilters: string[]; // Renamed from filterExtensions for clarity
+  extensionFilters: string[];
   setExtensionFilters: (filters: string[]) => void;
   addExtensionFilter: (filter: string) => void;
   removeExtensionFilter: (filter: string) => void;
   clearExtensionFilters: () => void;
-  extensionInput: string; // Keep input state local to component or here? Decide based on usage. Keep local for now.
-  // setExtensionInput: (input: string) => void;
   isLoadingGlobal: boolean;
   setIsLoadingGlobal: (loading: boolean) => void;
   isLoadingLocal: boolean;
@@ -46,8 +44,6 @@ export const useExclusionStore = create<ExclusionState>((set, get) => ({
       extensionFilters: state.extensionFilters.filter((f) => f !== filter)
   })),
   clearExtensionFilters: () => set({ extensionFilters: [] }),
-  // extensionInput: '', // Keep local to component managing the input
-  // setExtensionInput: (input) => set({ extensionInput: input }),
   isLoadingGlobal: false,
   setIsLoadingGlobal: (loading) => set({ isLoadingGlobal: loading }),
   isLoadingLocal: false,

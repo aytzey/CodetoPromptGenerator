@@ -289,14 +289,3 @@ All responses follow the envelope
 | POST   | `/api/user-stories/{id}/tasks?projectPath=<dir>` | Add a single task to a story. Body → `{ "taskId": 1 }` |
 | DELETE | `/api/user-stories/{id}/tasks/{taskId}?projectPath=<dir>` | Remove a single task from a story |
 ```
-
-## 10 · Actor Management
-| Method | Path | Notes |
-| ------ | ---- | ----- |
-| GET    | `/api/actors?projectPath=<dir>` | List actors |
-| POST   | `/api/actors?projectPath=<dir>` | Create a new actor |
-| GET    | `/api/actors/{id}?projectPath=<dir>` | Get a specific actor |
-| PUT    | `/api/actors/{id}?projectPath=<dir>` | Update an actor |
-| DELETE | `/api/actors/{id}?projectPath=<dir>` | Delete an actor |
-| POST   | `/api/actors/suggest?projectPath=<dir>` | Suggest an actor from description. Body → `{ "description": "..." }` |
-| POST   | `/api/actors/generate` | Generate actors from project context. Body → `{ "baseDir": "<path>", "treePaths": ["..."] }` |

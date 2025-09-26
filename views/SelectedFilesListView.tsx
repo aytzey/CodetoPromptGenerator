@@ -1,340 +1,351 @@
-// FILE: views/SelectedFilesListView.tsx
-// views/SelectedFilesListView.tsx
-/**
- * Selected‑Files panel - Enhanced with modern UI
- * ————————————————————————————————————
- * Displays the user's current selection with:
- *   • Beautiful glassmorphic cards
- *   • Smooth animations and transitions
- *   • Enhanced visual feedback
- *   • Modern color gradients
- */
-
-import React, { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import {
-  File,
-  Folder,
-  X,
-  Share2,
-  Loader2,
-  BarChart2,
-  Inbox,
-  SortAsc,
-  Sparkles,
-  Code,
-  FileText,
-  Layers,
   ArrowUpDown,
+  BarChart2,
+  Code,
+  File,
+  FileText,
+  Folder,
+  Inbox,
+  Layers,
+  Loader2,
+  Share2,
+  Sparkles,
+  X,
 } from "lucide-react";
 
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  TooltipProvider,
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-} from "@/components/ui/tooltip";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
-  SelectTrigger,
-  SelectValue,
   SelectContent,
   SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
-
-import { useProjectStore } from "@/stores/useProjectStore";
-import { useExclusionStore } from "@/stores/useExclusionStore";
-import { useAppStore } from "@/stores/useAppStore";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import { useCodemapExtractor } from "@/services/codemapServiceHooks";
-import type { FileData } from "@/types";
+import { useAppStore } from "@/stores/useAppStore";
+import { useExclusionStore } from "@/stores/useExclusionStore";
+import { useProjectStore } from "@/stores/useProjectStore";
+import type { CodemapResponse, FileData } from "@/types";
 
-/* ─────────────────────────────────────────────────── */
-/* helpers */
+/* -------------------------------------------------------------------------- */
+/* helpers                                                                    */
+/* -------------------------------------------------------------------------- */
 
-const extIcon = (p: string) => {
-  const ext = p.split(".").pop()?.toLowerCase();
-  const iconMap: Record<string, JSX.Element> = {
-    ts: <File className="h-4 w-4 text-[rgb(123,147,253)]" />,
-    tsx: <File className="h-4 w-4 text-[rgb(123,147,253)]" />,
-    js: <File className="h-4 w-4 text-[rgb(241,250,140)]" />,
-    jsx: <File className="h-4 w-4 text-[rgb(241,250,140)]" />,
-    py: <File className="h-4 w-4 text-[rgb(80,250,123)]" />,
-    rb: <File className="h-4 w-4 text-[rgb(255,85,85)]" />,
-    php: <File className="h-4 w-4 text-[rgb(189,147,249)]" />,
-    json: <File className="h-4 w-4 text-[rgb(255,184,108)]" />,
-    yml: <File className="h-4 w-4 text-[rgb(255,184,108)]" />,
-    yaml: <File className="h-4 w-4 text-[rgb(255,184,108)]" />,
-    xml: <File className="h-4 w-4 text-[rgb(255,184,108)]" />,
-    md: <File className="h-4 w-4 text-[rgb(224,226,240)]" />,
-    txt: <File className="h-4 w-4 text-[rgb(224,226,240)]" />,
-    css: <File className="h-4 w-4 text-[rgb(139,233,253)]" />,
-    scss: <File className="h-4 w-4 text-[rgb(255,121,198)]" />,
-    html: <File className="h-4 w-4 text-[rgb(255,121,198)]" />,
-  };
-  return iconMap[ext || ""] || <File className="h-4 w-4 text-[rgb(190,192,210)]" />;
+type SortMode = "name" | "tokens";
+
+interface SelectionSummary {
+  dirs: string[];
+  files: FileData[];
+  totalTokens: number;
+  totalChars: number;
+  visiblePaths: string[];
+}
+
+const SORT_OPTIONS: Array<{ value: SortMode; label: string; icon: ReactNode }> = [
+  { value: "name", label: "File name", icon: <ArrowUpDown size={14} /> },
+  { value: "tokens", label: "Token count", icon: <BarChart2 size={14} /> },
+];
+
+const EXTENSION_ICON_MAP: Record<string, ReactNode> = {
+  ts: <File className="h-4 w-4 text-[rgb(123,147,253)]" />,
+  tsx: <File className="h-4 w-4 text-[rgb(123,147,253)]" />,
+  js: <File className="h-4 w-4 text-[rgb(241,250,140)]" />,
+  jsx: <File className="h-4 w-4 text-[rgb(241,250,140)]" />,
+  py: <File className="h-4 w-4 text-[rgb(80,250,123)]" />,
+  rb: <File className="h-4 w-4 text-[rgb(255,85,85)]" />,
+  php: <File className="h-4 w-4 text-[rgb(189,147,249)]" />,
+  json: <File className="h-4 w-4 text-[rgb(255,184,108)]" />,
+  yml: <File className="h-4 w-4 text-[rgb(255,184,108)]" />,
+  yaml: <File className="h-4 w-4 text-[rgb(255,184,108)]" />,
+  xml: <File className="h-4 w-4 text-[rgb(255,184,108)]" />,
+  md: <File className="h-4 w-4 text-[rgb(224,226,240)]" />,
+  txt: <File className="h-4 w-4 text-[rgb(224,226,240)]" />,
+  css: <File className="h-4 w-4 text-[rgb(139,233,253)]" />,
+  scss: <File className="h-4 w-4 text-[rgb(255,121,198)]" />,
+  html: <File className="h-4 w-4 text-[rgb(255,121,198)]" />,
 };
 
-const matchesExt = (name: string, exts: string[]) =>
-  exts.length === 0 ||
-  exts.some((e) =>
-    name.toLowerCase().endsWith(e.startsWith(".") ? e.toLowerCase() : `.${e}`),
+function getExtensionIcon(path: string): ReactNode {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  return EXTENSION_ICON_MAP[ext] ?? (
+    <File className="h-4 w-4 text-[rgb(190,192,210)]" />
   );
+}
 
-/* ─────────────────────────────────────────────────── */
+function matchesExtension(path: string, filters: string[]) {
+  if (filters.length === 0) return true;
+  const lower = path.toLowerCase();
+  return filters.some((pattern) => {
+    const normalised = pattern.startsWith(".")
+      ? pattern.toLowerCase()
+      : `.${pattern.toLowerCase()}`;
+    return lower.endsWith(normalised);
+  });
+}
 
-export default function SelectedFilesListView() {
-  /* — zustand state — */
-  const selectedFilePaths = useProjectStore(s => s.selectedFilePaths);
-  const setSelectedFilePaths = useProjectStore(s => s.setSelectedFilePaths);
-  const filesData = useProjectStore(s => s.filesData);
+function computeSelectionSummary(
+  selectedPaths: string[],
+  filesData: FileData[],
+  extensionFilters: string[],
+  sortMode: SortMode,
+): SelectionSummary {
+  const fileMap = new Map(filesData.map((file) => [file.path, file]));
+  const dirs = new Set<string>();
+  const filteredFiles: FileData[] = [];
 
-  const extensionFilters = useExclusionStore(s => s.extensionFilters);
-  const codemapFilterEmpty = useAppStore(s => s.codemapFilterEmpty);
-  const openCodemapModal = useAppStore(s => s.openCodemapModal);
+  selectedPaths.forEach((path) => {
+    const file = fileMap.get(path);
+    if (!file) {
+      dirs.add(path);
+      return;
+    }
+    if (matchesExtension(file.path, extensionFilters)) {
+      filteredFiles.push(file);
+    }
+  });
 
-  /* — codemap extractor — */
-  const {
-    trigger: extractCodemap,
-    isMutating,
-  } = useCodemapExtractor();
+  const files = sortMode === "tokens"
+    ? filteredFiles.sort((a, b) => (b.tokenCount ?? 0) - (a.tokenCount ?? 0))
+    : filteredFiles.sort((a, b) => a.path.localeCompare(b.path));
 
-  /* — local UI state — */
-  const [sortMode, setSortMode] = useState<"name" | "tokens">("name");
-  const [hoveredPath, setHoveredPath] = useState<string | null>(null);
+  const totalTokens = files.reduce((total, file) => total + (file.tokenCount ?? 0), 0);
+  const totalChars = files.reduce((total, file) => total + file.content.length, 0);
+  const sortedDirs = Array.from(dirs).sort();
+  const visiblePaths = [...sortedDirs, ...files.map((file) => file.path)];
 
-  /* — derive directory & file lists — */
-  const {
-    dirs,
+  return {
+    dirs: sortedDirs,
     files,
     totalTokens,
     totalChars,
-    visibleCount,
     visiblePaths,
-  } = useMemo(() => {
-    const dirSet = new Set<string>();
-    const loaded = new Map(filesData.map((f) => [f.path, f]));
-
-    selectedFilePaths.forEach((p) => {
-      if (loaded.has(p)) return; 
-      dirSet.add(p);            
-    });
-
-    const rawFiles = [...loaded.values()].filter((f) =>
-      matchesExt(f.path, extensionFilters),
-    );
-
-    const sortedFiles =
-      sortMode === "tokens"
-        ? [...rawFiles].sort((a, b) => (b.tokenCount ?? 0) - (a.tokenCount ?? 0))
-        : [...rawFiles].sort((a, b) => a.path.localeCompare(b.path));
-
-    return {
-      dirs: [...dirSet].sort(),
-      files: sortedFiles,
-      totalTokens: rawFiles.reduce((a, f) => a + (f.tokenCount || 0), 0),
-      totalChars: rawFiles.reduce((a, f) => a + f.content.length, 0),
-      visibleCount: dirSet.size + rawFiles.length,
-      visiblePaths: [...dirSet, ...rawFiles.map((f) => f.path)],
-    };
-  }, [selectedFilePaths, filesData, extensionFilters, sortMode]);
-
-  const removePath = (p: string) =>
-    setSelectedFilePaths(selectedFilePaths.filter((x) => x !== p));
-
-  const handlePreview = async () => {
-    const rel = visiblePaths.filter((p) => !p.endsWith("/"));
-    const result = await extractCodemap({ paths: rel });
-    if (result) {
-      if (codemapFilterEmpty) {
-        const keep = Object.entries(result)
-          .filter(([, v]) => (v.classes.length + v.functions.length) > 0)
-          .map(([file]) => file);
-        const currentSelectedPaths = useProjectStore.getState().selectedFilePaths;
-        setSelectedFilePaths(currentSelectedPaths.filter((p) => keep.includes(p)));
-      }
-      openCodemapModal(result);
-    }
   };
+}
 
-  /* ─────────────────────────────── render ─────────────────────────────── */
+function filterByCodemapPresence(result: CodemapResponse): string[] {
+  return Object.entries(result)
+    .filter(([, info]) => (info.classes.length + info.functions.length) > 0)
+    .map(([file]) => file);
+}
 
-  if (visibleCount === 0) {
+/* -------------------------------------------------------------------------- */
+/* component                                                                  */
+/* -------------------------------------------------------------------------- */
+
+export default function SelectedFilesListView() {
+  const selectedFilePaths = useProjectStore((state) => state.selectedFilePaths);
+  const setSelectedFilePaths = useProjectStore((state) => state.setSelectedFilePaths);
+  const filesData = useProjectStore((state) => state.filesData);
+
+  const extensionFilters = useExclusionStore((state) => state.extensionFilters);
+  const codemapFilterEmpty = useAppStore((state) => state.codemapFilterEmpty);
+  const openCodemapModal = useAppStore((state) => state.openCodemapModal);
+
+  const { trigger: extractCodemap, isMutating } = useCodemapExtractor();
+
+  const [sortMode, setSortMode] = useState<SortMode>("name");
+  const [hoveredPath, setHoveredPath] = useState<string | null>(null);
+
+  const summary = useMemo(
+    () => computeSelectionSummary(selectedFilePaths, filesData, extensionFilters, sortMode),
+    [selectedFilePaths, filesData, extensionFilters, sortMode],
+  );
+
+  const removePath = useCallback(
+    (path: string) => {
+      setSelectedFilePaths(selectedFilePaths.filter((item) => item !== path));
+    },
+    [selectedFilePaths, setSelectedFilePaths],
+  );
+
+  const handlePreview = useCallback(async () => {
+    const filesOnly = summary.visiblePaths.filter((path) => !path.endsWith("/"));
+    if (filesOnly.length === 0) return;
+
+    const result = await extractCodemap({ paths: filesOnly });
+    if (!result) return;
+
+    if (codemapFilterEmpty) {
+      const keep = filterByCodemapPresence(result);
+      const latestSelection = useProjectStore.getState().selectedFilePaths;
+      setSelectedFilePaths(latestSelection.filter((path) => keep.includes(path)));
+    }
+
+    openCodemapModal(result);
+  }, [summary.visiblePaths, extractCodemap, codemapFilterEmpty, setSelectedFilePaths, openCodemapModal]);
+
+  if (summary.dirs.length + summary.files.length === 0) {
     return (
-      <div className="py-12 flex flex-col items-center text-[rgb(var(--color-text-muted))] animate-fade-in">
-        <div className="relative">
-          <div className="absolute inset-0 bg-gradient-to-br from-[rgba(var(--color-primary),0.2)] to-[rgba(var(--color-tertiary),0.2)] rounded-full blur-2xl animate-pulse"></div>
-          <Inbox className="h-12 w-12 mb-4 opacity-60 relative z-10" />
+      <div className="flex flex-col items-center py-12 text-[rgb(var(--color-text-muted))] animate-fade-in">
+        <div className="relative mb-4">
+          <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[rgba(var(--color-primary),0.2)] to-[rgba(var(--color-tertiary),0.2)] blur-2xl" />
+          <Inbox className="relative h-12 w-12" />
         </div>
         <p className="text-base font-medium text-[rgb(var(--color-text-secondary))]">
-          {extensionFilters.length
-            ? "No files match current filters"
-            : "No files selected"}
+          {extensionFilters.length ? "No files match current filters" : "No files selected"}
         </p>
-        <p className="text-sm text-[rgb(var(--color-text-muted))] mt-1">
-          Select files from the tree to get started
-        </p>
+        <p className="mt-1 text-sm opacity-80">Select files from the tree to get started</p>
       </div>
     );
   }
 
   return (
-    <>
-      {/* Enhanced stats header */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div className="flex items-center gap-2 flex-1">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
           <Badge className="bg-gradient-to-r from-[rgba(var(--color-primary),0.15)] to-[rgba(var(--color-primary),0.05)] text-[rgb(var(--color-primary))] border border-[rgba(var(--color-primary),0.3)] px-3 py-1 shadow-sm">
             <Layers size={14} className="mr-1.5" />
-            {dirs.length > 0 && `${dirs.length} dir${dirs.length > 1 ? "s" : ""}, `}
-            {files.length} file{files.length !== 1 && "s"}
+            {summary.dirs.length > 0 && `${summary.dirs.length} dir${summary.dirs.length > 1 ? "s" : ""}, `}
+            {summary.files.length} file{summary.files.length === 1 ? "" : "s"}
           </Badge>
           <Badge className="bg-gradient-to-r from-[rgba(var(--color-secondary),0.15)] to-[rgba(var(--color-secondary),0.05)] text-[rgb(var(--color-secondary))] border border-[rgba(var(--color-secondary),0.3)] px-3 py-1 shadow-sm">
             <BarChart2 size={14} className="mr-1.5" />
-            {totalTokens.toLocaleString()} tokens
+            {summary.totalTokens.toLocaleString()} tokens
           </Badge>
           <Badge className="bg-gradient-to-r from-[rgba(var(--color-tertiary),0.15)] to-[rgba(var(--color-tertiary),0.05)] text-[rgb(var(--color-tertiary))] border border-[rgba(var(--color-tertiary),0.3)] px-3 py-1 shadow-sm">
             <FileText size={14} className="mr-1.5" />
-            {totalChars.toLocaleString()} chars
+            {summary.totalChars.toLocaleString()} chars
           </Badge>
         </div>
-        
+
         <div className="flex items-center gap-2">
-          <Select value={sortMode} onValueChange={v => setSortMode(v as any)}>
-            <SelectTrigger className="h-9 w-[180px] text-sm glass border-[rgba(var(--color-border),0.5)] text-[rgb(var(--color-text-primary))]">
-              <ArrowUpDown size={14} className="mr-1.5 text-[rgb(var(--color-accent-2))]" />
-              <SelectValue placeholder="Sort files…" />
+          <Select value={sortMode} onValueChange={(value) => setSortMode(value as SortMode)}>
+            <SelectTrigger className="h-9 w-[190px] glass border-[rgba(var(--color-border),0.5)] text-sm">
+              <SelectValue placeholder="Sort files…">
+                <div className="flex items-center gap-2">
+                  {SORT_OPTIONS.find((option) => option.value === sortMode)?.icon}
+                  {SORT_OPTIONS.find((option) => option.value === sortMode)?.label}
+                </div>
+              </SelectValue>
             </SelectTrigger>
             <SelectContent className="glass border-[rgba(var(--color-border),0.7)]">
-              <SelectItem value="name">
-                <div className="flex items-center">
-                  <SortAsc size={14} className="mr-2 text-[rgb(var(--color-primary))]" />
-                  Alphabetical
-                </div>
-              </SelectItem>
-              <SelectItem value="tokens">
-                <div className="flex items-center">
-                  <BarChart2 size={14} className="mr-2 text-[rgb(var(--color-secondary))]" />
-                  Token Count
-                </div>
-              </SelectItem>
+              {SORT_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  <div className="flex items-center gap-2">
+                    {option.icon}
+                    {option.label}
+                  </div>
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
-          
-          <TooltipProvider delayDuration={100}>
+
+          <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   size="sm"
-                  disabled={isMutating || files.length === 0}
+                  disabled={isMutating || summary.files.length === 0}
                   onClick={handlePreview}
-                  className="h-9 bg-gradient-to-r from-[rgb(var(--color-tertiary))] to-[rgb(var(--color-accent-1))] text-white hover:shadow-glow-tertiary active-scale"
+                  className="h-9 bg-gradient-to-r from-[rgb(var(--color-tertiary))] to-[rgb(var(--color-accent-1))] text-white hover:shadow-glow-tertiary"
                 >
                   {isMutating ? (
-                    <><Loader2 size={14} className="mr-1.5 animate-spin" />Extracting…</>
+                    <>
+                      <Loader2 size={14} className="mr-1.5 animate-spin" />Extracting…
+                    </>
                   ) : (
                     <>
                       <Sparkles size={14} className="mr-1.5" />
                       <Share2 size={14} className="mr-1.5" />
-                      Preview Code
+                      Preview code
                     </>
                   )}
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="glass">
-                <p>Extract and preview code structure</p>
+                Extract codemap summaries for current selection
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </div>
       </div>
 
-      {/* Enhanced file list */}
-      <ScrollArea className="h-[200px] pr-3 glass border-[rgba(var(--color-border),0.5)] rounded-xl">
-        <ul className="p-2 space-y-1">
-          {dirs.map((d, index) => (
-            <li 
-              key={d} 
-              className="group relative rounded-lg transition-all duration-300 animate-slide-up hover-lift-sm"
-              style={{ animationDelay: `${index * 30}ms` }}
-              onMouseEnter={() => setHoveredPath(d)}
+      <ScrollArea className="h-[220px] rounded-xl border border-[rgba(var(--color-border),0.4)] bg-[rgba(var(--color-bg-secondary),0.3)] p-2">
+        <ul className="space-y-2">
+          {summary.dirs.map((dir) => (
+            <li
+              key={dir}
+              className={`flex items-center justify-between rounded-lg border px-3 py-2 transition-colors ${
+                hoveredPath === dir
+                  ? "border-[rgba(var(--color-accent-4),0.4)] bg-[rgba(var(--color-accent-4),0.12)]"
+                  : "border-transparent"
+              }`}
+              onMouseEnter={() => setHoveredPath(dir)}
               onMouseLeave={() => setHoveredPath(null)}
             >
-              <div className={`
-                flex items-center justify-between px-3 py-2 rounded-lg
-                ${hoveredPath === d 
-                  ? 'bg-gradient-to-r from-[rgba(var(--color-accent-4),0.15)] to-[rgba(var(--color-accent-4),0.05)] border border-[rgba(var(--color-accent-4),0.3)]' 
-                  : 'bg-[rgba(var(--color-bg-secondary),0.3)] border border-transparent'
-                }
-                transition-all duration-200
-              `}>
-                <span className="flex items-center truncate">
-                  <div className="p-1.5 rounded-md bg-[rgba(var(--color-accent-4),0.15)] mr-2">
-                    <Folder className="h-4 w-4 text-[rgb(var(--color-accent-4))]" />
-                  </div>
-                  <span className="truncate font-mono text-sm text-[rgb(var(--color-text-primary))]">{d}</span>
+              <div className="flex items-center gap-2 truncate">
+                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[rgba(var(--color-accent-4),0.15)]">
+                  <Folder className="h-4 w-4 text-[rgb(var(--color-accent-4))]" />
+                </div>
+                <span className="truncate font-mono text-sm text-[rgb(var(--color-text-primary))]">
+                  {dir}
                 </span>
-                <Button 
-                  size="icon" 
-                  variant="ghost" 
-                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-[rgba(var(--color-error),0.15)] hover:text-[rgb(var(--color-error))]" 
-                  onClick={() => removePath(d)}
+              </div>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => removePath(dir)}
+                className="h-7 w-7 text-[rgb(var(--color-text-muted))] hover:bg-rose-500/15 hover:text-rose-400"
+              >
+                <X size={14} />
+              </Button>
+            </li>
+          ))}
+
+          {summary.files.map((file) => (
+            <li
+              key={file.path}
+              className={`flex items-center justify-between rounded-lg border px-3 py-2 transition-colors ${
+                hoveredPath === file.path
+                  ? "border-[rgba(var(--color-primary),0.4)] bg-[rgba(var(--color-primary),0.12)]"
+                  : "border-transparent"
+              }`}
+              onMouseEnter={() => setHoveredPath(file.path)}
+              onMouseLeave={() => setHoveredPath(null)}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[rgba(var(--color-primary),0.12)]">
+                  {getExtensionIcon(file.path)}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate font-mono text-sm text-[rgb(var(--color-text-primary))]">
+                    {file.path}
+                  </p>
+                  <p className="text-xs text-[rgb(var(--color-text-muted))]">
+                    {(file.tokenCount ?? 0).toLocaleString()} tokens · {file.content.length.toLocaleString()} chars
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Badge className="px-2 py-0.5 text-xs bg-gradient-to-r from-[rgba(var(--color-tertiary),0.15)] to-[rgba(var(--color-tertiary),0.05)] text-[rgb(var(--color-tertiary))] border border-[rgba(var(--color-tertiary),0.3)]">
+                  <Code size={12} className="mr-1" />
+                  {file.tokenCount ?? 0}
+                </Badge>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => removePath(file.path)}
+                  className="h-7 w-7 text-[rgb(var(--color-text-muted))] hover:bg-rose-500/15 hover:text-rose-400"
                 >
                   <X size={14} />
                 </Button>
               </div>
             </li>
           ))}
-          
-          {files.map((f, index) => (
-            <li 
-              key={f.path} 
-              className="group relative rounded-lg transition-all duration-300 animate-slide-up hover-lift-sm"
-              style={{ animationDelay: `${(dirs.length + index) * 30}ms` }}
-              onMouseEnter={() => setHoveredPath(f.path)}
-              onMouseLeave={() => setHoveredPath(null)}
-            >
-              <div className={`
-                flex items-center justify-between px-3 py-2 rounded-lg
-                ${hoveredPath === f.path 
-                  ? 'bg-gradient-to-r from-[rgba(var(--color-primary),0.15)] to-[rgba(var(--color-primary),0.05)] border border-[rgba(var(--color-primary),0.3)]' 
-                  : 'bg-[rgba(var(--color-bg-secondary),0.3)] border border-transparent'
-                }
-                transition-all duration-200
-              `}>
-                <span className="flex items-center truncate">
-                  <div className="p-1.5 rounded-md bg-[rgba(var(--color-primary),0.1)] mr-2">
-                    {extIcon(f.path)}
-                  </div>
-                  <span className="truncate font-mono text-sm text-[rgb(var(--color-text-primary))]">{f.path}</span>
-                </span>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <Badge className="px-2 py-0.5 text-xs bg-gradient-to-r from-[rgba(var(--color-tertiary),0.15)] to-[rgba(var(--color-tertiary),0.05)] text-[rgb(var(--color-tertiary))] border border-[rgba(var(--color-tertiary),0.3)]">
-                    {f.tokenCount}
-                  </Badge>
-                  <Button 
-                    size="icon" 
-                    variant="ghost" 
-                    className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-[rgba(var(--color-error),0.15)] hover:text-[rgb(var(--color-error))]" 
-                    onClick={() => removePath(f.path)}
-                  >
-                    <X size={14} />
-                  </Button>
-                </div>
-              </div>
-              
-              {/* Progress bar showing relative token size */}
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[rgba(var(--color-border),0.2)] rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-gradient-to-r from-[rgb(var(--color-tertiary))] to-[rgb(var(--color-accent-1))] transition-all duration-500"
-                  style={{ width: `${Math.min(100, (f.tokenCount / 3000) * 100)}%` }}
-                />
-              </div>
-            </li>
-          ))}
         </ul>
       </ScrollArea>
-    </>
+    </div>
   );
 }

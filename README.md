@@ -27,7 +27,6 @@ A tool for quickly assembling Large Language Model (LLM) prompts from a local fi
 - **Meta Prompt Management**: Store and retrieve partial prompts (meta prompts) in a dedicated directory.
 - **AI-Powered Features**: Smart file selection and prompt refinement using LLMs (requires OpenRouter API key).
 - **Task Management**: Integrated Kanban board, To-Do list, and User Story management.
-- **Actor Definition**: Define and manage project actors, with AI-assisted suggestions.
 - **Copy to Clipboard**: Gather your meta prompt, main instructions, project tree, and selected file contents in one click.
 - **Cross-Platform**: Built with Electron for Linux, macOS, and Windows compatibility.
 
@@ -189,7 +188,7 @@ A summary of passed/failed tests will be printed.
 
 - **`tree-sitter` compilation errors on `npm install`**: This is almost always due to a missing C/C++ build toolchain. Please follow the instructions in the [Prerequisites](#prerequisites) section for your operating system.
 - **`EBADENGINE` or Node Version Errors**: You are running an unsupported version of Node.js. Please use `nvm` or install Node.js v20+.
-- **Port Conflicts**: If default ports (3010, 5010) are in use, modify `ports.ini` and ensure your start scripts or manual commands reflect these changes.
+- **Port Conflicts**: If default ports (3010, 5010) are in use, modify `ports.ini` and ensure the commands you use (e.g., `npm run electron:dev`, custom backend starts) pass the updated values along.
 - **CSS/JS Not Loading in Packaged App**: This is often due to incorrect asset paths. The current `next.config.js` with `assetPrefix: './'` should handle this for the `file://` protocol.
 
 ---

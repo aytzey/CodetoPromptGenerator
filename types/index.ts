@@ -58,12 +58,16 @@ export type CodemapResponse = Record<string, CodemapInfo>;
 
 /* ═══════════════ Auto‑select models ═══════════════ */
 export interface AutoSelectRequest {
-  projectPath: string;
   instructions: string;
   treePaths: string[];               // flattened *relative* paths
+  baseDir?: string;                  // optional absolute project root
 }
 
-export type AutoSelectResponse = string[];            // list of *relative* paths
+export interface AutoSelectResponse {
+  selected: string[];                // list of *relative* paths
+  llmRaw?: string;                   // raw model output for debugging
+  codemap?: CodemapResponse;         // optional debug summaries (when ?debug=1)
+}
 
 /* █████  KANBAN  ██████████████████████████████████████████████████████ */
 export const KanbanStatusValues   = ['todo', 'in-progress', 'done'] as const;
@@ -111,7 +115,6 @@ export const TaskSchema = KanbanItemSchema.extend({
 export interface UserStory {
   id: number;
   title: string;
-  actorId?: number | null;
   description?: string | null;
   acceptanceCriteria?: string | null;
   priority: KanbanPriority; // Reusing KanbanPriority
@@ -124,7 +127,6 @@ export interface UserStory {
 export const UserStorySchema = z.object({
   id: z.number().int().nonnegative(),
   title: z.string().min(1).max(256), // Max length from KanbanItemModel or adjust
-  actorId: z.number().int().optional().nullable(),
   description: z.string().optional().nullable(),
   acceptanceCriteria: z.string().optional().nullable(),
   priority: z.enum(KanbanPriorityValues),
@@ -132,22 +134,4 @@ export const UserStorySchema = z.object({
   status: z.enum(KanbanStatusValues),
   createdAt: z.string().datetime({ offset: true }),
   taskIds: z.array(z.number().int()).optional(), // Array of task IDs
-});
-
-
-/* █████  ACTOR  ██████████████████████████████████████████████████████ */
-export interface Actor {
-  id: number;
-  name: string;
-  role: string;
-  permissions?: string[];
-  goals?: string[];
-}
-
-export const ActorSchema = z.object({
-  id: z.number().int().nonnegative(),
-  name: z.string().min(1).max(100),
-  role: z.string().min(1),
-  permissions: z.array(z.string()).optional(),
-  goals: z.array(z.string()).optional(),
 });

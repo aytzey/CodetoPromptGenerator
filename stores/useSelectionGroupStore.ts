@@ -16,6 +16,7 @@ interface GroupState {
   groups: PersistedGroups;
 
   /* CRUD helpers */
+  createGroup        :(projectPath: string, group: string, paths: string[]) => void;
   saveGroup            :(projectPath: string, group: string, paths: string[]) => void;
   deleteGroup          :(projectPath: string, group: string)                => void;
   renameGroup          :(projectPath: string, oldName: string, newName: string) => void;
@@ -29,6 +30,9 @@ interface GroupState {
 export const useSelectionGroupStore = create<GroupState>((set, get) => ({
   /* init from localStorage (noop on server) */
   groups: typeof window === 'undefined' ? {} : readLS(),
+
+  createGroup: (projectPath, group, paths) =>
+    get().saveGroup(projectPath, group, paths),
 
   saveGroup: (projectPath, group, paths) =>
     set(state => {

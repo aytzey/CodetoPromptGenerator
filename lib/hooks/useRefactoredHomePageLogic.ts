@@ -56,8 +56,6 @@ export function useRefactoredHomePageLogic() {
     // Actions from various hooks
     handlePathSelected: projectLogic.handlePathSelected,
     autoSelect: serviceActions.autoSelect,
-    generateActors: serviceActions.generateActors,
-    isGeneratingActors: serviceActions.isGeneratingActors,
     openSettingsModal: uiState.openSettingsModal,
     saveApiKey: serviceActions.saveApiKey,
     setApiKeyDraft,

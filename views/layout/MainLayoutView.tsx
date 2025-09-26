@@ -16,7 +16,7 @@ interface MainLayoutViewProps {
   handleRefresh: () => void;
   handleSelectAll: () => void;
   deselectAllFiles: () => void;
-  treeRef: React.RefObject<FileTreeViewHandle>;
+  treeRef: React.RefObject<FileTreeViewHandle | null>;
   filteredTree: FileNode[];
   selectedFilePaths: string[];
   setSelectedFilePaths: (paths: string[]) => void;

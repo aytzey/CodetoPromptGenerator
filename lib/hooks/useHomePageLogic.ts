@@ -20,7 +20,6 @@ import {
   import { useExclusionService } from "@/services/exclusionServiceHooks";
   import { useTodoService } from "@/services/todoServiceHooks";
   import { useAutoSelectService } from "@/services/autoSelectServiceHooks";
-  import { useActorWizardService } from "@/services/actorWizardServiceHooks";
 
   import {
     applyExtensionFilter,
@@ -66,11 +65,10 @@ import {
     const { fetchGlobalExclusions, fetchLocalExclusions } = useExclusionService();
     const { loadTodos } = useTodoService();
     const { autoSelect, isSelecting } = useAutoSelectService();
-    const { generateActors, isGenerating } = useActorWizardService();
 
     // --- Refs & Local UI State ---
     const treeRef = useRef<FileTreeViewHandle>(null);
-    const [activeTab, setActiveTab] = useState<"files" | "options" | "tasks" | "actors">( 
+    const [activeTab, setActiveTab] = useState<"files" | "options" | "tasks">( 
       "files",
     );
     // showSettings and setShowSettings are removed, managed by useAppStore
@@ -205,8 +203,6 @@ import {
       // Setters & Handlers
       handlePathSelected,
       autoSelect,
-      generateActors,
-      isGeneratingActors: isGenerating,
       openSettingsModal, // Expose store action
       saveApiKey,
       setApiKeyDraft,
