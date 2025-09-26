@@ -152,7 +152,6 @@ export default function StunningFolderBrowserView({
       newPath = selectedParts.join(separator);
     }
     
-    console.log('Breadcrumb navigation:', { index, selectedParts, originalPath: path, newPath });
     browse(newPath);
   };
 

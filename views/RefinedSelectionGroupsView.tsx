@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { Plus, XCircle, Bookmark, Check, FolderPlus, AlertTriangle, Library, Sparkles } from 'lucide-react';
 
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import GlassPanel from '@/components/layout/GlassPanel';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -82,41 +82,31 @@ const RefinedSelectionGroupsView: React.FC<RefinedSelectionGroupsViewProps> = ({
 
   if (!projectPath) {
     return (
-      <Card className="glass animate-fade-in">
-        <CardHeader className="glass-header">
-          <CardTitle className="text-lg font-semibold flex items-center gap-3 text-transparent bg-clip-text bg-gradient-to-r from-[rgb(var(--color-secondary))] to-[rgb(var(--color-accent-2))]">
-            <div className="p-2 rounded-lg bg-[rgba(var(--color-secondary),0.1)] border border-[rgba(var(--color-secondary),0.2)]">
-              <Library size={18} className="text-[rgb(var(--color-secondary))]" />
-            </div>
-            Selection Groups
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-6">
-          <div className="flex flex-col items-center justify-center py-8 text-[rgb(var(--color-text-muted))]">
-            <div className="w-16 h-16 rounded-full bg-[rgba(var(--color-border),0.1)] flex items-center justify-center mb-4">
-              <Library size={24} className="opacity-50" />
-            </div>
-            <p className="text-center">
-              Select a project to manage selection groups
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <GlassPanel
+        tone="neutral"
+        title="Selection Groups"
+        description="Select a project to organise your saved selections."
+        icon={<Library className="h-5 w-5" />}
+        contentClassName="p-8 flex flex-col items-center text-center space-y-4"
+      >
+        <div className="w-16 h-16 rounded-full bg-[rgba(var(--color-border),0.12)] flex items-center justify-center">
+          <Library size={24} className="text-[rgb(var(--color-text-muted))]" />
+        </div>
+        <p className="text-sm text-[rgb(var(--color-text-muted))]">
+          Pick a project first to create and reuse selection groups.
+        </p>
+      </GlassPanel>
     );
   }
 
   return (
-    <Card className="glass animate-fade-in">
-      <CardHeader className="glass-header">
-        <CardTitle className="text-lg font-semibold flex items-center gap-3 text-transparent bg-clip-text bg-gradient-to-r from-[rgb(var(--color-secondary))] to-[rgb(var(--color-accent-2))]">
-          <div className="p-2 rounded-lg bg-[rgba(var(--color-secondary),0.1)] border border-[rgba(var(--color-secondary),0.2)]">
-            <Library size={18} className="text-[rgb(var(--color-secondary))]" />
-          </div>
-          Selection Groups
-        </CardTitle>
-      </CardHeader>
-
-      <CardContent className="p-6 space-y-6">
+    <GlassPanel
+      tone="secondary"
+      title="Selection Groups"
+      description="Save and restore curated file selections for this project"
+      icon={<Library className="h-5 w-5" />}
+      contentClassName="space-y-6"
+    >
         {/* Create Group Section */}
         <div className="space-y-4">
           <div className="flex items-center">
@@ -124,7 +114,7 @@ const RefinedSelectionGroupsView: React.FC<RefinedSelectionGroupsViewProps> = ({
             <span className="text-sm text-[rgb(var(--color-text-secondary))]">Create Group</span>
           </div>
           
-          <div className="flex space-x-2">
+          <div className="flex gap-2">
             <div className="relative flex-1">
               <Input
                 value={newGroupName}
@@ -258,8 +248,7 @@ const RefinedSelectionGroupsView: React.FC<RefinedSelectionGroupsViewProps> = ({
           </div>
           <p>Groups let you save and quickly restore sets of selected files for this project.</p>
         </div>
-      </CardContent>
-    </Card>
+      </GlassPanel>
   );
 };
 

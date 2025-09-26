@@ -29,6 +29,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip';
+import GlassPanel from '@/components/layout/GlassPanel';
 import {
   Plus,
   Calendar,
@@ -634,137 +635,132 @@ const KanbanBoardView: React.FC = () => {
   // Loading state
   if (isLoading && !items.length) {
     return (
-      <div className="flex items-center justify-center h-[400px]">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-[rgb(var(--color-primary))] mx-auto mb-3" />
-          <p className="text-sm text-[rgb(var(--color-text-muted))]">Loading tasks...</p>
-        </div>
-      </div>
+      <GlassPanel
+        tone="primary"
+        title="Tasks Board"
+        description="Organize and track your project tasks"
+        icon={<Sparkles className="h-5 w-5" />}
+        contentClassName="py-12 flex flex-col items-center space-y-3 text-center"
+      >
+        <Loader2 className="h-8 w-8 animate-spin text-[rgb(var(--color-primary))] mx-auto" />
+        <p className="text-sm text-[rgb(var(--color-text-muted))]">Loading tasks...</p>
+      </GlassPanel>
     );
   }
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="mb-4">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-lg font-semibold text-[rgb(var(--color-text-primary))] flex items-center gap-2">
-              <Sparkles size={18} className="text-[rgb(var(--color-primary))]" />
-              Tasks Board
-            </h2>
-            <p className="text-xs text-[rgb(var(--color-text-muted))] mt-0.5">
-              Organize and track your project tasks
-            </p>
+    <>
+      <GlassPanel
+        tone="primary"
+        title="Tasks Board"
+        description="Organize and track your project tasks"
+        icon={<Sparkles className="h-5 w-5" />}
+        contentClassName="space-y-6 h-full flex flex-col"
+      >
+        <div className="space-y-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[rgb(var(--color-text-muted))]" />
+              <Input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search tasks..."
+                className="pl-9 h-9 bg-[rgba(var(--color-bg-secondary),0.3)] border-[rgba(var(--color-border),0.4)] focus:border-[rgba(var(--color-primary),0.5)]"
+              />
+            </div>
+
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className={cn(
+                      "h-9 w-9",
+                      filterPriority && "bg-[rgba(var(--color-primary),0.1)] border-[rgba(var(--color-primary),0.3)]"
+                    )}
+                  >
+                    <Filter size={16} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium mb-2">Filter by priority</p>
+                    {Object.entries(PRIORITY_CONFIG).map(([key, config]) => (
+                      <Button
+                        key={key}
+                        variant={filterPriority === key ? "default" : "ghost"}
+                        size="sm"
+                        className="w-full justify-start h-7 text-xs"
+                        onClick={() => setFilterPriority(filterPriority === key ? null : (key as KanbanPriority))}
+                      >
+                        {config.icon}
+                        <span className="ml-1">{config.label}</span>
+                      </Button>
+                    ))}
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
+
+          {(searchTerm || filterPriority) && (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[rgb(var(--color-text-muted))]">
+              <span>Active filters:</span>
+              {searchTerm && (
+                <Badge variant="secondary" className="text-xs">
+                  Search: &ldquo;{searchTerm}&rdquo;
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-3 w-3 ml-1"
+                    onClick={() => setSearchTerm("")}
+                  >
+                    <X size={10} />
+                  </Button>
+                </Badge>
+              )}
+              {filterPriority && (
+                <Badge variant="secondary" className="text-xs">
+                  Priority: {PRIORITY_CONFIG[filterPriority].label}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-3 w-3 ml-1"
+                    onClick={() => setFilterPriority(null)}
+                  >
+                    <X size={10} />
+                  </Button>
+                </Badge>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Search and filters */}
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[rgb(var(--color-text-muted))]" />
-            <Input
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search tasks..."
-              className="pl-9 h-9 bg-[rgba(var(--color-bg-secondary),0.3)] border-[rgba(var(--color-border),0.4)] focus:border-[rgba(var(--color-primary),0.5)]"
-            />
-          </div>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className={cn(
-                    'h-9 w-9',
-                    filterPriority && 'bg-[rgba(var(--color-primary),0.1)] border-[rgba(var(--color-primary),0.3)]'
-                  )}
+        <div className="flex-1 overflow-hidden">
+          <DragDropContext onDragEnd={handleDragEnd}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
+              {columns.map(({ status, items }) => (
+                <Card
+                  key={status}
+                  className="overflow-hidden bg-[rgba(var(--color-bg-tertiary),0.3)] border-[rgba(var(--color-border),0.4)] flex flex-col"
                 >
-                  <Filter size={16} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <div className="space-y-1">
-                  <p className="text-xs font-medium mb-2">Filter by priority</p>
-                  {Object.entries(PRIORITY_CONFIG).map(([key, config]) => (
-                    <Button
-                      key={key}
-                      variant={filterPriority === key ? 'default' : 'ghost'}
-                      size="sm"
-                      className="w-full justify-start h-7 text-xs"
-                      onClick={() => setFilterPriority(filterPriority === key ? null : key as KanbanPriority)}
-                    >
-                      {config.icon}
-                      <span className="ml-1">{config.label}</span>
-                    </Button>
-                  ))}
-                </div>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+                  <Column
+                    status={status}
+                    items={items}
+                    onAddTask={handleAddTask}
+                    onEditTask={handleEditTask}
+                    onDeleteTask={handleDeleteTask}
+                    onManageStories={handleManageStories}
+                    isSaving={isSaving}
+                  />
+                </Card>
+              ))}
+            </div>
+          </DragDropContext>
         </div>
+      </GlassPanel>
 
-        {/* Active filters */}
-        {(searchTerm || filterPriority) && (
-          <div className="flex items-center gap-2 mt-2">
-            <span className="text-xs text-[rgb(var(--color-text-muted))]">Active filters:</span>
-            {searchTerm && (
-              <Badge variant="secondary" className="text-xs">
-                Search: &ldquo;{searchTerm}&rdquo;
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-3 w-3 ml-1"
-                  onClick={() => setSearchTerm('')}
-                >
-                  <X size={10} />
-                </Button>
-              </Badge>
-            )}
-            {filterPriority && (
-              <Badge variant="secondary" className="text-xs">
-                Priority: {PRIORITY_CONFIG[filterPriority].label}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-3 w-3 ml-1"
-                  onClick={() => setFilterPriority(null)}
-                >
-                  <X size={10} />
-                </Button>
-              </Badge>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Kanban columns */}
-      <div className="flex-1 overflow-hidden">
-        <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
-            {columns.map(({ status, items }) => (
-              <Card
-                key={status}
-                className="overflow-hidden bg-[rgba(var(--color-bg-tertiary),0.3)] border-[rgba(var(--color-border),0.4)] flex flex-col"
-              >
-                <Column
-                  status={status}
-                  items={items}
-                  onAddTask={handleAddTask}
-                  onEditTask={handleEditTask}
-                  onDeleteTask={handleDeleteTask}
-                  onManageStories={handleManageStories}
-                  isSaving={isSaving}
-                />
-              </Card>
-            ))}
-          </div>
-        </DragDropContext>
-      </div>
-
-      {/* Edit modal */}
       <KanbanEditModal
         item={editingItem}
         isOpen={isEditModalOpen}
@@ -775,18 +771,18 @@ const KanbanBoardView: React.FC = () => {
         onSave={handleSaveEdit}
         isSaving={isSaving}
       />
-      {/* Story association modal */}
+
       <TaskStoryAssociationModal
         task={storyAssociationTask}
         isOpen={isStoryModalOpen}
         onClose={() => {
           setIsStoryModalOpen(false);
           setStoryAssociationTask(null);
-          load(); // Reload tasks after managing associations to reflect changes
-          loadStories(); // Reload stories as well
+          load();
+          loadStories();
         }}
       />
-    </div>
+    </>
   );
 };
 

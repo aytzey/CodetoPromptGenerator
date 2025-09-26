@@ -1,11 +1,17 @@
 // FILE: views/RefinedLocalExclusionsManagerView.tsx
 import React, { useEffect, useState } from "react";
 import {
-  FileX, Plus, X, Loader2, Filter, 
-  Settings, Info, Sparkles, FolderOpen
+  FileX,
+  Plus,
+  X,
+  Loader2,
+  Filter,
+  Settings,
+  Info,
+  Sparkles,
+  FolderOpen,
 } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +19,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import GlassPanel from "@/components/layout/GlassPanel";
 
 import { useExclusionStore } from "@/stores/useExclusionStore";
 import { useExclusionService } from "@/services/exclusionServiceHooks";
@@ -77,60 +84,56 @@ const RefinedLocalExclusionsManagerView: React.FC = () => {
 
   if (!projectPath) {
     return (
-      <Card className="glass animate-fade-in">
-        <CardContent className="p-12 text-center">
-          <div className="w-16 h-16 rounded-full bg-[rgba(var(--color-border),0.1)] flex items-center justify-center mb-4 mx-auto">
-            <FolderOpen size={24} className="text-[rgb(var(--color-text-muted))]" />
-          </div>
-          <h3 className="text-lg font-medium text-[rgb(var(--color-text-secondary))] mb-2">No Project Selected</h3>
-          <p className="text-sm text-[rgb(var(--color-text-muted))] max-w-md">
-            Select a project using the folder picker to manage project-specific exclusions.
-          </p>
-        </CardContent>
-      </Card>
+      <GlassPanel
+        tone="neutral"
+        title="Project Exclusions"
+        description="Select a project to manage project-specific exclusions."
+        icon={<FolderOpen className="h-5 w-5" />}
+        contentClassName="py-12 flex flex-col items-center text-center space-y-3"
+      >
+        <div className="w-16 h-16 rounded-full bg-[rgba(var(--color-border),0.12)] flex items-center justify-center">
+          <FolderOpen className="h-7 w-7 text-[rgb(var(--color-text-muted))]" />
+        </div>
+        <h3 className="text-lg font-medium text-[rgb(var(--color-text-secondary))]">
+          No Project Selected
+        </h3>
+        <p className="text-sm text-[rgb(var(--color-text-muted))] max-w-md">
+          Choose a project with the folder picker to populate and customise project-level exclusions.
+        </p>
+      </GlassPanel>
     );
   }
 
-  return (
-    <Card className="glass animate-fade-in">
-      <CardHeader className="glass-header">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="p-2.5 rounded-xl bg-[rgba(var(--color-tertiary),0.1)] border border-[rgba(var(--color-tertiary),0.2)]">
-              <FileX size={20} className="text-[rgb(var(--color-tertiary))]" />
-            </div>
-            <div>
-              <CardTitle className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-[rgb(var(--color-tertiary))] to-[rgb(var(--color-accent-1))]">
-                Project Exclusions
-              </CardTitle>
-              <p className="text-sm text-[rgb(var(--color-text-muted))] mt-1">
-                Patterns excluded from this project only
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-3">
-            {localExclusions.length > 0 && (
-              <Badge className="bg-[rgba(var(--color-tertiary),0.1)] text-[rgb(var(--color-tertiary))] border border-[rgba(var(--color-tertiary),0.3)]">
-                {localExclusions.length} patterns
-              </Badge>
-            )}
-            {isLoadingLocal && (
-              <Badge className="bg-[rgba(var(--color-info),0.1)] text-[rgb(var(--color-info))] border border-[rgba(var(--color-info),0.3)]">
-                <Loader2 size={12} className="animate-spin mr-1.5" />
-                Loading...
-              </Badge>
-            )}
-            {isSavingLocal && (
-              <Badge className="bg-[rgba(var(--color-warning),0.1)] text-[rgb(var(--color-warning))] border border-[rgba(var(--color-warning),0.3)] animate-pulse">
-                <Loader2 size={12} className="animate-spin mr-1.5" />
-                Saving...
-              </Badge>
-            )}
-          </div>
-        </div>
-      </CardHeader>
+  const headerActions = (
+    <div className="flex flex-wrap items-center gap-2">
+      {localExclusions.length > 0 && (
+        <Badge className="bg-[rgba(var(--color-tertiary),0.1)] text-[rgb(var(--color-tertiary))] border border-[rgba(var(--color-tertiary),0.3)]">
+          {localExclusions.length} patterns
+        </Badge>
+      )}
+      {isLoadingLocal && (
+        <Badge className="bg-[rgba(var(--color-info),0.12)] text-[rgb(var(--color-info))] border border-[rgba(var(--color-info),0.25)]">
+          <Loader2 size={12} className="animate-spin mr-1.5" />
+          Loading…
+        </Badge>
+      )}
+      {isSavingLocal && (
+        <Badge className="bg-[rgba(var(--color-warning),0.12)] text-[rgb(var(--color-warning))] border border-[rgba(var(--color-warning),0.25)] animate-pulse">
+          <Loader2 size={12} className="animate-spin mr-1.5" />
+          Saving…
+        </Badge>
+      )}
+    </div>
+  );
 
-      <CardContent className="p-6 space-y-6">
+  return (
+    <GlassPanel
+      tone="tertiary"
+      title="Project Exclusions"
+      description="Patterns excluded from this project only"
+      icon={<FileX className="h-5 w-5" />}
+      actions={headerActions}
+    >
         {/* Error Alert */}
         {error && (
           <Alert className="bg-[rgba(var(--color-error),0.1)] text-[rgb(var(--color-error))] border border-[rgba(var(--color-error),0.3)]">
@@ -140,12 +143,12 @@ const RefinedLocalExclusionsManagerView: React.FC = () => {
 
         {/* Add New Exclusion */}
         <div className="space-y-4">
-          <div className="text-sm text-[rgb(var(--color-text-secondary))] flex items-center">
-            <Plus size={14} className="mr-2 text-[rgb(var(--color-tertiary))]" />
-            Add new exclusion pattern
+          <div className="text-sm text-[rgb(var(--color-text-secondary))] flex items-center gap-2">
+            <Plus size={14} className="text-[rgb(var(--color-tertiary))]" />
+            <span>Add new exclusion pattern</span>
           </div>
           
-          <div className="flex space-x-2">
+          <div className="flex gap-2">
             <div className="relative flex-1">
               <Input
                 value={newExclusion}
@@ -284,9 +287,8 @@ const RefinedLocalExclusionsManagerView: React.FC = () => {
           <p className="mb-2">These patterns will be excluded when using &ldquo;Select All&rdquo; in this project only.</p>
           <p>Use patterns like <code className="bg-[rgba(var(--color-bg-secondary),0.7)] px-2 py-0.5 rounded text-[rgb(var(--color-accent-1))] font-mono">*.test.js</code> or specific file paths.</p>
         </div>
-      </CardContent>
-    </Card>
-  );
+      </GlassPanel>
+    );
 };
 
 export default RefinedLocalExclusionsManagerView;
