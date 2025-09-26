@@ -233,7 +233,7 @@ const RefinedSelectionGroupsView: React.FC<RefinedSelectionGroupsViewProps> = ({
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent side="left" className="glass py-1 px-2 shadow-lg">
-                                <p className="text-xs">Delete group "{name}"</p>
+                                <p className="text-xs">Delete group &ldquo;{name}&rdquo;</p>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>

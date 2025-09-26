@@ -249,7 +249,7 @@ const SelectionGroupsView: React.FC<Props> = ({
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent side="left" className="bg-[rgba(15,16,36,0.95)] border-[rgba(60,63,87,0.7)]">
-                                <p>Delete group "{name}"</p>
+                                <p>Delete group &ldquo;{name}&rdquo;</p>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>

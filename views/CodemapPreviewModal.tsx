@@ -118,8 +118,11 @@ export default function CodemapPreviewModal({}: Props) {
   const [hoveredRowIndex, setHoveredRowIndex] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("overview");
   const [selectedFileType, setSelectedFileType] = useState<string>("all");
-  
-  const dataToDisplay = codemapModalData || {};
+
+  const dataToDisplay = useMemo<Record<string, EnhancedFileInfo>>(
+    () => codemapModalData ?? {},
+    [codemapModalData]
+  );
 
   // Enhanced analytics and metrics
   const analytics = useMemo(() => {
@@ -159,19 +162,19 @@ export default function CodemapPreviewModal({}: Props) {
       if (info.imports) {
         moduleGraph[file] = new Set();
         info.imports.forEach(imp => {
-          const module = imp.module;
-          moduleGraph[file].add(module);
-          
-          if (!reverseGraph[module]) {
-            reverseGraph[module] = new Set();
+          const moduleName = imp.module;
+          moduleGraph[file].add(moduleName);
+
+          if (!reverseGraph[moduleName]) {
+            reverseGraph[moduleName] = new Set();
           }
-          reverseGraph[module].add(file);
-          
+          reverseGraph[moduleName].add(file);
+
           // Classify as internal or external
-          if (module.startsWith('.') || module.startsWith('/') || files.some(f => f.includes(module))) {
-            internalModules.add(module);
+          if (moduleName.startsWith('.') || moduleName.startsWith('/') || files.some(f => f.includes(moduleName))) {
+            internalModules.add(moduleName);
           } else {
-            externalModules.add(module);
+            externalModules.add(moduleName);
           }
         });
       }

@@ -25,7 +25,7 @@ import {
   GitBranch,
   Code,
   Database,
-  Image,
+  Image as ImageIcon,
   FileText,
   Package,
 } from "lucide-react";
@@ -174,10 +174,10 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
         yaml: <Database className="h-4 w-4 text-[rgb(var(--color-accent-4))]" />,
         md: <FileText className="h-4 w-4 text-[rgb(var(--color-text-primary))]" />,
         txt: <FileText className="h-4 w-4 text-[rgb(var(--color-text-secondary))]" />,
-        png: <Image className="h-4 w-4 text-[rgb(var(--color-accent-1))]" />,
-        jpg: <Image className="h-4 w-4 text-[rgb(var(--color-accent-1))]" />,
-        jpeg: <Image className="h-4 w-4 text-[rgb(var(--color-accent-1))]" />,
-        svg: <Image className="h-4 w-4 text-[rgb(var(--color-accent-1))]" />,
+        png: <ImageIcon className="h-4 w-4 text-[rgb(var(--color-accent-1))]" />,
+        jpg: <ImageIcon className="h-4 w-4 text-[rgb(var(--color-accent-1))]" />,
+        jpeg: <ImageIcon className="h-4 w-4 text-[rgb(var(--color-accent-1))]" />,
+        svg: <ImageIcon className="h-4 w-4 text-[rgb(var(--color-accent-1))]" />,
         git: <GitBranch className="h-4 w-4 text-[rgb(var(--color-accent-4))]" />,
         lock: <Package className="h-4 w-4 text-[rgb(var(--color-text-muted))]" />,
       };
@@ -215,11 +215,9 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
       const isOpen = isDir && !collapsed.has(node.absolutePath);
       const rowId = node.absolutePath;
 
-      const selectableFiles = useMemo(() => {
-        const origin = findNodeByPath(fullTree, node.relativePath) ?? node;
-        return collectFileDescendants(origin);
-      }, [node, fullTree]);
-      
+      const origin = findNodeByPath(fullTree, node.relativePath) ?? node;
+      const selectableFiles = collectFileDescendants(origin);
+
       const isEmpty = selectableFiles.length === 0;
       const checked = !isEmpty && selectableFiles.every((p) => selectedSet.has(p));
       const partial = !isEmpty && !checked && selectableFiles.some((p) => selectedSet.has(p));

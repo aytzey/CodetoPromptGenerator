@@ -1,7 +1,7 @@
 // views/StunningFolderBrowserView.tsx
 // Behance-worthy folder browser with modern design
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ChevronLeft,
   Folder,
@@ -66,39 +66,8 @@ export default function StunningFolderBrowserView({
   // API base URL
   const API = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5000';
 
-  // Load drives on mount
-  useEffect(() => {
-    if (isOpen) {
-      loadDrives();
-      if (currentPath) {
-        setPath(currentPath);
-        browse(currentPath);
-      }
-    }
-  }, [isOpen, currentPath]);
-
-  const loadDrives = async () => {
-    try {
-      const response = await fetch(`${API}/api/select_drives`);
-      if (response.ok) {
-        const data = await response.json();
-        const drives = Array.isArray(data) ? data : data.drives || [];
-        const normalizedDrives = drives.map((drive: any) => 
-          typeof drive === 'string' 
-            ? { name: drive, path: drive }
-            : { name: drive.name || drive.path, path: drive.path || drive.name }
-        );
-        setDrives(normalizedDrives);
-        if (!path && normalizedDrives.length > 0) {
-          browse(normalizedDrives[0].path);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load drives:', error);
-    }
-  };
-
-  const browse = async (newPath: string) => {
+  // API helpers
+  const browse = useCallback(async (newPath: string) => {
     setLoading(true);
     setSearch(''); // Clear search when browsing
     try {
@@ -113,7 +82,37 @@ export default function StunningFolderBrowserView({
     } finally {
       setLoading(false);
     }
-  };
+  }, [API]);
+
+  const loadDrives = useCallback(async () => {
+    try {
+      const response = await fetch(`${API}/api/select_drives`);
+      if (response.ok) {
+        const data = await response.json();
+        const drives = Array.isArray(data) ? data : data.drives || [];
+        const normalizedDrives = drives.map((drive: any) =>
+          typeof drive === 'string'
+            ? { name: drive, path: drive }
+            : { name: drive.name || drive.path, path: drive.path || drive.name }
+        );
+        setDrives(normalizedDrives);
+        if (!path && normalizedDrives.length > 0) {
+          void browse(normalizedDrives[0].path);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load drives:', error);
+    }
+  }, [API, browse, path]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    void loadDrives();
+    if (currentPath) {
+      setPath(currentPath);
+      void browse(currentPath);
+    }
+  }, [isOpen, currentPath, loadDrives, browse]);
 
   const navigateUp = () => {
     const separator = path.includes('\\') ? '\\' : '/';

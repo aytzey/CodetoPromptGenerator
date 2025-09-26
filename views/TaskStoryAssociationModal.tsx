@@ -146,7 +146,7 @@ const TaskStoryAssociationModal: React.FC<TaskStoryAssociationModalProps> = ({
             Manage Story Associations
           </DialogTitle>
           <p className="text-sm text-[rgb(var(--color-text-muted))] mt-1">
-            Link "{task.title}" to user stories
+            Link &ldquo;{task.title}&rdquo; to user stories
           </p>
         </DialogHeader>
 
