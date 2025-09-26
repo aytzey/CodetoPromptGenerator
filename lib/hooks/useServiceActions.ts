@@ -1,7 +1,6 @@
 // lib/hooks/useServiceActions.ts
 import { useCallback } from "react";
 import { useAutoSelectService } from "@/services/autoSelectServiceHooks";
-import { useActorWizardService } from "@/services/actorWizardServiceHooks";
 import { useSettingsStore } from "@/stores/useSettingStore";
 import { useAppStore } from "@/stores/useAppStore";
 
@@ -17,7 +16,6 @@ export function useServiceActions(apiKeyDraft: string) {
 
   // Services
   const { autoSelect, isSelecting } = useAutoSelectService();
-  const { generateActors, isGenerating } = useActorWizardService();
 
   // API key management
   const saveApiKey = useCallback(() => {
@@ -34,11 +32,9 @@ export function useServiceActions(apiKeyDraft: string) {
   return {
     // Service states
     isSelecting,
-    isGeneratingActors: isGenerating,
     
     // Service actions
     autoSelect,
-    generateActors,
     saveApiKey,
   };
 }

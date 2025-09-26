@@ -1,14 +1,11 @@
 // views/layout/HeaderView.tsx
 import React from "react";
 import {
-  Code,
   Settings,
   Github,
   Zap,
   RefreshCw,
-  Users,
   Terminal,
-  ChevronRight,
   ExternalLink,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
@@ -22,19 +19,15 @@ import {
 
 interface HeaderViewProps {
   onShowSettings: () => void;
-  onAutoSelect: () => void;
-  onGenerateActors: () => void;
+  onAutoSelect: () => Promise<void> | void;
   isSelecting: boolean;
-  isGeneratingActors: boolean;
   projectPath: string;
 }
 
 const HeaderView: React.FC<HeaderViewProps> = ({
   onShowSettings,
   onAutoSelect,
-  onGenerateActors,
   isSelecting,
-  isGeneratingActors,
   projectPath,
 }) => {
   return (
@@ -86,29 +79,6 @@ const HeaderView: React.FC<HeaderViewProps> = ({
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="glass py-2 px-3 shadow-lg border-[rgba(var(--color-border),0.2)]">
                   <p className="text-[rgb(var(--color-text-secondary))] text-xs">Smart-Select files with Gemma-3</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            {/* Actor Wizard with refined styling */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    disabled={!projectPath || isGeneratingActors}
-                    onClick={onGenerateActors}
-                    className="relative bg-gradient-to-r from-[rgb(var(--color-accent-2))] to-[rgb(var(--color-accent-2))] hover:to-[rgb(var(--color-secondary))] text-white font-medium shadow-[0_4px_12px_rgba(var(--color-accent-2),0.3)] hover:shadow-[0_6px_16px_rgba(var(--color-accent-2),0.4)] rounded-lg px-4 h-9 transition-all duration-300 active:scale-95"
-                  >
-                    {isGeneratingActors ? (
-                      <RefreshCw size={16} className="animate-spin mr-2" />
-                    ) : (
-                      <Users size={16} className="mr-2" />
-                    )}
-                    <span className="text-sm">{isGeneratingActors ? "Processing..." : "Actor Wizard"}</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="glass py-2 px-3 shadow-lg border-[rgba(var(--color-border),0.2)]">
-                  <p className="text-[rgb(var(--color-text-secondary))] text-xs">Generate actors using Llama‑4</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

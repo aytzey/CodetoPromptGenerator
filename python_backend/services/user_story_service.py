@@ -88,7 +88,6 @@ class UserStoryService:
         new_story = {
             "id": new_id,
             "title": story_data["title"],
-            "actorId": story_data.get("actorId"),
             "description": story_data.get("description"),
             "acceptanceCriteria": story_data.get("acceptanceCriteria"),
             "priority": story_data.get("priority", "medium"),

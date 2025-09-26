@@ -372,7 +372,13 @@ export default function CodemapPreviewModal({}: Props) {
     const isHovered = hoveredRowIndex === index;
 
     if (r.type === "header") {
-      const info = r.info || { classes: [], functions: [], references: [] };
+      const info: EnhancedFileInfo = r.info ?? {
+        classes: [],
+        functions: [],
+        references: [],
+        imports: [],
+        exports: [],
+      };
       const complexity = r.metadata?.complexity || 1;
       const complexityColor = complexity <= 3 ? "text-green-500" : complexity <= 6 ? "text-yellow-500" : "text-red-500";
       
@@ -564,7 +570,14 @@ export default function CodemapPreviewModal({}: Props) {
             <div className="flex items-center gap-2">
               {highlightMatch(r.value || "")}
               {r.metadata?.documentation && (
-                <BookOpen size={12} className="text-green-500 flex-shrink-0" title="Has documentation" />
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <BookOpen size={12} className="flex-shrink-0 text-green-500" />
+                    </TooltipTrigger>
+                    <TooltipContent>Has documentation</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               )}
             </div>
             {viewMode === "detailed" && r.metadata?.signature && (

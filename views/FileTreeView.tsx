@@ -15,6 +15,7 @@ import React, {
   useImperativeHandle,
   forwardRef,
 } from "react";
+import type { ReactElement } from "react";
 import {
   ChevronRight,
   ChevronDown,
@@ -162,7 +163,7 @@ const FileTreeView = forwardRef<FileTreeViewHandle, Props>(
     const getFileIcon = (path: string) => {
       const ext = path.split(".").pop()?.toLowerCase() ?? "";
       
-      const iconMap: Record<string, JSX.Element> = {
+      const iconMap: Record<string, ReactElement> = {
         ts: <Code className="h-4 w-4 text-[rgb(var(--color-primary))]" />,
         tsx: <Code className="h-4 w-4 text-[rgb(var(--color-primary))]" />,
         js: <Code className="h-4 w-4 text-[rgb(var(--color-accent-3))]" />,

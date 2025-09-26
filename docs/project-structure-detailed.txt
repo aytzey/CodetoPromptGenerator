@@ -146,10 +146,8 @@ This project is a full-stack web application designed to help users generate Lar
 
 ## Configuration and Scripts
 
-*   **`.env.local`**: Stores the backend API URL (`NEXT_PUBLIC_API_URL`) for the frontend. Read by `next.config.js` and `start.js`.
-*   **`ports.ini`**: Custom configuration file defining frontend and backend ports. Read by `start.js` and `autotest.js`.
-*   **`start.js`**: Orchestration script to find free ports based on `ports.ini`, ensure the Python venv exists and dependencies are installed, write the correct API URL to `.env.local`, and start both the Flask backend and Next.js frontend development servers concurrently.
-*   **`start.bat` / `start.sh`**: Simple wrappers to execute `node start.js`.
+*   **`.env.local`**: Stores the backend API URL (`NEXT_PUBLIC_API_URL`) for the frontend. Read by `next.config.js` and the Electron launch scripts.
+*   **`ports.ini`**: Custom configuration file defining frontend and backend ports. Read by `autotest.js`.
 *   **`postinstall.js`**: Runs automatically after `npm install`. Attempts to find Python, create the venv, and install Python dependencies.
 *   **`autotest.js`**: Script to run integration tests against the running frontend and backend APIs, checking key endpoints. Reads ports from `ports.ini`.
 *   **`next.config.js`**: Configures Next.js build behavior, ESLint/TypeScript settings, environment variables, and API rewrites (though direct API calls using `NEXT_PUBLIC_API_URL` seem to be the primary method).

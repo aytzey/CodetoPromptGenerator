@@ -17,13 +17,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useExclusionStore } from "@/stores/useExclusionStore";
 import { useExclusionService } from "@/services/exclusionServiceHooks";
 import { useProjectStore } from "@/stores/useProjectStore";
+import { useAppStore } from "@/stores/useAppStore";
 
 const RefinedLocalExclusionsManagerView: React.FC = () => {
   const projectPath = useProjectStore(s => s.projectPath);
   const localExclusions = useExclusionStore(s => s.localExclusions);
   const isLoadingLocal = useExclusionStore(s => s.isLoadingLocal);
   const isSavingLocal = useExclusionStore(s => s.isSavingLocal);
-  const error = useExclusionStore(s => s.error);
+  const error = useAppStore(s => s.error);
 
   const { fetchLocalExclusions, updateLocalExclusions } = useExclusionService();
 

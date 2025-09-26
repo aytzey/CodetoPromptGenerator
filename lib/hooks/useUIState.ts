@@ -9,7 +9,7 @@ import type { FileTreeViewHandle } from "@/views/FileTreeView";
  */
 export function useUIState() {
   // Local UI state
-  const [activeTab, setActiveTab] = useState<"files" | "options" | "tasks" | "actors">("files");
+  const [activeTab, setActiveTab] = useState<"files" | "options" | "tasks">("files");
   
   // Refs
   const treeRef = useRef<FileTreeViewHandle>(null);
@@ -24,7 +24,7 @@ export function useUIState() {
 
   // Derived UI state
   const hasContent = useMemo(
-    () => metaPrompt.trim() || mainInstructions.trim(),
+    () => Boolean(metaPrompt.trim() || mainInstructions.trim()),
     [metaPrompt, mainInstructions],
   );
 

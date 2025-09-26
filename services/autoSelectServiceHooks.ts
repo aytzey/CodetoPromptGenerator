@@ -23,37 +23,37 @@ export function useAutoSelectService() {
   /* ---- main action ---- */
   const autoSelect = useCallback(
     async (opts?: { debug?: boolean }) => {
-      const { projectPath, fileTree } = projectStore.getState();
+      const { projectPath, fileTree, setSelectedFilePaths } = projectStore.getState();
       if (!projectPath || isSelecting) return;
 
-      const treePaths = flattenTree(fileTree); // <── FIX: use helper, not store fn
+      const treePaths = flattenTree(fileTree);
+      if (treePaths.length === 0) return;
 
       const request: AutoSelectRequest = {
-        baseDir:     projectPath,
-        treePaths,                           // full project tree
+        baseDir: projectPath,
+        treePaths,
         instructions: promptStore.getState().mainInstructions,
       };
 
-      // const url = `/api/autoselect${opts?.debug ? "?debug=1" : ""}`;
-      const url = "/api/autoselect?debug=1";
+      const url = `/api/autoselect${opts?.debug ? "?debug=1" : ""}`;
+
       try {
         setIsSelecting(true);
 
         const res = await fetchApi<AutoSelectResponse>(url, {
           method: "POST",
-          body:   JSON.stringify(request),
+          body: JSON.stringify(request),
         });
-        if (!res) return;
 
-        // Update selected paths in the project store
-        projectStore.getState().setSelectedFilePaths(res.selected);
+        if (!res?.selected?.length) return;
 
-        // Optional debug → pretty-print codemap
+        setSelectedFilePaths(res.selected);
+
         if (opts?.debug && res.codemap) {
           console.groupCollapsed("🗺️ Codemap summaries");
-          Object.entries(res.codemap).forEach(([file, info]) =>
-            console.info(file, info),
-          );
+          Object.entries(res.codemap).forEach(([file, info]) => {
+            console.info(file, info);
+          });
           console.groupEnd();
         }
       } finally {

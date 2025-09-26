@@ -45,8 +45,6 @@ export default function Home() {
     saveApiKey,
     handlePathSelected,
     autoSelect,
-    generateActors,
-    isGeneratingActors,
     setActiveTab,
     setFileSearchTerm,
     handleRefresh,
@@ -69,12 +67,10 @@ export default function Home() {
       </Head>
 
       <HeaderView
-        onShowSettings={openSettingsModal} // Pass the action to open settings modal
+        onShowSettings={openSettingsModal}
         onAutoSelect={autoSelect}
-        onGenerateActors={generateActors}
-        isSelecting={isSelecting}
-        isGeneratingActors={isGeneratingActors}
-        projectPath={projectPath}
+        isSelecting={Boolean(isSelecting)}
+        projectPath={projectPath ?? ""}
       />
 
       <main className="container mx-auto px-6 pt-8 pb-12 relative z-10">
