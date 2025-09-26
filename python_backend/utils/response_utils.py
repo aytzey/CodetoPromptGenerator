@@ -12,6 +12,20 @@ def success_response(data=None, message=None, status_code=200):
     return jsonify(response), status_code
 
 def error_response(error, message="An error occurred", status_code=400):
-    """Generates a standardized error JSON response."""
-    response = {"success": False, "error": error, "message": message}
+    """Generates a standardized error JSON response.
+
+    NOTE: Older controller code sometimes called ``error_response(err, 404)``
+    assuming the second positional argument was the status code. To remain
+    backwards compatible we detect that usage and treat numeric ``message``
+    values as the status code instead of the human readable message.
+    """
+
+    if isinstance(message, int) and status_code == 400:
+        status_code = message
+        message = None
+
+    response = {"success": False, "error": error}
+    if message:
+        response["message"] = message
+
     return jsonify(response), status_code

@@ -353,7 +353,7 @@ const UserStoryListView: React.FC = () => {
             <span>Active filters:</span>
             {searchTerm && (
               <Badge variant="secondary" className="text-xs">
-                Search: "{searchTerm}"
+                Search: &ldquo;{searchTerm}&rdquo;
                 <Button variant="ghost" size="icon" className="h-3 w-3 ml-1" onClick={() => setSearchTerm('')}>
                   <X size={10} />
                 </Button>
@@ -389,7 +389,7 @@ const UserStoryListView: React.FC = () => {
               <p className="text-sm mt-1 max-w-xs">
                 {searchTerm || filterPriority || filterStatus
                   ? 'No stories match your current filters.'
-                  : 'Start by adding a new user story using the "Add Story" button above.'}
+                  : 'Start by adding a new user story using the &ldquo;Add Story&rdquo; button above.'}
               </p>
             </div>
           ) : (
@@ -554,7 +554,7 @@ const UserStoryListView: React.FC = () => {
                 <DialogHeader className="pb-3 border-b border-[rgba(var(--color-border),0.5)]">
                     <DialogTitle className="text-[rgb(var(--color-primary))] flex items-center gap-2">
                         <ClipboardList size={18} />
-                        Tasks for Story: "{storyTaskAssociation.title}"
+                        Tasks for Story: &ldquo;{storyTaskAssociation.title}&rdquo;
                     </DialogTitle>
                 </DialogHeader>
                 <div className="flex flex-col gap-4 py-4">

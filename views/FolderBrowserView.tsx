@@ -1,7 +1,7 @@
 // views/FolderBrowserView.tsx
 // FIX: Clear search input when browsing into a new folder.
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ChevronLeft,
   Folder,
@@ -77,21 +77,20 @@ export default function FolderBrowserView({
     if (!isOpen) return;
     void loadDrives();
     if (currentPath) void browse(currentPath);
-    // eslint‑disable‑next‑line react-hooks/exhaustive-deps
-  }, [isOpen]);
+  }, [isOpen, currentPath, loadDrives, browse]);
 
   /* -------------- helpers --------------- */
-  async function fetchJson(url: string) {
+  const fetchJson = useCallback(async (url: string) => {
     const r = await fetch(url);
     if (!r.ok) {
       const msg = `${r.status} ${r.statusText}`;
       throw new Error(msg);
     }
     return r.json();
-  }
+  }, []);
 
   /* -------------- API calls -------------- */
-  async function loadDrives() {
+  const loadDrives = useCallback(async () => {
     try {
       setLoading(true);
       const raw = await fetchJson(`${API}/api/select_drives`);
@@ -103,9 +102,9 @@ export default function FolderBrowserView({
     } finally {
       setLoading(false);
     }
-  }
+  }, [fetchJson]);
 
-  async function browse(dir: string) {
+  const browse = useCallback(async (dir: string) => {
     try {
       setLoading(true);
       setSearch(''); // <<< FIX: Clear search term when browsing
@@ -125,7 +124,7 @@ export default function FolderBrowserView({
     } finally {
       setLoading(false);
     }
-  }
+  }, [fetchJson]);
 
   /* -------------- derived --------------- */
   // Filter folders based on the search state

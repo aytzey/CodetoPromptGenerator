@@ -281,7 +281,7 @@ const RefinedLocalExclusionsManagerView: React.FC = () => {
             <Info size={14} />
             <span className="font-medium">About project exclusions:</span>
           </div>
-          <p className="mb-2">These patterns will be excluded when using "Select All" in this project only.</p>
+          <p className="mb-2">These patterns will be excluded when using &ldquo;Select All&rdquo; in this project only.</p>
           <p>Use patterns like <code className="bg-[rgba(var(--color-bg-secondary),0.7)] px-2 py-0.5 rounded text-[rgb(var(--color-accent-1))] font-mono">*.test.js</code> or specific file paths.</p>
         </div>
       </CardContent>

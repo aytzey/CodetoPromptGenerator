@@ -191,14 +191,25 @@ function getPortConfig() { /* ... same as before ... */ }
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ baseDir, paths: ["non_existent_file_12345.txt"] }),
     });
-    if (!resp.ok) throw new Error("Expected HTTP 200 but got " + resp.status);
-    const data = await resp.json();
-    if (!data.success) throw new Error("Expected success=true in response");
-    if (!Array.isArray(data.data) || data.data.length !== 1) throw new Error("Expected exactly one file result");
-    // Check for the specific error message prefix
+    if (resp.status !== 404) {
+      throw new Error(`Expected HTTP 404 but got ${resp.status}`);
+    }
+
+    let data = {};
+    try {
+      data = await resp.json();
+    } catch {
+      /* ignore parse errors */
+    }
+
+    if (data.success !== false) {
+      throw new Error("Expected success=false in response");
+    }
+
     const fileNotFoundPrefix = "File not found on server:";
-    if (!data.data[0].content || !data.data[0].content.startsWith(fileNotFoundPrefix)) {
-        throw new Error(`Expected a '${fileNotFoundPrefix}' message, got: "${data.data[0].content?.substring(0,100)}..."`);
+    const errorMessage = typeof data.error === 'string' ? data.error : String(data.message ?? '');
+    if (!errorMessage.startsWith(fileNotFoundPrefix)) {
+      throw new Error(`Expected a '${fileNotFoundPrefix}' message, got: "${errorMessage.substring(0, 100)}..."`);
     }
   });
 
@@ -231,8 +242,19 @@ function getPortConfig() { /* ... same as before ... */ }
 
     let found = false;
     for (const path of scriptUrls) {
-      const url = path.startsWith('http') ? path : `${FRONTEND_BASE_URL}${path}`;
-      const jsResp = await fetch(url);
+      let url;
+      try {
+        url = new URL(path, FRONTEND_BASE_URL).toString();
+      } catch {
+        continue; // Skip malformed script URLs
+      }
+
+      let jsResp;
+      try {
+        jsResp = await fetch(url);
+      } catch {
+        continue;
+      }
       if (!jsResp.ok) continue;
       const js = await jsResp.text();
       if (js.includes('execCommand("copy"') || js.includes("execCommand('copy'")) {
