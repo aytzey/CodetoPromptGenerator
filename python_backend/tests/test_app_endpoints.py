@@ -41,3 +41,51 @@ def test_todo_crud(client):
     # delete
     resp = client.delete(f"/api/todos/{new_id}")
     assert resp.status_code == 204
+
+
+def test_selection_groups_roundtrip(client, tmp_path):
+    project_dir = tmp_path / "selection-groups-project"
+    project_dir.mkdir()
+
+    resp = client.get(
+        "/api/selectionGroups",
+        query_string={"projectPath": str(project_dir)},
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["data"] == {}
+
+    resp = client.post(
+        "/api/selectionGroups",
+        query_string={"projectPath": str(project_dir)},
+        json={
+            "groups": {
+                "Core": [
+                    "src/app.ts",
+                    "src\\utils.ts",
+                    "src/app.ts",
+                    "   ",
+                ]
+            }
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["success"] is True
+
+    resp = client.get(
+        "/api/selectionGroups",
+        query_string={"projectPath": str(project_dir)},
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["data"] == {"Core": ["src/app.ts", "src/utils.ts"]}
+
+
+def test_selection_groups_validation(client, tmp_path):
+    project_dir = tmp_path / "selection-groups-validation"
+    project_dir.mkdir()
+
+    resp = client.post(
+        "/api/selectionGroups",
+        query_string={"projectPath": str(project_dir)},
+        json={"groups": {"InvalidGroup": [123]}},
+    )
+    assert resp.status_code == 400

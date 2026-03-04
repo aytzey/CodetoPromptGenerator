@@ -3,7 +3,13 @@ import { useEffect, useMemo, useCallback } from "react";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useExclusionStore } from "@/stores/useExclusionStore";
 import { useProjectService } from "@/services/projectServiceHooks";
-import { applyExtensionFilter, applySearchFilter, flattenTree } from "@/lib/fileFilters";
+import {
+  applyExtensionFilter,
+  applySearchFilter,
+  applyWildcardFilter,
+  flattenTree,
+  parseWildcardInput,
+} from "@/lib/fileFilters";
 
 /**
  * Hook for managing project-related logic including:
@@ -58,9 +64,18 @@ export function useProjectLogic() {
     const extFiltered = extensionFilters.length
       ? applyExtensionFilter(fileTree, extensionFilters)
       : fileTree;
-    return fileSearchTerm.trim()
-      ? applySearchFilter(extFiltered, fileSearchTerm.toLowerCase())
-      : extFiltered;
+
+    const searchTerm = fileSearchTerm.trim();
+    if (!searchTerm) {
+      return extFiltered;
+    }
+
+    const hasWildcard = /[*?\[\]]/.test(searchTerm);
+    if (hasWildcard) {
+      return applyWildcardFilter(extFiltered, parseWildcardInput(searchTerm));
+    }
+
+    return applySearchFilter(extFiltered, searchTerm.toLowerCase());
   }, [fileTree, extensionFilters, fileSearchTerm]);
 
   const localExclusionsSet = useMemo(
@@ -107,7 +122,6 @@ export function useProjectLogic() {
     // State
     projectPath,
     isLoadingTree,
-    filteredTree,
     selectedFilePaths,
     fileSearchTerm,
     selectedFileCount,

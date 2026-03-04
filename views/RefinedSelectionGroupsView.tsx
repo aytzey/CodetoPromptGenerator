@@ -1,5 +1,5 @@
 // File: views/RefinedSelectionGroupsView.tsx
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Plus, XCircle, Bookmark, Check, FolderPlus, AlertTriangle, Library, Sparkles } from 'lucide-react';
 
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -11,6 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 
 import { useSelectionGroupStore } from '@/stores/useSelectionGroupStore';
+import { useSelectionGroupService } from '@/services/selectionGroupServiceHooks';
 import type { FileNode } from '@/types';
 
 /* helper – find node & collect descendants (files + dirs) */
@@ -43,24 +44,84 @@ const RefinedSelectionGroupsView: React.FC<RefinedSelectionGroupsViewProps> = ({
   setSelectedFilePaths,
   fileTree,
 }) => {
-  const { groups, createGroup, deleteGroup } = useSelectionGroupStore();
+  const { groups, createGroup, deleteGroup, setGroupsForProject } = useSelectionGroupStore();
+  const { loadAndMigrateLegacyGroups, saveCurrentGroups } = useSelectionGroupService();
   const [newGroupName, setNewGroupName] = useState('');
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
 
   const projectGroups = useMemo(() => {
     return groups[projectPath] || {};
   }, [groups, projectPath]);
 
-  const handleCreateGroup = useCallback(() => {
-    if (!newGroupName.trim() || !selectedFilePaths.length) return;
-    
-    createGroup(projectPath, newGroupName.trim(), selectedFilePaths);
+  useEffect(() => {
+    if (!projectPath) {
+      setActiveGroup(null);
+      setSyncNotice(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsSyncing(true);
+    setSyncNotice(null);
+
+    const run = async () => {
+      try {
+        const { migrated } = await loadAndMigrateLegacyGroups(projectPath);
+        if (cancelled) return;
+        if (migrated) {
+          setSyncNotice("Legacy selection groups were migrated from local storage.");
+        }
+      } catch {
+        if (!cancelled) {
+          setSyncNotice(null);
+        }
+      }
+    };
+
+    void run().finally(() => {
+      if (!cancelled) {
+        setIsSyncing(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectPath, loadAndMigrateLegacyGroups]);
+
+  const handleCreateGroup = useCallback(async () => {
+    const groupName = newGroupName.trim();
+    if (!projectPath || !groupName || !selectedFilePaths.length || isSaving) return;
+
+    const previousGroups = { ...projectGroups };
+    createGroup(projectPath, groupName, selectedFilePaths);
+    setIsSaving(true);
+
+    const ok = await saveCurrentGroups(projectPath);
+    setIsSaving(false);
+    if (!ok) {
+      setGroupsForProject(projectPath, previousGroups);
+      return;
+    }
+
     setNewGroupName('');
-  }, [projectPath, newGroupName, selectedFilePaths, createGroup]);
+  }, [
+    projectPath,
+    newGroupName,
+    selectedFilePaths,
+    isSaving,
+    projectGroups,
+    createGroup,
+    saveCurrentGroups,
+    setGroupsForProject,
+  ]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      handleCreateGroup();
+      void handleCreateGroup();
     }
   };
 
@@ -79,6 +140,31 @@ const RefinedSelectionGroupsView: React.FC<RefinedSelectionGroupsViewProps> = ({
     setSelectedFilePaths(Array.from(expandedPaths));
     setActiveGroup(groupName);
   }, [fileTree, setSelectedFilePaths]);
+
+  const handleDeleteGroup = useCallback(async (groupName: string) => {
+    if (!projectPath || isSaving) return;
+
+    const previousGroups = { ...projectGroups };
+    deleteGroup(projectPath, groupName);
+    if (activeGroup === groupName) {
+      setActiveGroup(null);
+    }
+
+    setIsSaving(true);
+    const ok = await saveCurrentGroups(projectPath);
+    setIsSaving(false);
+    if (!ok) {
+      setGroupsForProject(projectPath, previousGroups);
+    }
+  }, [
+    projectPath,
+    isSaving,
+    projectGroups,
+    deleteGroup,
+    activeGroup,
+    saveCurrentGroups,
+    setGroupsForProject,
+  ]);
 
   if (!projectPath) {
     return (
@@ -146,14 +232,21 @@ const RefinedSelectionGroupsView: React.FC<RefinedSelectionGroupsViewProps> = ({
             </div>
             <Button
               onClick={handleCreateGroup}
-              disabled={!newGroupName.trim() || !selectedFilePaths.length}
+              disabled={!newGroupName.trim() || !selectedFilePaths.length || isSaving || isSyncing}
               size="sm"
               className="bg-[rgb(var(--color-secondary))] hover:bg-[rgba(var(--color-secondary),0.9)] text-white shadow-[0_4px_12px_rgba(var(--color-secondary),0.3)]"
             >
               <Plus size={14} className="mr-1" />
-              Create
+              {isSaving ? 'Saving...' : 'Create'}
             </Button>
           </div>
+
+          {syncNotice && (
+            <div className="text-xs text-[rgb(var(--color-secondary))] flex items-center">
+              <Check size={12} className="mr-1" />
+              {syncNotice}
+            </div>
+          )}
           
           {selectedFilePaths.length === 0 && (
             <div className="text-xs text-[rgb(var(--color-warning))] flex items-center">
@@ -172,7 +265,14 @@ const RefinedSelectionGroupsView: React.FC<RefinedSelectionGroupsViewProps> = ({
         </div>
 
         {/* Groups List */}
-        {Object.keys(projectGroups).length === 0 ? (
+        {isSyncing ? (
+          <div className="flex flex-col items-center justify-center py-8 text-[rgb(var(--color-text-muted))]">
+            <div className="w-16 h-16 rounded-full bg-[rgba(var(--color-border),0.1)] flex items-center justify-center mb-4">
+              <Library size={24} className="opacity-50 animate-pulse" />
+            </div>
+            <p className="text-sm">Loading groups...</p>
+          </div>
+        ) : Object.keys(projectGroups).length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-[rgb(var(--color-text-muted))]">
             <div className="w-16 h-16 rounded-full bg-[rgba(var(--color-border),0.1)] flex items-center justify-center mb-4">
               <Sparkles size={24} className="opacity-50" />
@@ -221,11 +321,11 @@ const RefinedSelectionGroupsView: React.FC<RefinedSelectionGroupsViewProps> = ({
                                 <Button
                                   variant="ghost"
                                   size="icon"
+                                  disabled={isSaving}
                                   className="absolute right-0 top-0 h-full w-8 opacity-0 group-hover:opacity-100 bg-[rgba(var(--color-error),0.1)] hover:bg-[rgba(var(--color-error),0.2)] text-[rgba(var(--color-error),0.7)] hover:text-[rgb(var(--color-error))] rounded-l-none transition-all duration-200"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    deleteGroup(projectPath, name);
-                                    if (activeGroup === name) setActiveGroup(null);
+                                    void handleDeleteGroup(name);
                                   }}
                                   aria-label={`Delete group ${name}`}
                                 >

@@ -17,7 +17,6 @@ interface MainLayoutViewProps {
   handleSelectAll: () => void;
   deselectAllFiles: () => void;
   treeRef: React.RefObject<FileTreeViewHandle | null>;
-  filteredTree: FileNode[];
   selectedFilePaths: string[];
   setSelectedFilePaths: (paths: string[]) => void;
   fileTree: FileNode[]; // Needed for SelectionGroupsView
@@ -52,7 +51,6 @@ const MainLayoutView: React.FC<MainLayoutViewProps> = (props) => {
               handleSelectAll={props.handleSelectAll}
               deselectAllFiles={props.deselectAllFiles}
               treeRef={props.treeRef}
-              filteredTree={props.filteredTree}
               selectedFilePaths={props.selectedFilePaths}
               setSelectedFilePaths={props.setSelectedFilePaths}
               selectedFileCount={props.selectedFileCount}

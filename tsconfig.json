@@ -13,6 +13,7 @@
     "jsx": "preserve",
     "noEmit": true,
     "incremental": true,
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.tsbuildinfo",
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {

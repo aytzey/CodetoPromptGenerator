@@ -45,7 +45,6 @@ import RefinedSelectionGroupsView from "@/views/RefinedSelectionGroupsView";
 import RefinedExclusionsManagerView from "@/views/RefinedExclusionsManagerView";
 import RefinedLocalExclusionsManagerView from "@/views/RefinedLocalExclusionsManagerView";
 import KanbanBoardView from "@/views/KanbanBoardView";
-import TodoListView from "@/views/TodoListView";
 import UserStoryListView from "@/views/UserStoryListView";
 
 import {
@@ -66,8 +65,6 @@ interface LeftPanelViewProps {
   handleSelectAll: () => void;
   deselectAllFiles: () => void;
   treeRef: React.RefObject<FileTreeViewHandle | null>;
-  /** (Old) filtered tree — retained for backwards compatibility */
-  filteredTree: FileNode[];
   selectedFilePaths: string[];
   setSelectedFilePaths: (paths: string[]) => void;
   selectedFileCount: number;
@@ -86,7 +83,6 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
   handleSelectAll,
   deselectAllFiles,
   treeRef,
-  filteredTree,
   selectedFilePaths,
   setSelectedFilePaths,
   selectedFileCount,
@@ -109,7 +105,11 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
   return (
     <Tabs
       value={activeTab}
-      onValueChange={(v) => setActiveTab(v as any)}
+      onValueChange={(v) => {
+        if (v === "files" || v === "options" || v === "tasks") {
+          setActiveTab(v);
+        }
+      }}
       className="space-y-6"
     >
       {/* Enhanced Tab Navigation with dynamic glows */}

@@ -1,7 +1,7 @@
 // File: pages/index.tsx
 import React from "react";
 import Head from "next/head";
-import { Loader2, Folder, KeyRound, PlusCircle, FileCode, Shield } from "lucide-react";
+import { Folder, FileCode, Shield } from "lucide-react";
 
 // Import the refactored main hook
 import { useRefactoredHomePageLogic as useHomePageLogic } from "@/lib/hooks/useRefactoredHomePageLogic";
@@ -32,7 +32,6 @@ export default function Home() {
     isLoadingTree,
     isSelecting,
     activeTab,
-    filteredTree,
     selectedFilePaths,
     fileSearchTerm,
     hasContent,
@@ -121,7 +120,6 @@ export default function Home() {
             handleSelectAll={handleSelectAll}
             deselectAllFiles={deselectAllFiles}
             treeRef={treeRef}
-            filteredTree={filteredTree}
             selectedFilePaths={selectedFilePaths}
             setSelectedFilePaths={setSelectedFilePaths}
             fileTree={fileTree}

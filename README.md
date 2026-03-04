@@ -130,7 +130,7 @@ npm run electron:dev
 ```
 This command concurrently starts:
 - The Next.js development server.
-- The cross-platform Flask development server.
+- The cross-platform Flask development server (`npm run backend`).
 - The Electron application, which loads the Next.js dev server URL.
 
 ### Production Mode (Local Simulation)
@@ -181,6 +181,18 @@ The project includes an autotest script to verify core backend and frontend func
    npm test
    ```
 A summary of passed/failed tests will be printed.
+
+### Quality Gates
+
+Use these commands before creating a PR:
+
+```bash
+npm run lint
+npm run typecheck
+npm run build
+python_backend/venv/bin/pytest -q python_backend/tests
+npm test
+```
 
 ---
 

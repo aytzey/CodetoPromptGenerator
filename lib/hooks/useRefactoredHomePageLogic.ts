@@ -42,7 +42,6 @@ export function useRefactoredHomePageLogic() {
     isLoadingTree: projectLogic.isLoadingTree,
     isSelecting: serviceActions.isSelecting,
     activeTab: uiState.activeTab,
-    filteredTree: projectLogic.filteredTree,
     selectedFilePaths: projectLogic.selectedFilePaths,
     fileSearchTerm: projectLogic.fileSearchTerm,
     localExclusions,

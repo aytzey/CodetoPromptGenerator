@@ -4,13 +4,12 @@ from __future__ import annotations
 Endpoints for saving / loading Selection Groups.
 """
 import logging
-from http import HTTPStatus
 from flask import Blueprint, request
 from pydantic import ValidationError
 
 from services import selection_group_service as svc
 from utils.response_utils import success_response, error_response
-from models.request_models import SelectionGroupsSaveRequest  # NEW
+from models.request_models import SelectionGroupsSaveRequest
 
 logger = logging.getLogger(__name__)
 

@@ -1,76 +1,116 @@
-// stores/useSelectionGroupStore.ts
-import { create } from 'zustand';
+import { create } from "zustand";
 
-/** shape on disk / in the backend API */
-export type PersistedGroups = Record<string, Record<string, string[]>>;
+export type SelectionGroupMap = Record<string, string[]>;
+export type SelectionGroupsByProject = Record<string, SelectionGroupMap>;
 
-/* ────────── local‑storage helpers ────────── */
-const LS_KEY = 'ctpgSelectionGroups_v1';
-const readLS  = (): PersistedGroups =>
-  JSON.parse(localStorage.getItem(LS_KEY) || '{}');
-const writeLS = (d: PersistedGroups) =>
-  localStorage.setItem(LS_KEY, JSON.stringify(d));
+const normalizePaths = (paths: string[]): string[] =>
+  Array.from(
+    new Set(
+      paths
+        .filter((p) => typeof p === "string" && p.trim().length > 0)
+        .map((p) => p.replace(/\\/g, "/")),
+    ),
+  );
 
-interface GroupState {
-  /** every project’s groups */
-  groups: PersistedGroups;
+interface SelectionGroupState {
+  groups: SelectionGroupsByProject;
 
-  /* CRUD helpers */
-  createGroup        :(projectPath: string, group: string, paths: string[]) => void;
-  saveGroup            :(projectPath: string, group: string, paths: string[]) => void;
-  deleteGroup          :(projectPath: string, group: string)                => void;
-  renameGroup          :(projectPath: string, oldName: string, newName: string) => void;
-  listGroups           :(projectPath: string) => Record<string, string[]>;
-
-  /** overwrite *all* groups for a project (used when loading from backend) */
-  setGroupsForProject  :(projectPath: string, groups: Record<string, string[]>) => void;
+  createGroup: (projectPath: string, group: string, paths: string[]) => void;
+  deleteGroup: (projectPath: string, group: string) => void;
+  renameGroup: (projectPath: string, oldName: string, newName: string) => void;
+  listGroups: (projectPath: string) => SelectionGroupMap;
+  setGroupsForProject: (projectPath: string, groups: SelectionGroupMap) => void;
+  clearProjectGroups: (projectPath: string) => void;
 }
 
-/* ────────── store implementation ────────── */
-export const useSelectionGroupStore = create<GroupState>((set, get) => ({
-  /* init from localStorage (noop on server) */
-  groups: typeof window === 'undefined' ? {} : readLS(),
+export const useSelectionGroupStore = create<SelectionGroupState>((set, get) => ({
+  groups: {},
 
   createGroup: (projectPath, group, paths) =>
-    get().saveGroup(projectPath, group, paths),
+    set((state) => {
+      const key = projectPath.trim();
+      const groupName = group.trim();
+      if (!key || !groupName) return state;
 
-  saveGroup: (projectPath, group, paths) =>
-    set(state => {
-      const next: PersistedGroups = { ...state.groups };
-      next[projectPath] = { ...(next[projectPath] || {}), [group]: paths };
-      writeLS(next);
-      return { groups: next };
+      return {
+        groups: {
+          ...state.groups,
+          [key]: {
+            ...(state.groups[key] ?? {}),
+            [groupName]: normalizePaths(paths),
+          },
+        },
+      };
     }),
 
   deleteGroup: (projectPath, group) =>
-    set(state => {
-      const next = { ...state.groups };
-      if (next[projectPath]) {
-        delete next[projectPath][group];
-        writeLS(next);
-      }
-      return { groups: next };
+    set((state) => {
+      const key = projectPath.trim();
+      const groupName = group.trim();
+      if (!key || !groupName || !state.groups[key]?.[groupName]) return state;
+
+      const nextProjectGroups = { ...state.groups[key] };
+      delete nextProjectGroups[groupName];
+
+      return {
+        groups: {
+          ...state.groups,
+          [key]: nextProjectGroups,
+        },
+      };
     }),
 
   renameGroup: (projectPath, oldName, newName) =>
-    set(state => {
-      const next = { ...state.groups };
-      const proj = next[projectPath];
-      if (proj?.[oldName]) {
-        proj[newName] = proj[oldName];
-        delete proj[oldName];
-        writeLS(next);
+    set((state) => {
+      const key = projectPath.trim();
+      const oldKey = oldName.trim();
+      const newKey = newName.trim();
+      const existing = state.groups[key]?.[oldKey];
+      if (!key || !oldKey || !newKey || !existing) return state;
+
+      const nextProjectGroups = { ...state.groups[key] };
+      nextProjectGroups[newKey] = existing;
+      if (newKey !== oldKey) {
+        delete nextProjectGroups[oldKey];
       }
-      return { groups: next };
+
+      return {
+        groups: {
+          ...state.groups,
+          [key]: nextProjectGroups,
+        },
+      };
     }),
 
-  listGroups: projectPath => get().groups[projectPath] || {},
+  listGroups: (projectPath) => get().groups[projectPath] ?? {},
 
-  /* replace whole set (used after GET /selectionGroups) */
   setGroupsForProject: (projectPath, groups) =>
-    set(state => {
-      const next = { ...state.groups, [projectPath]: groups };
-      writeLS(next);
+    set((state) => {
+      const key = projectPath.trim();
+      if (!key) return state;
+
+      const normalized: SelectionGroupMap = Object.fromEntries(
+        Object.entries(groups ?? {}).map(([name, paths]) => [
+          name,
+          normalizePaths(Array.isArray(paths) ? paths : []),
+        ]),
+      );
+
+      return {
+        groups: {
+          ...state.groups,
+          [key]: normalized,
+        },
+      };
+    }),
+
+  clearProjectGroups: (projectPath) =>
+    set((state) => {
+      const key = projectPath.trim();
+      if (!key || !state.groups[key]) return state;
+
+      const next = { ...state.groups };
+      delete next[key];
       return { groups: next };
     }),
 }));

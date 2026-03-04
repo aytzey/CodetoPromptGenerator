@@ -65,7 +65,35 @@ class KanbanUpdateRequest(_FlexibleModel):
 
 # ───────────────────── selection-groups / others ───────────────────
 class SelectionGroupsSaveRequest(BaseModel):
-    groups: Dict[str, Any]
+    groups: Dict[str, List[str]] = Field(default_factory=dict)
+
+    @validator("groups", pre=True)
+    def _validate_selection_groups(cls, value: Any) -> Dict[str, List[str]]:
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise ValueError("'groups' must be an object.")
+
+        normalized: Dict[str, List[str]] = {}
+        for group_name, paths in value.items():
+            if not isinstance(group_name, str) or not group_name.strip():
+                raise ValueError("Each selection group name must be a non-empty string.")
+            if not isinstance(paths, list):
+                raise ValueError(f"Selection group '{group_name}' must be a list of strings.")
+
+            cleaned: List[str] = []
+            for item in paths:
+                if not isinstance(item, str):
+                    raise ValueError(
+                        f"Selection group '{group_name}' contains a non-string path."
+                    )
+                path = item.strip()
+                if path:
+                    cleaned.append(path.replace("\\", "/"))
+
+            normalized[group_name.strip()] = cleaned
+
+        return normalized
 
 
 class ResolveFolderRequest(BaseModel):

@@ -2,7 +2,7 @@
 // NEW FILE
 import { useAppStore } from '@/stores/useAppStore';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5010";
 
 /**
  * Generic fetch wrapper to handle common logic like setting headers,
