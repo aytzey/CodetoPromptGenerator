@@ -1,71 +1,53 @@
-// File: services/projectServiceHooks.ts
-// FULL FILE – Correction applied
-import { useCallback } from 'react';
-import { useProjectStore } from '@/stores/useProjectStore';
-import { fetchApi } from './apiService';
-import type { FileNode, FileData } from '@/types';
-
-/* ───────── helper ────────── */
-const sameSet = (a: string[], b: string[]) => {
-  if (a.length !== b.length) return false;
-  const S = new Set(a);
-  return b.every(p => S.has(p));
-};
+import { useCallback } from "react";
+import { useProjectStore } from "@/stores/useProjectStore";
+import { fetchApiResult } from "./apiService";
+import type { FileData, FileNode } from "@/types";
 
 export function useProjectService() {
-  const st = useProjectStore; // stable reference
+  const store = useProjectStore;
 
-  /* ─────── tree ─────── */
   const loadProjectTree = useCallback(async () => {
-    const path = st.getState().projectPath;
-    if (!path) return;
+    const projectPath = store.getState().projectPath;
+    if (!projectPath) return;
 
-    st.getState().setIsLoadingTree(true);
-    const tree = await fetchApi<FileNode[]>(
-      `/api/projects/tree?rootDir=${encodeURIComponent(path)}`,
-    );
-    st.getState().setIsLoadingTree(false);
-    st.getState().setFileTree(tree ?? []);
-  }, [st]); // Dependency on stable store reference
+    store.getState().setIsLoadingTree(true);
+    try {
+      const result = await fetchApiResult<FileNode[]>(
+        `/api/projects/tree?rootDir=${encodeURIComponent(projectPath)}`,
+      );
+      store.getState().setFileTree(result.ok && result.data ? result.data : []);
+    } finally {
+      store.getState().setIsLoadingTree(false);
+    }
+  }, [store]);
 
-  /* ─── selected file‑contents ─── */
   const loadSelectedFileContents = useCallback(async () => {
-    const { projectPath, selectedFilePaths } = st.getState();
+    const { projectPath, selectedFilePaths } = store.getState();
     if (!projectPath || selectedFilePaths.length === 0) {
-      st.getState().setFilesData([]);
+      store.getState().setFilesData([]);
       return;
     }
 
-    /* strip dir placeholders (end with “/”) */
-    const pathsToFetch = selectedFilePaths.filter(p => !p.endsWith('/'));
+    const pathsToFetch = selectedFilePaths.filter((path) => !path.endsWith("/"));
     if (pathsToFetch.length === 0) {
-      st.getState().setFilesData([]);
+      store.getState().setFilesData([]);
       return;
     }
 
-    st.getState().setIsLoadingContents(true);
-    const res = await fetchApi<FileData[]>('/api/projects/files', {
-      method: 'POST',
-      body : JSON.stringify({ baseDir: projectPath, paths: pathsToFetch }),
-    });
-    st.getState().setIsLoadingContents(false);
-    if (!res) return; // error already surfaced
+    store.getState().setIsLoadingContents(true);
+    try {
+      const result = await fetchApiResult<FileData[]>("/api/projects/files", {
+        method: "POST",
+        body: JSON.stringify({ baseDir: projectPath, paths: pathsToFetch }),
+      });
+      if (!result.ok || !result.data) return;
 
-    /* 🔎 Keep only non‑empty files and update the filesData store */
-    const valid = res.filter(f => (f.tokenCount ?? 0) > 0);
-    st.getState().setFilesData(valid);
-
-    /*
-     * 🛑 FIX: REMOVED THE BLOCK BELOW TO PREVENT INFINITE LOOP
-     * Loading content should not implicitly change the selection.
-     * The selection should only change via user interaction or explicit features (like auto-select).
-     */
-    // const keep = valid.map(f => f.path);
-    // if (!sameSet(keep, selectedFilePaths)) {
-    //   st.getState().setSelectedFilePaths(keep); // <-- THIS CAUSED THE LOOP
-    // }
-
-  }, [st]); // Dependency on stable store reference
+      const validFiles = result.data.filter((file) => (file.tokenCount ?? 0) > 0);
+      store.getState().setFilesData(validFiles);
+    } finally {
+      store.getState().setIsLoadingContents(false);
+    }
+  }, [store]);
 
   return { loadProjectTree, loadSelectedFileContents };
 }

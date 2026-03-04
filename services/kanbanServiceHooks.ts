@@ -1,130 +1,115 @@
-// FILE: services/kanbanServiceHooks.ts
 import { useCallback } from "react";
 import { z } from "zod";
-import { fetchApi } from "@/services/apiService";
+import { fetchApiResult } from "@/services/apiService";
 import { useKanbanStore } from "@/stores/useKanbanStore";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useAppStore } from "@/stores/useAppStore";
-import { KanbanItem, KanbanStatus, KanbanItemSchema } from '@/types'; // Import KanbanItemSchema
+import { type KanbanItem, type KanbanStatus, KanbanItemSchema } from "@/types";
 
-
-/* ------------------- zod schemas ------------------- */
-// Use KanbanItemSchema directly from types/index.ts
-// const ItemSchema = z.object({ ... }); // This local definition is no longer needed
-
-const ArrSchema = z.array(KanbanItemSchema); // Use the imported schema
+const KanbanListSchema = z.array(KanbanItemSchema);
 
 function safeParse<T extends z.ZodTypeAny>(schema: T, data: unknown): z.infer<T> | null {
-  if (data === null || data === undefined) { // Added undefined check
-     return null;
-   }
-   
-  const r = schema.safeParse(data);
-  if (!r.success) {
-    console.error("Schema validation failed", r.error.flatten()); // Log flattened errors for better readability
-    useAppStore.getState().setError("Received malformed data from server. Check console for details.");
-    return null;
-  }
-  return r.data;
+  if (data === null || data === undefined) return null;
+  const parsed = schema.safeParse(data);
+  if (parsed.success) return parsed.data;
+  useAppStore
+    .getState()
+    .setError("Received malformed Kanban data from server. Check console for details.");
+  console.error("Kanban schema validation failed", parsed.error.flatten());
+  return null;
 }
 
 export function useKanbanService() {
   const { projectPath } = useProjectStore();
-   const {
-    setAll,
-    setLoading,
-    setSaving,
-    moveItem: moveItemInStore,
-   } = useKanbanStore(); 
-   
+  const { setAll, setLoading, setSaving, moveItem: moveItemInStore } = useKanbanStore();
   const { setError } = useAppStore();
-
-  const baseQueryParam = projectPath ? `projectPath=${encodeURIComponent(projectPath)}` : '';
   const baseEndpoint = "/api/kanban";
+  const query = projectPath ? `projectPath=${encodeURIComponent(projectPath)}` : "";
 
-  /* ---------------- list ---------------- */
   const load = useCallback(async () => {
-    if (!projectPath) { 
-       setAll([]); 
-       return;
+    if (!projectPath) {
+      setAll([]);
+      return;
     }
+
     setLoading(true);
-    const raw  = await fetchApi<unknown>(`${baseEndpoint}?${baseQueryParam}`);
-    const data = safeParse(ArrSchema, raw); // ArrSchema now uses the correct KanbanItemSchema
-    setAll(data ?? []);
-    setLoading(false);
-  }, [projectPath, setAll, setLoading, baseQueryParam]);
-
-  /* ---------------- create -------------- */
-   const create = useCallback(async (draft: Omit<KanbanItem, "id" | "createdAt">) => {
-    if (!projectPath) return null;
-    setSaving(true);
-    setError(null); 
-    
-    const raw  = await fetchApi<unknown>(`${baseEndpoint}?${baseQueryParam}`, {
-      method: "POST",
-      body:   JSON.stringify(draft),
-    });
-    
-    const item = safeParse(KanbanItemSchema, raw); // Use KanbanItemSchema directly
-    
-    if (item) {
-       await load(); 
+    try {
+      const result = await fetchApiResult<unknown>(`${baseEndpoint}?${query}`);
+      const items = result.ok ? safeParse(KanbanListSchema, result.data) : null;
+      setAll(items ?? []);
+    } finally {
+      setLoading(false);
     }
-    setSaving(false);
-    return item;
-  }, [projectPath, load, setSaving, setError, baseQueryParam]);
+  }, [projectPath, query, setAll, setLoading]);
 
- /* ---------------- update/patch -------------- */
-  const patch = useCallback(async (itemData: Partial<KanbanItem> & Pick<KanbanItem, 'id'>) => {
-     if (!projectPath) return null;
-     setSaving(true);
-     setError(null);
-     
-     const url = `${baseEndpoint}/${itemData.id}?${baseQueryParam}`;
-     
-     const raw = await fetchApi<unknown>(url, {
-       method: "PUT",
-       body: JSON.stringify(itemData),
-     });
-     
-     const updatedItem = safeParse(KanbanItemSchema, raw); // Use KanbanItemSchema directly
+  const create = useCallback(
+    async (draft: Omit<KanbanItem, "id" | "createdAt">) => {
+      if (!projectPath) return null;
+      setSaving(true);
+      setError(null);
+      try {
+        const result = await fetchApiResult<unknown>(`${baseEndpoint}?${query}`, {
+          method: "POST",
+          body: JSON.stringify(draft),
+        });
+        const item = result.ok ? safeParse(KanbanItemSchema, result.data) : null;
+        if (item) await load();
+        return item;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [load, projectPath, query, setError, setSaving],
+  );
 
-     if (updatedItem) {
-       await load(); 
-     } else {
-       console.error("Failed to update item via patch.");
-       // Error should be set by safeParse or fetchApi, load() will refresh to consistent state
-       await load(); 
-     }
-      setSaving(false);
-      return updatedItem;
-   }, [projectPath, load, setSaving, setError, baseQueryParam]);
-   
-  /* ---------------- delete -------------- */
-  const deleteItem = useCallback(async (itemId: number) => {
-    if (!projectPath) return false;
-    setSaving(true);
-    setError(null);
+  const patch = useCallback(
+    async (itemData: Partial<KanbanItem> & Pick<KanbanItem, "id">) => {
+      if (!projectPath) return null;
+      setSaving(true);
+      setError(null);
+      try {
+        const result = await fetchApiResult<unknown>(
+          `${baseEndpoint}/${itemData.id}?${query}`,
+          {
+            method: "PUT",
+            body: JSON.stringify(itemData),
+          },
+        );
+        const updated = result.ok ? safeParse(KanbanItemSchema, result.data) : null;
+        await load();
+        return updated;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [load, projectPath, query, setError, setSaving],
+  );
 
-    const url = `${baseEndpoint}/${itemId}?${baseQueryParam}`;
-    await fetchApi<null>(url, { method: 'DELETE' }); 
+  const deleteItem = useCallback(
+    async (itemId: number) => {
+      if (!projectPath) return false;
+      setSaving(true);
+      setError(null);
+      try {
+        const result = await fetchApiResult<null>(`${baseEndpoint}/${itemId}?${query}`, {
+          method: "DELETE",
+        });
+        if (!result.ok) return false;
+        await load();
+        return true;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [load, projectPath, query, setError, setSaving],
+  );
 
-    setSaving(false);
-    const errorState = useAppStore.getState().error;
-    if (errorState) { 
-        return false;
-    }
-    
-    await load(); 
-    return true; 
-  }, [projectPath, load, setSaving, setError, baseQueryParam]);
-
-  /* ---------------- move (dnd) ---------- */
-   const relocate = useCallback((itemId: number, newStatus: KanbanStatus, newIndex?: number) => {
-       moveItemInStore(itemId, newStatus, newIndex);
-   }, [moveItemInStore]);
-
+  const relocate = useCallback(
+    (itemId: number, newStatus: KanbanStatus, newIndex?: number) => {
+      moveItemInStore(itemId, newStatus, newIndex);
+    },
+    [moveItemInStore],
+  );
 
   return { load, create, patch, deleteItem, relocate };
 }

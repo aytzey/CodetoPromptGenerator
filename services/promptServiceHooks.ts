@@ -1,120 +1,103 @@
-// FILE: services/promptServiceHooks.ts
-// FULL FILE - Updated useRefinePrompt function
-import { useCallback, useState } from 'react';
-import { usePromptStore } from '@/stores/usePromptStore';
-import { useAppStore } from '@/stores/useAppStore';
-import { fetchApi } from './apiService';
+import { useCallback, useState } from "react";
+import { usePromptStore } from "@/stores/usePromptStore";
+import { useAppStore } from "@/stores/useAppStore";
+import { fetchApiResult } from "./apiService";
 
-// Type for the refine API response
 interface RefinePromptResponse {
-    refinedPrompt: string;
+  refinedPrompt: string;
 }
 
 export function usePromptService() {
-    const {
-        setMetaPromptFiles, setIsLoadingMetaList,
-        selectedMetaFile, setMetaPrompt, setIsLoadingMetaContent,
-        newMetaFileName, metaPrompt, setIsSavingMeta, setNewMetaFileName
-    } = usePromptStore();
-    const { setError } = useAppStore();
+  const {
+    setMetaPromptFiles,
+    setIsLoadingMetaList,
+    setMetaPrompt,
+    setIsLoadingMetaContent,
+    setIsSavingMeta,
+    setNewMetaFileName,
+  } = usePromptStore();
+  const { setError } = useAppStore();
+  const [isRefining, setIsRefining] = useState(false);
 
-    const fetchMetaPromptList = useCallback(async () => {
-        setIsLoadingMetaList(true);
-        setError(null);
-        const result = await fetchApi<string[]>(`/api/metaprompts?action=list`);
-        if (result) {
-            setMetaPromptFiles(result);
-        } else {
-            setMetaPromptFiles([]);
-        }
-        setIsLoadingMetaList(false);
-    }, [setIsLoadingMetaList, setMetaPromptFiles, setError]);
+  const fetchMetaPromptList = useCallback(async () => {
+    setIsLoadingMetaList(true);
+    try {
+      const result = await fetchApiResult<string[]>("/api/metaprompts?action=list");
+      setMetaPromptFiles(result.ok && result.data ? result.data : []);
+    } finally {
+      setIsLoadingMetaList(false);
+    }
+  }, [setIsLoadingMetaList, setMetaPromptFiles]);
 
-    const loadMetaPrompt = useCallback(async () => {
-        const currentSelectedFile = usePromptStore.getState().selectedMetaFile;
-        if (!currentSelectedFile) return;
+  const loadMetaPrompt = useCallback(async () => {
+    const selectedMetaFile = usePromptStore.getState().selectedMetaFile;
+    if (!selectedMetaFile) return;
 
-        setIsLoadingMetaContent(true);
-        setError(null);
-        const result = await fetchApi<{ content: string }>(
-            `/api/metaprompts?action=load&file=${encodeURIComponent(currentSelectedFile)}`
-        );
-        if (result) {
-            setMetaPrompt(result.content ?? '');
-        } else {
-            setMetaPrompt('');
-        }
-        setIsLoadingMetaContent(false);
-    }, [setMetaPrompt, setIsLoadingMetaContent, setError]);
+    setIsLoadingMetaContent(true);
+    try {
+      const result = await fetchApiResult<{ content: string }>(
+        `/api/metaprompts?action=load&file=${encodeURIComponent(selectedMetaFile)}`,
+      );
+      setMetaPrompt(result.ok ? result.data?.content ?? "" : "");
+    } finally {
+      setIsLoadingMetaContent(false);
+    }
+  }, [setIsLoadingMetaContent, setMetaPrompt]);
 
-    const saveMetaPrompt = useCallback(async () => {
-        const currentMetaPrompt = usePromptStore.getState().metaPrompt;
-        const currentSelectedFile = usePromptStore.getState().selectedMetaFile;
-        const currentNewFileName = usePromptStore.getState().newMetaFileName;
+  const saveMetaPrompt = useCallback(async () => {
+    const { metaPrompt, selectedMetaFile, newMetaFileName } = usePromptStore.getState();
+    if (!metaPrompt.trim()) {
+      setError("Meta prompt content cannot be empty.");
+      return;
+    }
 
-        if (!currentMetaPrompt.trim()) {
-            setError("Meta prompt content cannot be empty.");
-            return;
-        }
-        const fileName = currentNewFileName.trim() || currentSelectedFile || `meta_${Date.now()}.txt`;
+    const fileName = newMetaFileName.trim() || selectedMetaFile || `meta_${Date.now()}.txt`;
 
-        setIsSavingMeta(true);
-        setError(null);
-        const result = await fetchApi<{ message: string }>(`/api/metaprompts`, {
-            method: 'POST',
-            body: JSON.stringify({ filename: fileName, content: currentMetaPrompt }),
+    setIsSavingMeta(true);
+    try {
+      const result = await fetchApiResult<{ message: string }>("/api/metaprompts", {
+        method: "POST",
+        body: JSON.stringify({ filename: fileName, content: metaPrompt }),
+      });
+      if (!result.ok) return;
+      setNewMetaFileName("");
+      await fetchMetaPromptList();
+    } finally {
+      setIsSavingMeta(false);
+    }
+  }, [fetchMetaPromptList, setError, setIsSavingMeta, setNewMetaFileName]);
+
+  const refinePrompt = useCallback(
+    async (textToRefine: string, treeText?: string): Promise<string | null> => {
+      if (!textToRefine.trim()) {
+        setError("Cannot refine empty text.");
+        return null;
+      }
+
+      setIsRefining(true);
+      try {
+        const result = await fetchApiResult<RefinePromptResponse>("/api/prompt/refine", {
+          method: "POST",
+          body: JSON.stringify({ text: textToRefine, treeText }),
         });
-
-        if (result) {
-            console.log(result.message || `Meta prompt saved as ${fileName}`);
-            setNewMetaFileName('');
-            await fetchMetaPromptList();
+        if (!result.ok || !result.data) return null;
+        if (typeof result.data.refinedPrompt !== "string") {
+          setError("Received unexpected data format from refinement service.");
+          return null;
         }
-        setIsSavingMeta(false);
-    }, [setError, setIsSavingMeta, setNewMetaFileName, fetchMetaPromptList]);
+        return result.data.refinedPrompt;
+      } finally {
+        setIsRefining(false);
+      }
+    },
+    [setError],
+  );
 
-    // --- UPDATED FUNCTION for Prompt Refinement ---
-    const useRefinePrompt = () => {
-        const [isRefining, setIsRefining] = useState(false);
-        const { setError } = useAppStore();
-
-        // Updated signature to accept optional treeText
-        const refinePrompt = useCallback(async (textToRefine: string, treeText?: string): Promise<string | null> => {
-            if (!textToRefine.trim()) {
-                setError("Cannot refine empty text.");
-                return null;
-            }
-
-            setIsRefining(true);
-            setError(null);
-
-            // Include treeText in the request body if provided
-            const body = { text: textToRefine, treeText: treeText };
-
-            const result = await fetchApi<RefinePromptResponse>(`/api/prompt/refine`, {
-                method: 'POST',
-                body: JSON.stringify(body), // Send updated body
-            });
-
-            setIsRefining(false);
-
-            if (result) {
-                if (typeof result === 'object' && result !== null && 'refinedPrompt' in result) {
-                    return result.refinedPrompt;
-                } else {
-                    console.error("Unexpected response structure from /api/prompt/refine:", result);
-                    setError("Received unexpected data format from refinement service.");
-                    return null;
-                }
-            } else {
-                return null;
-            }
-        }, [setError]);
-
-        return { refinePrompt, isRefining };
-    };
-    // --- END UPDATED FUNCTION ---
-
-
-    return { fetchMetaPromptList, loadMetaPrompt, saveMetaPrompt, useRefinePrompt };
+  return {
+    fetchMetaPromptList,
+    loadMetaPrompt,
+    saveMetaPrompt,
+    refinePrompt,
+    isRefining,
+  };
 }

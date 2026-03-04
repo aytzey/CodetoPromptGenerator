@@ -104,12 +104,6 @@ export interface Task extends KanbanItem {
   userStoryIds?: number[]; // IDs of associated user stories
 }
 
-// ADDED: TaskSchema extending KanbanItemSchema
-export const TaskSchema = KanbanItemSchema.extend({
-  userStoryIds: z.array(z.number().int()).optional(),
-});
-
-
 /* █████  USER STORY  ██████████████████████████████████████████████████████ */
 // Using KanbanStatusValues and KanbanPriorityValues for consistency if suitable
 export interface UserStory {

@@ -1,4 +1,3 @@
-// lib/hooks/useProjectLogic.ts
 import { useEffect, useMemo, useCallback } from "react";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useExclusionStore } from "@/stores/useExclusionStore";
@@ -11,17 +10,10 @@ import {
   parseWildcardInput,
 } from "@/lib/fileFilters";
 
-/**
- * Hook for managing project-related logic including:
- * - Project path changes
- * - File tree loading and filtering
- * - File selection operations
- */
 export function useProjectLogic() {
-  // Store selectors
   const projectPath = useProjectStore((s) => s.projectPath);
   const setProjectPath = useProjectStore((s) => s.setProjectPath);
-  const fileTree = useProjectStore((s) => s.fileTree);
+  const rawFileTree = useProjectStore((s) => s.fileTree);
   const selectedFilePaths = useProjectStore((s) => s.selectedFilePaths);
   const setSelectedFilePaths = useProjectStore((s) => s.setSelectedFilePaths);
   const isLoadingTree = useProjectStore((s) => s.isLoadingTree);
@@ -35,10 +27,8 @@ export function useProjectLogic() {
   const localExclusions = useExclusionStore((s) => s.localExclusions);
   const extensionFilters = useExclusionStore((s) => s.extensionFilters);
 
-  // Services
   const { loadProjectTree, loadSelectedFileContents } = useProjectService();
 
-  // Effects for project lifecycle
   useEffect(() => {
     if (projectPath) {
       loadProjectTree();
@@ -59,11 +49,10 @@ export function useProjectLogic() {
     }
   }, [selectedFilePaths, projectPath, loadSelectedFileContents]);
 
-  // Derived data
-  const filteredTree = useMemo(() => {
+  const visibleTree = useMemo(() => {
     const extFiltered = extensionFilters.length
-      ? applyExtensionFilter(fileTree, extensionFilters)
-      : fileTree;
+      ? applyExtensionFilter(rawFileTree, extensionFilters)
+      : rawFileTree;
 
     const searchTerm = fileSearchTerm.trim();
     if (!searchTerm) {
@@ -76,7 +65,7 @@ export function useProjectLogic() {
     }
 
     return applySearchFilter(extFiltered, searchTerm.toLowerCase());
-  }, [fileTree, extensionFilters, fileSearchTerm]);
+  }, [rawFileTree, extensionFilters, fileSearchTerm]);
 
   const localExclusionsSet = useMemo(
     () => new Set(localExclusions),
@@ -93,10 +82,9 @@ export function useProjectLogic() {
     [filesData],
   );
 
-  // Event handlers
   const handleSelectAll = useCallback(() => {
     if (!projectPath) return;
-    const allVisibleFiles = flattenTree(filteredTree).filter(
+    const allVisibleFiles = flattenTree(visibleTree).filter(
       (p) => !p.endsWith("/"),
     );
     selectAllFiles(
@@ -104,7 +92,7 @@ export function useProjectLogic() {
       new Set(globalExclusions),
       localExclusionsSet,
     );
-  }, [projectPath, filteredTree, selectAllFiles, globalExclusions, localExclusionsSet]);
+  }, [projectPath, visibleTree, selectAllFiles, globalExclusions, localExclusionsSet]);
 
   const handleRefresh = useCallback(async () => {
     if (!projectPath) return;
@@ -119,16 +107,15 @@ export function useProjectLogic() {
   }, [setProjectPath]);
 
   return {
-    // State
     projectPath,
     isLoadingTree,
     selectedFilePaths,
     fileSearchTerm,
     selectedFileCount,
     totalTokens,
-    fileTree,
-    
-    // Actions
+    fileTree: visibleTree,
+    rawFileTree,
+
     handlePathSelected,
     handleRefresh,
     handleSelectAll,

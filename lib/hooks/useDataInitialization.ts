@@ -7,12 +7,7 @@ import { useSettingsStore } from "@/stores/useSettingStore";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useTodoStore } from "@/stores/useTodoStore";
 import { useExclusionStore } from "@/stores/useExclusionStore";
-
-const LS_KEY_OR = "openrouterApiKey";
-
-/**
- * Hook for managing initial data loading and client-side initialization
- */
+import { LS_KEY_OPENROUTER_API } from "@/lib/constants/localStorage";
 export function useDataInitialization() {
   const [isClient, setIsClient] = useState(false);
   const [apiKeyDraft, setApiKeyDraft] = useState<string>("");
@@ -20,28 +15,24 @@ export function useDataInitialization() {
   const projectPath = useProjectStore((s) => s.projectPath);
   const setOpenrouterApiKey = useSettingsStore((s) => s.setOpenrouterApiKey);
 
-  // Services
   const { fetchMetaPromptList } = usePromptService();
   const { fetchGlobalExclusions, fetchLocalExclusions } = useExclusionService();
   const { loadTodos } = useTodoService();
 
-  // Client-side initialization
   useEffect(() => {
     setIsClient(true);
   }, []);
 
-  // Initial data loading
   useEffect(() => {
     fetchGlobalExclusions();
     fetchMetaPromptList();
-    const storedKey = localStorage.getItem(LS_KEY_OR) ?? "";
+    const storedKey = localStorage.getItem(LS_KEY_OPENROUTER_API) ?? "";
     setApiKeyDraft(storedKey);
     if (storedKey) {
       setOpenrouterApiKey(storedKey);
     }
   }, [fetchGlobalExclusions, fetchMetaPromptList, setOpenrouterApiKey]);
 
-  // Project-specific data loading
   useEffect(() => {
     if (projectPath) {
       loadTodos();

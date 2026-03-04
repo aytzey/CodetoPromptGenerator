@@ -77,8 +77,8 @@ class AutoselectService:
 
     # Prompt-building tunables
     _TOKEN_HARD_LIMIT: int = 45_000           # Max tokens we’re willing to send
-    _SUMMARY_MAX_CHARS: int = 10_000             # Max characters in a one-file summary
-    _TREE_MAX_LINES: int = 30_000              # Truncate huge project trees
+    _SUMMARY_MAX_CHARS: int = 10_000          # Max characters in a one-file summary
+    _TREE_MAX_LINES: int = 5_000              # Truncate huge project trees earlier
 
     # ------------------------------------------------------------------ init
     def __init__(self) -> None:
@@ -93,8 +93,6 @@ class AutoselectService:
 
         self._storage = FileStorageRepository()
         self._codemap = CodemapService(storage_repo=self._storage)
-
-        print("AutoselectService: %s", self._codemap)
 
         # Holds last-run codemap info for optional debugging
         self._debug_map: Dict[str, Dict[str, Any]] = {}
@@ -132,7 +130,7 @@ class AutoselectService:
 
         prompt: str = self._build_prompt(request_obj)
 
-        logger.info("▶︎ Autoselect prompt (first 1 000 chars)\n%s", prompt[:100000])
+        logger.debug("▶︎ Autoselect prompt (first 1 000 chars)\n%s", prompt[:1_000])
 
         payload: Dict[str, Any] = {
             "model": self.model,

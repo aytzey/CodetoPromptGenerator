@@ -1,6 +1,7 @@
 // FILE: stores/useProjectStore.ts
 import { create } from "zustand";
-import { FileNode } from "@/lib/fileFilters"; // Assuming FileNode is defined here or in types
+import type { FileNode } from "@/types";
+import { LS_KEY_LAST_PROJECT_PATH } from "@/lib/constants/localStorage";
 
 /* ──────────────────────────────────────────────────────────── *
  *                        Helpers                               *
@@ -109,8 +110,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       fileTree: [],
       fileSearchTerm: "",
     });
-    if (typeof window !== "undefined")
-      localStorage.setItem("lastProjectPath", normalizedPath);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(LS_KEY_LAST_PROJECT_PATH, normalizedPath);
+    }
   },
 
   /* ───── tree ───── */
@@ -216,6 +218,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
 /* ─────────────── restore persisted project path (once) ─────────────── */
 if (typeof window !== "undefined") {
-  const stored = localStorage.getItem("lastProjectPath") || "";
+  const stored = localStorage.getItem(LS_KEY_LAST_PROJECT_PATH) || "";
   if (stored) useProjectStore.setState({ projectPath: stored });
 }

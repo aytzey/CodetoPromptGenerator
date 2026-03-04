@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict
-import json
 
 from flask import Blueprint, request
 
 from models.autoselect_request import AutoSelectRequest
 from services.autoselect_service import AutoselectService, ConfigError, UpstreamError
+from services.service_exceptions import ConfigurationError, UpstreamServiceError
 from utils.response_utils import error_response, success_response
 
 logger = logging.getLogger(__name__)
@@ -52,9 +52,9 @@ def api_autoselect():
         selected, raw_reply, dbg = _autosel.autoselect_paths(
             req, return_debug=debug
         )
-    except ConfigError as exc:
+    except (ConfigError, ConfigurationError) as exc:
         return error_response(str(exc), status_code=500)
-    except UpstreamError as exc:
+    except (UpstreamError, UpstreamServiceError) as exc:
         return error_response(str(exc), status_code=502)
     #---------- log response -----------------------------------------------
     # if dbg:

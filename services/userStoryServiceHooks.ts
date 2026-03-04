@@ -1,176 +1,131 @@
-// services/userStoryServiceHooks.ts
 import { useCallback } from "react";
 import { z } from "zod";
-import { fetchApi } from "@/services/apiService";
+import { fetchApiResult } from "@/services/apiService";
 import { useUserStoryStore } from "@/stores/useUserStoryStore";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useAppStore } from "@/stores/useAppStore";
-import { UserStory, UserStorySchema } from '@/types';
+import { type UserStory, UserStorySchema } from "@/types";
 
-/* ------------------- zod schemas ------------------- */
-const ArraySchema = z.array(UserStorySchema);
+const UserStoryListSchema = z.array(UserStorySchema);
 
 function safeParse<T extends z.ZodTypeAny>(schema: T, data: unknown): z.infer<T> | null {
-  if (data === null || data === undefined) {
-    return null;
-  }
-  
-  const result = schema.safeParse(data);
-  if (!result.success) {
-    console.error("Schema validation failed", result.error.flatten());
-    useAppStore.getState().setError("Received malformed data from server. Check console for details.");
-    return null;
-  }
-  return result.data;
+  if (data === null || data === undefined) return null;
+  const parsed = schema.safeParse(data);
+  if (parsed.success) return parsed.data;
+  useAppStore
+    .getState()
+    .setError("Received malformed user story data from server. Check console for details.");
+  console.error("User story schema validation failed", parsed.error.flatten());
+  return null;
 }
 
 export function useUserStoryService() {
   const { projectPath } = useProjectStore();
-  const {
-    setStories,
-    setLoading,
-    setSaving,
-  } = useUserStoryStore();
-  
+  const { setStories, setLoading, setSaving } = useUserStoryStore();
   const { setError } = useAppStore();
 
-  const baseQueryParam = projectPath ? `projectPath=${encodeURIComponent(projectPath)}` : '';
   const baseEndpoint = "/api/user-stories";
+  const query = projectPath ? `projectPath=${encodeURIComponent(projectPath)}` : "";
 
-  /* ---------------- list stories ---------------- */
   const loadStories = useCallback(async () => {
     if (!projectPath) {
       setStories([]);
       return;
     }
+
     setLoading(true);
-    const raw = await fetchApi<unknown>(`${baseEndpoint}?${baseQueryParam}`);
-    const data = safeParse(ArraySchema, raw);
-    setStories(data ?? []);
-    setLoading(false);
-  }, [projectPath, setStories, setLoading, baseQueryParam]);
-
-  /* ---------------- create story ---------------- */
-  const createStory = useCallback(async (draft: Omit<UserStory, "id" | "createdAt">) => {
-    if (!projectPath) return null;
-    setSaving(true);
-    setError(null);
-    
-    const raw = await fetchApi<unknown>(`${baseEndpoint}?${baseQueryParam}`, {
-      method: "POST",
-      body: JSON.stringify(draft),
-    });
-    
-    const story = safeParse(UserStorySchema, raw);
-    
-    if (story) {
-      await loadStories();
+    try {
+      const result = await fetchApiResult<unknown>(`${baseEndpoint}?${query}`);
+      const stories = result.ok ? safeParse(UserStoryListSchema, result.data) : null;
+      setStories(stories ?? []);
+    } finally {
+      setLoading(false);
     }
-    setSaving(false);
-    return story;
-  }, [projectPath, loadStories, setSaving, setError, baseQueryParam]);
+  }, [projectPath, query, setLoading, setStories]);
 
-  /* ---------------- update story ---------------- */
-  const updateStory = useCallback(async (storyData: Partial<UserStory> & Pick<UserStory, 'id'>) => {
-    if (!projectPath) return null;
-    setSaving(true);
-    setError(null);
-    
-    const url = `${baseEndpoint}/${storyData.id}?${baseQueryParam}`;
-    
-    const raw = await fetchApi<unknown>(url, {
-      method: "PUT",
-      body: JSON.stringify(storyData),
-    });
-    
-    const updatedStory = safeParse(UserStorySchema, raw);
+  const createStory = useCallback(
+    async (draft: Omit<UserStory, "id" | "createdAt">) => {
+      if (!projectPath) return null;
+      setSaving(true);
+      setError(null);
+      try {
+        const result = await fetchApiResult<unknown>(`${baseEndpoint}?${query}`, {
+          method: "POST",
+          body: JSON.stringify(draft),
+        });
+        const story = result.ok ? safeParse(UserStorySchema, result.data) : null;
+        if (story) await loadStories();
+        return story;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [loadStories, projectPath, query, setError, setSaving],
+  );
 
-    if (updatedStory) {
-      await loadStories();
-    }
-    setSaving(false);
-    return updatedStory;
-  }, [projectPath, loadStories, setSaving, setError, baseQueryParam]);
-  
-  /* ---------------- delete story ---------------- */
-  const deleteStory = useCallback(async (storyId: number) => {
-    if (!projectPath) return false;
-    setSaving(true);
-    setError(null);
+  const updateStory = useCallback(
+    async (storyData: Partial<UserStory> & Pick<UserStory, "id">) => {
+      if (!projectPath) return null;
+      setSaving(true);
+      setError(null);
+      try {
+        const result = await fetchApiResult<unknown>(`${baseEndpoint}/${storyData.id}?${query}`, {
+          method: "PUT",
+          body: JSON.stringify(storyData),
+        });
+        const story = result.ok ? safeParse(UserStorySchema, result.data) : null;
+        if (story) await loadStories();
+        return story;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [loadStories, projectPath, query, setError, setSaving],
+  );
 
-    const url = `${baseEndpoint}/${storyId}?${baseQueryParam}`;
-    await fetchApi<null>(url, { method: 'DELETE' });
+  const mutateTaskLink = useCallback(
+    async (url: string, method: "POST" | "PUT" | "DELETE", body?: unknown) => {
+      if (!projectPath) return false;
+      setSaving(true);
+      setError(null);
+      try {
+        const result = await fetchApiResult<unknown>(url, {
+          method,
+          body: body === undefined ? undefined : JSON.stringify(body),
+        });
+        if (!result.ok) return false;
+        await loadStories();
+        return true;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [loadStories, projectPath, setError, setSaving],
+  );
 
-    setSaving(false);
-    const errorState = useAppStore.getState().error;
-    if (errorState) {
-      return false;
-    }
-    
-    await loadStories();
-    return true;
-  }, [projectPath, loadStories, setSaving, setError, baseQueryParam]);
+  const deleteStory = useCallback(
+    async (storyId: number) =>
+      mutateTaskLink(`${baseEndpoint}/${storyId}?${query}`, "DELETE"),
+    [mutateTaskLink, query],
+  );
 
-  /* ---------------- manage task associations ---------------- */
-  const updateStoryTasks = useCallback(async (storyId: number, taskIds: number[]) => {
-    if (!projectPath) return false;
-    setSaving(true);
-    setError(null);
+  const updateStoryTasks = useCallback(
+    async (storyId: number, taskIds: number[]) =>
+      mutateTaskLink(`${baseEndpoint}/${storyId}/tasks?${query}`, "PUT", { taskIds }),
+    [mutateTaskLink, query],
+  );
 
-    const url = `${baseEndpoint}/${storyId}/tasks?${baseQueryParam}`;
-    await fetchApi<unknown>(url, {
-      method: 'PUT',
-      body: JSON.stringify({ taskIds }),
-    });
+  const addTaskToStory = useCallback(
+    async (storyId: number, taskId: number) =>
+      mutateTaskLink(`${baseEndpoint}/${storyId}/tasks?${query}`, "POST", { taskId }),
+    [mutateTaskLink, query],
+  );
 
-    setSaving(false);
-    const errorState = useAppStore.getState().error;
-    if (errorState) {
-      return false;
-    }
-    
-    await loadStories();
-    return true;
-  }, [projectPath, loadStories, setSaving, setError, baseQueryParam]);
-
-  const addTaskToStory = useCallback(async (storyId: number, taskId: number) => {
-    if (!projectPath) return false;
-    setSaving(true);
-    setError(null);
-
-    const url = `${baseEndpoint}/${storyId}/tasks?${baseQueryParam}`;
-    await fetchApi<unknown>(url, {
-      method: 'POST',
-      body: JSON.stringify({ taskId }),
-    });
-
-    setSaving(false);
-    const errorState = useAppStore.getState().error;
-    if (errorState) {
-      return false;
-    }
-    
-    await loadStories();
-    return true;
-  }, [projectPath, loadStories, setSaving, setError, baseQueryParam]);
-
-  const removeTaskFromStory = useCallback(async (storyId: number, taskId: number) => {
-    if (!projectPath) return false;
-    setSaving(true);
-    setError(null);
-
-    const url = `${baseEndpoint}/${storyId}/tasks/${taskId}?${baseQueryParam}`;
-    await fetchApi<null>(url, { method: 'DELETE' });
-
-    setSaving(false);
-    const errorState = useAppStore.getState().error;
-    if (errorState) {
-      return false;
-    }
-    
-    await loadStories();
-    return true;
-  }, [projectPath, loadStories, setSaving, setError, baseQueryParam]);
+  const removeTaskFromStory = useCallback(
+    async (storyId: number, taskId: number) =>
+      mutateTaskLink(`${baseEndpoint}/${storyId}/tasks/${taskId}?${query}`, "DELETE"),
+    [mutateTaskLink, query],
+  );
 
   return {
     loadStories,
