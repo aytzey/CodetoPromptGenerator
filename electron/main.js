@@ -59,6 +59,7 @@ function startBackend(isPackagedApp) {
     '-m', 'gunicorn', // Run gunicorn as a module
     '-w', '2',        // Number of worker processes (adjust as needed)
     '-b', `127.0.0.1:${BACKEND_PORT}`, // Bind address and port
+    '--timeout', '120', // Smart Select can make multiple LLM calls
     backendAppModule  // WSGI application (app:app means app.py, app instance)
   ];
 

@@ -64,6 +64,8 @@ if (isProd) {
       "2",
       "-b",
       `${host}:${port}`,
+      "--timeout",
+      "120",
       "--chdir",
       "python_backend",
       "app:app",
