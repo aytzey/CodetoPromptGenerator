@@ -47,7 +47,7 @@ const RightPanelView: React.FC<RightPanelViewProps> = ({
         <CardHeader className="py-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <MessageSquare size={18} className="text-[rgb(var(--color-tertiary))]" />
-            Prompt Instructions
+            1-2. Prompt Instructions
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -59,7 +59,7 @@ const RightPanelView: React.FC<RightPanelViewProps> = ({
         <CardHeader className="py-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <Sparkles size={18} className="text-[rgb(var(--color-accent-4))]" />
-            Generate Prompt
+            3. Generate Prompt
           </CardTitle>
         </CardHeader>
         <CardContent>

@@ -40,17 +40,33 @@ def _validate_payload(data: Dict[str, Any]) -> AutoSelectRequest:
 def api_autoselect():
     payload: Dict[str, Any] = request.get_json(silent=True) or {}
     debug: bool = request.args.get("debug", "").lower() in {"1", "true", "yes"}
+    api_key: Any = payload.get("apiKey")
+    model: Any = payload.get("model")
+
+    if api_key is not None and not isinstance(api_key, str):
+        return error_response("'apiKey' must be a string if provided.", status_code=400)
+    if model is not None and not isinstance(model, str):
+        return error_response("'model' must be a string if provided.", status_code=400)
+
+    validated_payload = {
+        "instructions": payload.get("instructions"),
+        "treePaths": payload.get("treePaths"),
+        "baseDir": payload.get("baseDir"),
+    }
 
     # ---------- validate ----------------------------------------------------
     try:
-        req = _validate_payload(payload)
+        req = _validate_payload(validated_payload)
     except Exception as exc:
         return error_response(str(exc), status_code=400)
 
     # ---------- call service ------------------------------------------------
     try:
         selected, raw_reply, dbg = _autosel.autoselect_paths(
-            req, return_debug=debug
+            req,
+            return_debug=debug,
+            api_key=api_key,
+            model=model,
         )
     except (ConfigError, ConfigurationError) as exc:
         return error_response(str(exc), status_code=500)

@@ -5,7 +5,7 @@ import logging
 import httpx
 import json
 import time
-from typing import Dict, Optional, List, Any
+from typing import Dict, Optional, List, Any, Tuple
 
 from services.service_exceptions import (
     InvalidInputError,
@@ -23,8 +23,16 @@ class PromptService:
     two-stage protocol for diagnosis and rewriting.
     """
 
-    _URL = "https://openrouter.ai/api/v1/chat/completions"
-    _DEFAULT_MODEL = "meta-llama/llama-4-maverick:free" # Updated for better instruction following
+    _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+    _GOOGLE_URL_TMPL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    _DEFAULT_MODEL = "meta-llama/llama-4-maverick"
+    _DEFAULT_GOOGLE_MODEL = "gemini-3-flash-preview"
+    _GOOGLE_MODEL_ALIASES = {
+        "gemini-3-flash-preview": "gemini-3-flash-preview",
+        "gemini-3.0-flash-preview": "gemini-3-flash-preview",
+        "models/gemini-3-flash-preview": "gemini-3-flash-preview",
+        "models/gemini-3.0-flash-preview": "gemini-3-flash-preview",
+    }
 
     # --- Protocol Constants ---
     _MAX_RETRIES = 3
@@ -73,12 +81,15 @@ Return ONLY the final, refined prompt text. Do not include any explanations, mar
 """
 
     def __init__(self) -> None:
-        self.api_key = os.getenv("OPENROUTER_API_KEY")
+        self.openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
+        self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.model = os.getenv("REFINE_MODEL", self._DEFAULT_MODEL)
-        logger.info("PromptService initialised with model: %s", self.model)
-        if not self.api_key:
+        self.google_model = os.getenv("GOOGLE_REFINE_MODEL", self._DEFAULT_GOOGLE_MODEL)
+        self._unavailable_google_models = set()
+        logger.info("PromptService initialised with default model: %s", self.model)
+        if not self.openrouter_api_key and not self.google_api_key:
             logger.warning(
-                "PromptService initialised WITHOUT OpenRouter API Key. "
+                "PromptService initialised WITHOUT LLM API Key (OpenRouter/Google). "
                 "Refinement requests will fail."
             )
 
@@ -86,7 +97,12 @@ Return ONLY the final, refined prompt text. Do not include any explanations, mar
     # public
     # ────────────────────────────────────────────────────────────────────
     def refine_prompt(
-        self, text: str, tree_text: Optional[str] = None, timeout: float = 30.0
+        self,
+        text: str,
+        tree_text: Optional[str] = None,
+        timeout: float = 30.0,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
     ) -> str:
         """
         Refines a user's text into a concise English LLM prompt using a
@@ -95,15 +111,13 @@ Return ONLY the final, refined prompt text. Do not include any explanations, mar
         Raises
         ------
         InvalidInputError   – empty input text
-        ConfigurationError  – missing OPENROUTER_API_KEY
+        ConfigurationError  – missing API key
         UpstreamServiceError – network / upstream failures
         """
         if not text.strip():
             raise InvalidInputError("Input text cannot be empty.")
-        if not self.api_key:
-            raise ConfigurationError(
-                "OPENROUTER_API_KEY is not set on the server."
-            )
+
+        provider, resolved_key, resolved_model = self._resolve_runtime_llm_config(api_key, model)
 
         # ---------- build base user prompt ------------------------------
         user_prompt_text = self._build_user_prompt_text(text, tree_text)
@@ -119,14 +133,14 @@ Return ONLY the final, refined prompt text. Do not include any explanations, mar
         ]
         
         try:
-            diagnosis_response = self._call_llm_with_retry(
+            diagnosis_json_text = self._call_llm_with_retry(
                 messages=diagnosis_messages,
                 response_format={"type": "json_object"},
-                timeout=timeout
+                timeout=timeout,
+                provider=provider,
+                api_key=resolved_key,
+                model=resolved_model,
             )
-            diagnosis_json_text = self._parse_llm_response_content(diagnosis_response)
-            # We don't need to parse the JSON here, just pass the text along.
-            # The rewrite model is smart enough to understand the structure.
             logger.info("Stage 1: Diagnosis completed successfully.")
         except UpstreamServiceError as e:
             logger.error("Stage 1 (Diagnosis) failed: %s. Aborting refinement.", e)
@@ -151,11 +165,13 @@ Return ONLY the final, refined prompt text. Do not include any explanations, mar
         ]
 
         try:
-            final_response = self._call_llm_with_retry(
+            refined_prompt_text = self._call_llm_with_retry(
                 messages=rewrite_messages,
-                timeout=timeout
+                timeout=timeout,
+                provider=provider,
+                api_key=resolved_key,
+                model=resolved_model,
             )
-            refined_prompt_text = self._parse_llm_response_content(final_response)
             logger.info("Stage 2: Rewrite completed successfully.")
             return self._clean_markdown(refined_prompt_text)
         except UpstreamServiceError as e:
@@ -166,13 +182,40 @@ Return ONLY the final, refined prompt text. Do not include any explanations, mar
     # helpers
     # ────────────────────────────────────────────────────────────────────
     def _call_llm_with_retry(
-        self, messages: List[Dict[str, str]], timeout: float, response_format: Optional[Dict[str, str]] = None
-    ) -> httpx.Response:
-        """
-        Calls the LLM API with a retry mechanism for transient errors.
-        """
+        self,
+        messages: List[Dict[str, str]],
+        timeout: float,
+        provider: str,
+        api_key: str,
+        model: str,
+        response_format: Optional[Dict[str, str]] = None,
+    ) -> str:
+        if provider == "google":
+            return self._call_google_with_retry(
+                messages=messages,
+                timeout=timeout,
+                api_key=api_key,
+                model=model,
+                response_format=response_format,
+            )
+        return self._call_openrouter_with_retry(
+            messages=messages,
+            timeout=timeout,
+            api_key=api_key,
+            model=model,
+            response_format=response_format,
+        )
+
+    def _call_openrouter_with_retry(
+        self,
+        messages: List[Dict[str, str]],
+        timeout: float,
+        api_key: str,
+        model: str,
+        response_format: Optional[Dict[str, str]] = None,
+    ) -> str:
         payload: Dict[str, Any] = {
-            "model": self.model,
+            "model": model,
             "messages": messages,
             "temperature": 0.5,
             "max_tokens": 1024,
@@ -181,9 +224,9 @@ Return ONLY the final, refined prompt text. Do not include any explanations, mar
             payload["response_format"] = response_format
 
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "http://localhost:3010", # Replace with your actual referer if needed
+            "HTTP-Referer": "http://localhost:3010",
             "X-Title": "CodeToPromptGenerator",
         }
 
@@ -191,9 +234,9 @@ Return ONLY the final, refined prompt text. Do not include any explanations, mar
         for attempt in range(self._MAX_RETRIES):
             try:
                 with httpx.Client(timeout=timeout) as client:
-                    response = client.post(self._URL, json=payload, headers=headers)
+                    response = client.post(self._OPENROUTER_URL, json=payload, headers=headers)
                     response.raise_for_status()
-                    return response
+                    return self._parse_openrouter_content(response)
             except (httpx.TimeoutException, httpx.RequestError) as exc:
                 logger.warning("Attempt %d/%d: Retriable network error: %s", attempt + 1, self._MAX_RETRIES, exc)
                 last_exception = exc
@@ -211,14 +254,105 @@ Return ONLY the final, refined prompt text. Do not include any explanations, mar
                     raise UpstreamServiceError(f"OpenRouter API error ({exc.response.status_code}): {detail}") from exc
             
             if attempt < self._MAX_RETRIES - 1:
-                time.sleep(self._RETRY_DELAY_SECONDS * (attempt + 1)) # Exponential backoff
+                time.sleep(self._RETRY_DELAY_SECONDS * (attempt + 1))
 
-        # If all retries fail
         raise UpstreamServiceError(f"Failed to contact OpenRouter after {self._MAX_RETRIES} attempts.") from last_exception
 
+    def _call_google_with_retry(
+        self,
+        messages: List[Dict[str, str]],
+        timeout: float,
+        api_key: str,
+        model: str,
+        response_format: Optional[Dict[str, str]] = None,
+    ) -> str:
+        system_parts, user_parts = self._split_messages_for_google(messages)
+
+        payload: Dict[str, Any] = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": user_parts,
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.5,
+                "maxOutputTokens": 1024,
+            },
+        }
+        if system_parts:
+            payload["systemInstruction"] = {"parts": system_parts}
+        if response_format and response_format.get("type") == "json_object":
+            payload["generationConfig"]["responseMimeType"] = "application/json"
+
+        model_candidates = self._google_model_candidates(model)
+        last_error: Optional[Exception] = None
+
+        for candidate_model in model_candidates:
+            url = self._GOOGLE_URL_TMPL.format(model=candidate_model)
+            logger.info("PromptService using Google model candidate: %s", candidate_model)
+
+            for attempt in range(self._MAX_RETRIES):
+                try:
+                    with httpx.Client(timeout=timeout) as client:
+                        response = client.post(
+                            url,
+                            params={"key": api_key},
+                            json=payload,
+                            headers={"Content-Type": "application/json"},
+                        )
+                    if response.status_code == 200:
+                        return self._parse_google_content(response)
+
+                    detail = self._extract_google_error_detail(response)
+                    if self._is_google_model_error(response.status_code, detail):
+                        self._unavailable_google_models.add(candidate_model)
+                        raise UpstreamServiceError(
+                            "Google model "
+                            f"'{candidate_model}' is unavailable for generateContent: {detail}. "
+                            "Use model code 'gemini-3-flash-preview' "
+                            "with endpoint /v1beta/models/{model}:generateContent."
+                        )
+                    if 500 <= response.status_code < 600:
+                        last_error = UpstreamServiceError(
+                            f"Google API server error ({response.status_code}): {detail}"
+                        )
+                    else:
+                        raise UpstreamServiceError(
+                            f"Google API error ({response.status_code}): {detail}"
+                        )
+                except (httpx.TimeoutException, httpx.RequestError) as exc:
+                    logger.warning(
+                        "Attempt %d/%d: Retriable Google network error: %s",
+                        attempt + 1,
+                        self._MAX_RETRIES,
+                        exc,
+                    )
+                    last_error = exc
+
+                if attempt < self._MAX_RETRIES - 1:
+                    time.sleep(self._RETRY_DELAY_SECONDS * (attempt + 1))
+
+            if isinstance(last_error, UpstreamServiceError):
+                raise last_error
+
+        if not self._google_model_candidates(model):
+            raise UpstreamServiceError(
+                "Google model is marked unavailable in this process. "
+                "Expected model code is 'gemini-3-flash-preview'."
+            )
+
+        if last_error:
+            raise UpstreamServiceError(
+                f"Failed to contact Google Gemini after {self._MAX_RETRIES} attempts."
+            ) from last_error
+        raise UpstreamServiceError(
+            "No usable Google Gemini model found. "
+            "Expected model code is 'gemini-3-flash-preview'."
+        )
+
     @staticmethod
-    def _parse_llm_response_content(response: httpx.Response) -> str:
-        """Parses the content from a successful LLM API response."""
+    def _parse_openrouter_content(response: httpx.Response) -> str:
         try:
             data = response.json()
             choices = data.get("choices")
@@ -228,7 +362,7 @@ Return ONLY the final, refined prompt text. Do not include any explanations, mar
                 or not choices
                 or not isinstance(choices[0], dict)
             ):
-                raise UpstreamServiceError("Invalid OpenRouter response – 'choices' missing.")
+                raise UpstreamServiceError("Invalid OpenRouter response: 'choices' missing.")
             
             raw_content = choices[0].get("message", {}).get("content", "").strip()
             if not raw_content:
@@ -237,6 +371,135 @@ Return ONLY the final, refined prompt text. Do not include any explanations, mar
         except (json.JSONDecodeError, TypeError, KeyError, IndexError) as exc:
             logger.error("Failed to parse OpenRouter response: %s", exc)
             raise UpstreamServiceError("Malformed JSON response from OpenRouter.") from exc
+
+    @staticmethod
+    def _parse_google_content(response: httpx.Response) -> str:
+        try:
+            data = response.json()
+            candidates = data.get("candidates")
+            if not isinstance(candidates, list) or not candidates:
+                feedback = data.get("promptFeedback")
+                if feedback:
+                    raise UpstreamServiceError(f"Google response blocked: {feedback}")
+                raise UpstreamServiceError("Invalid Google response: 'candidates' missing.")
+
+            content = candidates[0].get("content", {})
+            parts = content.get("parts", [])
+            if not isinstance(parts, list) or not parts:
+                raise UpstreamServiceError("Google response had no content parts.")
+
+            text_parts = [part.get("text", "") for part in parts if isinstance(part, dict)]
+            text = "".join(text_parts).strip()
+            if not text:
+                raise UpstreamServiceError("Google response text was empty.")
+            return text
+        except (json.JSONDecodeError, TypeError, KeyError, IndexError) as exc:
+            logger.error("Failed to parse Google response: %s", exc)
+            raise UpstreamServiceError("Malformed JSON response from Google Gemini.") from exc
+
+    def _resolve_runtime_llm_config(
+        self,
+        api_key: Optional[str],
+        model: Optional[str],
+    ) -> Tuple[str, str, str]:
+        explicit_key = (api_key or "").strip()
+        if explicit_key:
+            provider = self._detect_provider(explicit_key)
+            if provider != "google":
+                raise ConfigurationError(
+                    "Prompt refine accepts only Google Gemini API keys (AIza...). "
+                    "OpenRouter keys are not allowed."
+                )
+            chosen_model = self._default_model_for_provider(provider, model)
+            return provider, explicit_key, chosen_model
+
+        if self.google_api_key:
+            return "google", self.google_api_key, self._default_model_for_provider("google", model)
+
+        raise ConfigurationError("No Google API key configured. Provide apiKey (AIza...) or set GOOGLE_API_KEY.")
+
+    def _default_model_for_provider(self, provider: str, requested_model: Optional[str]) -> str:
+        if provider == "google":
+            candidate = requested_model.strip() if requested_model and requested_model.strip() else self.google_model
+            resolved = self._normalise_google_model_name(candidate)
+            if resolved != self._DEFAULT_GOOGLE_MODEL:
+                raise ConfigurationError(
+                    "Prompt refine execution model is fixed to 'gemini-3-flash-preview'. "
+                    f"Received '{resolved}'."
+                )
+            return resolved
+        if requested_model and requested_model.strip():
+            return requested_model.strip()
+        return self.model
+
+    @staticmethod
+    def _detect_provider(api_key: str) -> str:
+        return "google" if api_key.startswith("AIza") else "openrouter"
+
+    @staticmethod
+    def _render_messages_for_google(messages: List[Dict[str, str]]) -> str:
+        rendered: List[str] = []
+        for message in messages:
+            role = str(message.get("role", "user")).upper()
+            content = str(message.get("content", "")).strip()
+            rendered.append(f"[{role}]\n{content}")
+        return "\n\n".join(rendered).strip()
+
+    @staticmethod
+    def _split_messages_for_google(
+        messages: List[Dict[str, str]],
+    ) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
+        """Split messages into systemInstruction parts and user content parts."""
+        system_parts: List[Dict[str, str]] = []
+        user_parts: List[Dict[str, str]] = []
+        for msg in messages:
+            content = str(msg.get("content", "")).strip()
+            if not content:
+                continue
+            if msg.get("role") == "system":
+                system_parts.append({"text": content})
+            else:
+                user_parts.append({"text": content})
+        if not user_parts:
+            user_parts.append({"text": ""})
+        return system_parts, user_parts
+
+    def _google_model_candidates(self, requested_model: str) -> List[str]:
+        model = self._normalise_google_model_name(requested_model)
+        if model in self._unavailable_google_models:
+            return []
+        return [model]
+
+    def _normalise_google_model_name(self, model: str) -> str:
+        cleaned = model.strip()
+        if not cleaned:
+            return self._DEFAULT_GOOGLE_MODEL
+
+        canonical = self._GOOGLE_MODEL_ALIASES.get(cleaned, cleaned)
+        if canonical.startswith("models/"):
+            canonical = canonical.split("/", 1)[1]
+        return canonical
+
+    @staticmethod
+    def _extract_google_error_detail(response: httpx.Response) -> str:
+        try:
+            data = response.json()
+            if isinstance(data, dict):
+                err = data.get("error")
+                if isinstance(err, dict):
+                    message = err.get("message")
+                    if isinstance(message, str) and message.strip():
+                        return message
+        except Exception:
+            pass
+        return response.text.strip() or "Unknown Google API error"
+
+    @staticmethod
+    def _is_google_model_error(status_code: int, detail: str) -> bool:
+        lowered = detail.lower()
+        if status_code == 404:
+            return True
+        return status_code == 400 and ("model" in lowered and "not found" in lowered)
 
     @staticmethod
     def _build_user_prompt_text(text: str, tree_text: Optional[str]) -> str:

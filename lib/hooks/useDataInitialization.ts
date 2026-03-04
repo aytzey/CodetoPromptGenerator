@@ -31,6 +31,20 @@ export function useDataInitialization() {
     if (storedKey) {
       setOpenrouterApiKey(storedKey);
     }
+
+    // Check if the backend has a Google API key via env var
+    // so Smart Select / Refine can work without manual UI key entry
+    if (!storedKey) {
+      fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5010"}/api/settings/env-status`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (d?.data?.googleKeyAvailable) {
+            // Set a sentinel so hooks know the backend has a key
+            setOpenrouterApiKey("__SERVER_KEY__");
+          }
+        })
+        .catch(() => {/* backend unreachable – ignore */});
+    }
   }, [fetchGlobalExclusions, fetchMetaPromptList, setOpenrouterApiKey]);
 
   useEffect(() => {

@@ -16,8 +16,9 @@ export function useServiceActions(apiKeyDraft: string) {
 
   const saveApiKey = useCallback(() => {
     const trimmed = apiKeyDraft.trim();
-    if (!trimmed.startsWith("sk-")) {
-      setError("API key format looks invalid. It should start with 'sk-'.");
+    const looksLikeGoogle = trimmed.startsWith("AIza");
+    if (!looksLikeGoogle) {
+      setError("Only Google Gemini API keys are allowed for Smart Select (use AIza...).");
       return;
     }
     setOpenrouterApiKey(trimmed);

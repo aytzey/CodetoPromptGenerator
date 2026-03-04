@@ -27,6 +27,8 @@ def refine_prompt_endpoint():
     payload = request.get_json(silent=True) or {}
     text_to_refine = payload.get("text")
     tree_text = payload.get("treeText")
+    api_key = payload.get("apiKey")
+    model = payload.get("model")
 
     if not isinstance(text_to_refine, str):
         return error_response(
@@ -38,9 +40,24 @@ def refine_prompt_endpoint():
             "'treeText' must be a string if provided.",
             status_code=HTTPStatus.BAD_REQUEST,
         )
+    if api_key is not None and not isinstance(api_key, str):
+        return error_response(
+            "'apiKey' must be a string if provided.",
+            status_code=HTTPStatus.BAD_REQUEST,
+        )
+    if model is not None and not isinstance(model, str):
+        return error_response(
+            "'model' must be a string if provided.",
+            status_code=HTTPStatus.BAD_REQUEST,
+        )
 
     try:
-        refined = _prompt_service.refine_prompt(text_to_refine, tree_text=tree_text)
+        refined = _prompt_service.refine_prompt(
+            text_to_refine,
+            tree_text=tree_text,
+            api_key=api_key,
+            model=model,
+        )
         return success_response(data={"refinedPrompt": refined})
     except InvalidInputError as exc:
         logger.warning("Prompt refinement validation error: %s", exc)

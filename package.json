@@ -9,7 +9,7 @@
   "private": true,
   "main": "electron/main.js",
   "scripts": {
-    "dev": "kill-port 3010 && next dev -p 3010 -H 127.0.0.1",
+    "dev": "node scripts/run-next-dev.js",
     "build": "npx --yes node@20 ./node_modules/next/dist/bin/next build",
     "export": "npm run build",
     "start": "echo \"For Electron app, use 'npm run electron:prod:local' or run the packaged application. 'npm start' (next start) is not used with 'output: export'. To serve a static export, use 'npm run electron:prod:local'.\"",
@@ -20,6 +20,7 @@
     "postinstall": "node scripts/postinstall.js",
     "electron:dev": "concurrently --kill-others \"npm run dev\" \"npm run backend\" \"wait-on tcp:5010 tcp:3010 && node scripts/run-electron.js\"",
     "electron:prod:local": "npm run build && cross-env APP_ENV=production concurrently --kill-others \"npm run backend:prod\" \"node scripts/run-electron.js\"",
+    "electron:prod:local:nobuild": "cross-env APP_ENV=production concurrently --kill-others \"npm run backend:prod\" \"node scripts/run-electron.js\"",
     "electron:pack": "npm run build && electron-builder --dir",
     "electron:build:linux": "npm run build && electron-builder --linux deb AppImage",
     "test:unit": "npx --yes tsx --test tests/**/*.test.ts",

@@ -84,34 +84,50 @@ export default function StunningFolderBrowserView({
     }
   }, [API]);
 
-  const loadDrives = useCallback(async () => {
+  const loadDrives = useCallback(async (): Promise<FolderItem[]> => {
     try {
       const response = await fetch(`${API}/api/select_drives`);
       if (response.ok) {
         const data = await response.json();
         const drives = Array.isArray(data) ? data : data.drives || [];
-        const normalizedDrives = drives.map((drive: any) =>
+        const normalizedDrives: FolderItem[] = drives.map((drive: any) =>
           typeof drive === 'string'
             ? { name: drive, path: drive }
             : { name: drive.name || drive.path, path: drive.path || drive.name }
         );
         setDrives(normalizedDrives);
-        if (!path && normalizedDrives.length > 0) {
-          void browse(normalizedDrives[0].path);
-        }
+        return normalizedDrives;
       }
     } catch (error) {
       console.error('Failed to load drives:', error);
     }
-  }, [API, browse, path]);
+    return [];
+  }, [API]);
 
   useEffect(() => {
     if (!isOpen) return;
-    void loadDrives();
-    if (currentPath) {
-      setPath(currentPath);
-      void browse(currentPath);
-    }
+
+    let cancelled = false;
+    const init = async () => {
+      const normalizedDrives = await loadDrives();
+      if (cancelled) return;
+
+      const initialPath = currentPath || normalizedDrives[0]?.path || '';
+      if (!initialPath) {
+        setPath('');
+        setFolders([]);
+        return;
+      }
+
+      setPath(initialPath);
+      await browse(initialPath);
+    };
+
+    void init();
+
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, currentPath, loadDrives, browse]);
 
   const navigateUp = () => {
@@ -157,7 +173,12 @@ export default function StunningFolderBrowserView({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       <DialogContent className="max-w-6xl h-[85vh] p-0 flex flex-col glass border-[rgba(var(--color-border),0.3)] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)]">
         {/* Stunning Header */}
         <DialogHeader className="glass-header p-6 border-b border-[rgba(var(--color-border),0.2)]">

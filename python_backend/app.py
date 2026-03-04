@@ -54,9 +54,10 @@ def create_app(test_config=None):
     # load_dotenv() # Moved to top level for earlier access
 
     flask_app = Flask(__name__, instance_relative_config=True) # Renamed to flask_app to avoid conflict
+    default_debug = "False" if os.environ.get("APP_ENV", "").lower() == "production" else "True"
     flask_app.config.from_mapping(
         SECRET_KEY=os.environ.get("SECRET_KEY", "dev‑secret‑key"),
-        DEBUG=os.environ.get("FLASK_DEBUG", "True").lower() == "true",
+        DEBUG=os.environ.get("FLASK_DEBUG", default_debug).lower() == "true",
     )
 
     if test_config is None:
@@ -67,11 +68,12 @@ def create_app(test_config=None):
     os.makedirs(flask_app.instance_path, exist_ok=True)
 
     # ────────────────────────────────────────────────────────────────────
-    # CORS – allow localhost **and** 127.0.0.1 on any port for /api/*
+    # CORS – allow localhost, 127.0.0.1 and Electron file:// for /api/*
+    # Electron loads static files via file:// which sends Origin: null
     # ────────────────────────────────────────────────────────────────────
     CORS(
         flask_app,
-        resources={r"/api/*": {"origins": [r"http://localhost:*", r"http://127.0.0.1:*"]}},
+        resources={r"/api/*": {"origins": [r"http://localhost:*", r"http://127.0.0.1:*", "null"]}},
         supports_credentials=False,
     )
 
@@ -110,7 +112,7 @@ def create_app(test_config=None):
     logger.info("Flask application initialized successfully.")
     logger.info(f"Debug mode: {flask_app.config['DEBUG']}")
     # Log the API key presence (but not the key itself!)
-    logger.info(f"OpenRouter API Key Loaded: {'Yes' if os.getenv('OPENROUTER_API_KEY') else 'No'}")
+    logger.info(f"Google API Key Loaded: {'Yes' if os.getenv('GOOGLE_API_KEY') else 'No'}")
     return flask_app
 
 # Create the Flask app instance at the module level for Gunicorn

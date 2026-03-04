@@ -80,6 +80,8 @@ const child = spawn(pythonCmd, backendArgs, {
     ...process.env,
     FLASK_HOST: host,
     FLASK_PORT: String(port),
+    FLASK_DEBUG: isProd ? "0" : process.env.FLASK_DEBUG || "1",
+    APP_ENV: isProd ? "production" : process.env.APP_ENV || "development",
   },
 });
 

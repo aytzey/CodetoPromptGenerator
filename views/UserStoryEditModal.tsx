@@ -255,7 +255,7 @@ const UserStoryEditModal: React.FC<UserStoryEditModalProps> = ({
                     </div>
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent className="glass border-[rgba(var(--color-border),0.7)]">
+                <SelectContent className="border-[rgba(var(--color-border),0.95)]">
                   {KanbanPriorityValues.map(p => (
                     <SelectItem
                       key={p}
@@ -306,7 +306,7 @@ const UserStoryEditModal: React.FC<UserStoryEditModalProps> = ({
                 <SelectTrigger className="h-10 focus-glow border-[rgba(var(--color-border),0.7)]">
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
-                <SelectContent className="glass border-[rgba(var(--color-border),0.7)]">
+                <SelectContent className="border-[rgba(var(--color-border),0.95)]">
                   {KanbanStatusValues.map(s => (
                     <SelectItem key={s} value={s} className="capitalize">
                       {s.replace(/-/g, ' ')}

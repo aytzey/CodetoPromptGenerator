@@ -6,7 +6,7 @@ import {
   Search,
   RefreshCw,
   CheckSquare,
-  XSquare,
+  X,
   ChevronsDown,
   ChevronsUp,
   LayoutGrid,
@@ -80,15 +80,15 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
       <TabsList className="grid h-auto grid-cols-3 gap-1 rounded-md border border-[rgba(var(--color-border),0.4)] bg-[rgba(var(--color-bg-secondary),0.4)] p-1">
         <TabsTrigger value="files" className="inline-flex items-center gap-2 rounded-md py-2">
           <FileCode size={15} />
-          Files
+          1. Files
         </TabsTrigger>
         <TabsTrigger value="options" className="inline-flex items-center gap-2 rounded-md py-2">
           <Settings size={15} />
-          Options
+          2. Options
         </TabsTrigger>
         <TabsTrigger value="tasks" className="inline-flex items-center gap-2 rounded-md py-2">
           <ListChecks size={15} />
-          Tasks
+          3. Tasks
         </TabsTrigger>
       </TabsList>
 
@@ -96,7 +96,10 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
         <Card className="glass">
           <CardHeader className="space-y-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Project Files</CardTitle>
+              <CardTitle className="text-base">A. Project Files</CardTitle>
+            </div>
+            <div className="rounded-md border border-[rgba(var(--color-border),0.35)] bg-[rgba(var(--color-bg-secondary),0.25)] p-3 text-xs text-[rgb(var(--color-text-muted))]">
+              Flow: filter and select files, review selected list, then manage reusable selection groups.
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -118,7 +121,7 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text-primary))]"
                     aria-label="Clear file filter"
                   >
-                    <XSquare size={14} />
+                    <X size={14} />
                   </button>
                 ) : (
                   <TooltipProvider>
@@ -158,7 +161,7 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
                 disabled={!selectedFilePaths.length}
                 className="h-9"
               >
-                <XSquare size={14} className="mr-1.5" />
+                <X size={14} className="mr-1.5" />
                 Clear
               </Button>
 
@@ -213,7 +216,7 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
         <Card className="glass">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              Selected Files
+              B. Selected Files
               <Badge className="ml-auto">{selectedFileCount}</Badge>
             </CardTitle>
           </CardHeader>
@@ -260,7 +263,7 @@ const LeftPanelView: React.FC<LeftPanelViewProps> = ({
         ) : (
           <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed border-[rgba(var(--color-border),0.45)] bg-[rgba(var(--color-bg-secondary),0.25)] py-12 text-center text-sm text-[rgb(var(--color-text-muted))]">
             <Layers size={28} className="opacity-60" />
-            <p>No project selected. Choose a folder to manage tasks and stories.</p>
+            <p>Select a project first to use Kanban and user stories.</p>
           </div>
         )}
       </TabsContent>

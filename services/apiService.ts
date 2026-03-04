@@ -110,10 +110,11 @@ export async function fetchApiResult<T>(
       error: null,
     };
   } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error);
     const message =
-      error instanceof Error
-        ? `Network Error: ${error.message}`
-        : "Network error. Please check your connection and the backend server.";
+      raw === "Failed to fetch"
+        ? `Backend unreachable at ${BACKEND_URL}. Make sure the Python backend is running (./start.sh backend).`
+        : `Network Error: ${raw}`;
     setError(message);
     return {
       ok: false,

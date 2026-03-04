@@ -61,6 +61,8 @@ export interface AutoSelectRequest {
   instructions: string;
   treePaths: string[];               // flattened *relative* paths
   baseDir?: string;                  // optional absolute project root
+  apiKey?: string;
+  model?: string;
 }
 
 export interface AutoSelectResponse {

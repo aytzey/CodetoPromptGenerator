@@ -36,18 +36,18 @@ const SettingsModalView: React.FC<SettingsModalViewProps> = ({
             <div className="p-1.5 rounded-md bg-[rgba(var(--color-accent-2),0.1)] border border-[rgba(var(--color-accent-2),0.2)]">
               <KeyRound size={18} className="text-[rgb(var(--color-accent-2))]" />
             </div>
-            OpenRouter Settings
+            LLM Settings
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 px-1 py-4">
           <Label htmlFor="or-key" className="font-medium text-[rgb(var(--color-text-secondary))]">
-            API Key
+            Google Gemini API Key
           </Label>
           <div className="relative group">
             <Input
               id="or-key"
               type="password"
-              placeholder="sk-..."
+              placeholder="AIza..."
               value={apiKeyDraft}
               onChange={(e) => setApiKeyDraft(e.target.value)}
               className="bg-[rgba(var(--color-bg-secondary),0.6)] border-[rgba(var(--color-border),0.7)] focus:border-[rgb(var(--color-primary))] focus:ring-[rgb(var(--color-primary))] focus-within:shadow-glow-primary transition-all pl-3 pr-3 py-2"
@@ -55,7 +55,7 @@ const SettingsModalView: React.FC<SettingsModalViewProps> = ({
             <div className="absolute inset-0 rounded-md border border-[rgba(var(--color-primary),0.2)] opacity-0 group-focus-within:opacity-100 pointer-events-none transition-opacity shadow-[0_0_8px_rgba(var(--color-primary),0.1)]"></div>
           </div>
           <p className="text-xs text-[rgb(var(--color-text-muted))] italic">
-            Your API key is stored locally in your browser and never sent to our server.
+            Stored locally; only Google Gemini API keys are accepted.
           </p>
         </div>
         <DialogFooter className="mt-4 border-t border-[rgba(var(--color-border),0.6)] pt-4 relative">

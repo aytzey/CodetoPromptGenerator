@@ -35,6 +35,40 @@ _MAX_TREE_DEPTH: int = int(os.getenv("CTP_MAX_TREE_DEPTH", "50"))
 _TOKEN_SIZE_LIMIT: int = int(os.getenv("CTP_TOKEN_SIZE_LIMIT", "2000000"))  # ≈2 MB
 _TOKEN_SPLIT_RE: re.Pattern[str] = re.compile(r"\s+|([,.;:!?(){}\[\]<>\"'])")
 
+# Directories/patterns that are ALWAYS excluded regardless of ignoreDirs.txt.
+# Prevents accidental inclusion of massive non-code directories.
+_BUILTIN_EXCLUSIONS: List[str] = [
+    ".git",
+    "node_modules",
+    ".venv",
+    "venv",
+    "env",
+    "__pycache__",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "*.egg-info",
+    ".eggs",
+    "htmlcov",
+    ".cache",
+    ".parcel-cache",
+    ".turbo",
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".vercel",
+    ".output",
+    "bower_components",
+    "jspm_packages",
+    ".yarn",
+    "dist",
+    "build",
+    "out",
+    "coverage",
+    ".codetoprompt",
+]
+
 # ─────────────────────── service class ─────────────────────── #
 
 
@@ -164,6 +198,7 @@ class ProjectService:
         root_dir = os.path.abspath(root_dir)
         spec = self._make_pathspec(
             [
+                *_BUILTIN_EXCLUSIONS,
                 *self._excl.get_global_exclusions(),
                 *self._excl.get_local_exclusions(root_dir),
             ]

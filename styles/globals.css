@@ -612,6 +612,11 @@
   display: none !important;
 }
 
+/* Keep Radix popper layers (Select/Tooltip/Popover) above glass cards/modals */
+[data-radix-popper-content-wrapper] {
+  z-index: 1100 !important;
+}
+
 /* Add these styles to styles/globals.css */
 
 /* Card highlight animation when moved between columns */

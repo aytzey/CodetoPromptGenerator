@@ -303,7 +303,7 @@ const UserStoryListView: React.FC = () => {
               <Filter size={14} className="mr-1" />
               <SelectValue placeholder="Priority" />
             </SelectTrigger>
-            <SelectContent className="glass border-[rgba(var(--color-border),0.7)]">
+            <SelectContent className="border-[rgba(var(--color-border),0.95)]">
               <SelectItem value="all">All Priorities</SelectItem>
               {KanbanPriorityValues.map((p) => (
                 <SelectItem key={p} value={p} className="capitalize">
@@ -323,7 +323,7 @@ const UserStoryListView: React.FC = () => {
               <ListTodo size={14} className="mr-1" />
               <SelectValue placeholder="Status" />
             </SelectTrigger>
-            <SelectContent className="glass border-[rgba(var(--color-border),0.7)]">
+            <SelectContent className="border-[rgba(var(--color-border),0.95)]">
               <SelectItem value="all">All Statuses</SelectItem>
               {KanbanStatusValues.map((s) => (
                 <SelectItem key={s} value={s} className="capitalize">

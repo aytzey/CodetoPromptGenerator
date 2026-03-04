@@ -1,288 +1,219 @@
-import React, { useState, useMemo } from "react";
-import {
-  CheckCircle,
-  Loader2,
-  BarChart2,
-  FileText,
-  Sparkles,
-} from "lucide-react";
-
-import { usePromptStore } from "@/stores/usePromptStore";
-import { useProjectStore } from "@/stores/useProjectStore";
-import { useExclusionStore } from "@/stores/useExclusionStore";
-import { useAppStore } from "@/stores/useAppStore";
-import { useProjectService } from "@/services/projectServiceHooks";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { BarChart2, CheckCircle, ClipboardCopy, FileText, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Tooltip, TooltipProvider, TooltipTrigger, TooltipContent,
-} from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { generateTextualTree } from "@/lib/treeUtils";
+import { cn } from "@/lib/utils";
+import { buildPromptForPreset } from "@/lib/promptComposer";
+import { getModelPreset } from "@/lib/modelPresets";
+import { useAppStore } from "@/stores/useAppStore";
+import { useExclusionStore } from "@/stores/useExclusionStore";
+import { useProjectStore } from "@/stores/useProjectStore";
+import { usePromptStore } from "@/stores/usePromptStore";
+import { useSettingsStore } from "@/stores/useSettingStore";
+import { useProjectService } from "@/services/projectServiceHooks";
 import type { FileData } from "@/types";
 
-/* ════════════════════════════════════════════════════════════════ */
-/* 🔸 LOCAL HELPER UTILITIES                                       */
-/* ════════════════════════════════════════════════════════════════ */
+const RESET_COPIED_MS = 2200;
 
-/** naive token approximation (kept for stats only) */
-function estimateTokens(txt = '') {
-  if (!txt) return 0;
-  return txt.trim().split(/\s+/).length + (txt.match(/[.,;:!?(){}\[\]<>]/g) || []).length;
+function estimateTokens(text = ""): number {
+  if (!text.trim()) return 0;
+  return text.trim().split(/\s+/).length + (text.match(/[.,;:!?(){}\[\]<>]/g) || []).length;
 }
 
-/** language‑id per file‑extension – extend as needed */
-function extToLang(path: string): string {
-  const ext = (path.split('.').pop() || '').toLowerCase();
-  switch (ext) {
-    case 'ts':   return 'ts';
-    case 'tsx':  return 'tsx';
-    case 'js':   return 'js';
-    case 'jsx':  return 'jsx';
-    case 'py':   return 'python';
-    case 'rb':   return 'ruby';
-    case 'php':  return 'php';
-    case 'json': return 'json';
-    case 'yml':  return 'yaml';
-    case 'md':   return 'md';
-    case 'html': return 'html';
-    case 'css':
-    case 'scss': return 'css';
-    default:     return '';       // let model auto‑detect
-  }
-}
-
-/** render a file‑tree as indented list; fenced to freeze whitespace */
-function renderTree(tree: string) {
-  return tree.trim() ? `\`\`\`text\n${tree.trimEnd()}\n\`\`\`` : '';
-}
-
-/** render each file as ```lang path … ``` block */
-function renderFiles(data: FileData[]) {
-  return data
-    .map(f => {
-      const lang = extToLang(f.path);
-      return `\`\`\`${lang} ${f.path}\n${f.content.trimEnd()}\n\`\`\``;
-    })
-    .join('\n\n');
-}
-
-/** fallback copy using a temporary textarea (for older browsers like Safari) */
-function fallbackCopyText(text: string) {
-  const ta = document.createElement('textarea');
-  ta.value = text;
-  ta.setAttribute('readonly', '');
-  ta.style.position = 'fixed';
-  ta.style.top = '-1000px';
-  ta.style.left = '-1000px';
-  document.body.appendChild(ta);
-  ta.select();
+function fallbackCopyText(text: string): void {
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.style.position = "fixed";
+  area.style.top = "-1000px";
+  area.style.left = "-1000px";
+  document.body.appendChild(area);
+  area.select();
   document.execCommand('copy');
-  document.body.removeChild(ta);
+  document.body.removeChild(area);
 }
 
-/** final prompt assembler – pure function for testability */
-function buildPrompt(
-  meta: string,
-  user: string,
-  treeTxt: string,
-  files: FileData[],
-) {
-  const parts: string[] = [];
-
-  if (meta.trim()) {
-    parts.push(`<|SYSTEM|>\n${meta.trim()}\n<|END|>`);
+async function copyText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // Fallback is handled below.
+    }
   }
-  if (user.trim()) {
-    parts.push(`<|USER|>\n${user.trim()}\n<|END|>`);
-  }
-  const ctx: string[] = [];
-  const renderedTree = renderTree(treeTxt);
-  if (renderedTree) {
-    ctx.push(`# PROJECT TREE\n${renderedTree}`);
-  }
-  if (files.length) {
-    ctx.push(`# SOURCE FILES\n${renderFiles(files)}`);
-  }
-  if (ctx.length) {
-    parts.push(`<|CODE_CONTEXT|>\n${ctx.join('\n\n')}\n<|END|>`);
-  }
-  return parts.join('\n\n');
+  fallbackCopyText(text);
 }
-
-/* ════════════════════════════════════════════════════════════════ */
-/* 🔸 REACT COMPONENT                                              */
-/* ════════════════════════════════════════════════════════════════ */
 
 const CopyButtonView: React.FC = () => {
-  /* —— global state —— */
-  const metaPrompt = usePromptStore(s => s.metaPrompt);
-  const mainInstructions = usePromptStore(s => s.mainInstructions);
-  
-  const selectedFilePaths = useProjectStore(s => s.selectedFilePaths);
-  const filesData = useProjectStore(s => s.filesData);
-  const fileTree = useProjectStore(s => s.fileTree);
-  const isLoadingContents = useProjectStore(s => s.isLoadingContents);
-  
-  const globalExclusions = useExclusionStore(s => s.globalExclusions);
-  const extensionFilters = useExclusionStore(s => s.extensionFilters);
-  const setError = useAppStore(s => s.setError);
+  const metaPrompt = usePromptStore((state) => state.metaPrompt);
+  const mainInstructions = usePromptStore((state) => state.mainInstructions);
+  const selectedModelPresetId = useSettingsStore((state) => state.selectedModelPresetId);
 
-  /* —— services —— */
+  const selectedFilePaths = useProjectStore((state) => state.selectedFilePaths);
+  const filesData = useProjectStore((state) => state.filesData);
+  const isLoadingContents = useProjectStore((state) => state.isLoadingContents);
+  const setError = useAppStore((state) => state.setError);
+
   const { loadSelectedFileContents } = useProjectService();
 
-  /* —— local UI state —— */
   const [copied, setCopied] = useState(false);
   const [isBuilding, setIsBuilding] = useState(false);
-  const [animateGlow, setAnimateGlow] = useState(false);
+  const [lastBuildStats, setLastBuildStats] = useState<{
+    estimatedInputTokens: number;
+    safeInputCapTokens: number;
+    omittedFiles: number;
+  } | null>(null);
 
-  /* —— derived stats —— */
-  const { fileCount, tokenCount, charCount } = useMemo(() => {
-    const current = filesData.filter(f => selectedFilePaths.includes(f.path));
-    return {
-      fileCount : current.length,
-      tokenCount: current.reduce((a, f) => a + (f.tokenCount || 0), 0)
-                  + estimateTokens(metaPrompt) + estimateTokens(mainInstructions),
-      charCount : current.reduce((a, f) => a + f.content.length, 0),
-    };
-  }, [filesData, selectedFilePaths, metaPrompt, mainInstructions]);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectedPreset = getModelPreset(selectedModelPresetId);
 
-  const ready = Boolean(
-    metaPrompt.trim() || mainInstructions.trim() || selectedFilePaths.length,
-  );
+  const selectedFiles = useMemo(() => {
+    const selected = new Set(selectedFilePaths);
+    return filesData.filter((file) => selected.has(file.path));
+  }, [filesData, selectedFilePaths]);
 
-  /* —— ACTION: build + copy —— */
+  const fileCount = selectedFiles.length;
+  const tokenCount =
+    selectedFiles.reduce((sum, file) => sum + (file.tokenCount || 0), 0) +
+    estimateTokens(metaPrompt) +
+    estimateTokens(mainInstructions);
+  const charCount =
+    selectedFiles.reduce((sum, file) => sum + file.content.length, 0) +
+    metaPrompt.length +
+    mainInstructions.length;
+
+  const hasInput =
+    metaPrompt.trim().length > 0 ||
+    mainInstructions.trim().length > 0 ||
+    selectedFilePaths.length > 0;
+  const isBusy = isBuilding || isLoadingContents;
+  const disabled = !hasInput || isBusy;
+
+  const clearCopiedTimer = () => {
+    if (!copiedTimerRef.current) return;
+    clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = null;
+  };
+
+  useEffect(() => clearCopiedTimer, []);
+
   const handleCopy = async () => {
+    if (disabled) return;
+
     setIsBuilding(true);
     try {
-      /* 1️⃣ ensure freshest content */
       await loadSelectedFileContents();
-      const fresh = useProjectStore.getState();
-      const liveFiles = fresh.filesData.filter(fd => fresh.selectedFilePaths.includes(fd.path));
 
-      /* 2️⃣ (b)uild final string */
-      const treeTxt = generateTextualTree(
-        fileTree,
-        globalExclusions,
-        extensionFilters,
+      const projectState = useProjectStore.getState();
+      const exclusionState = useExclusionStore.getState();
+
+      const selected = new Set(projectState.selectedFilePaths);
+      const liveFiles = projectState.filesData.filter((file) => selected.has(file.path));
+      const treeText = generateTextualTree(
+        projectState.fileTree,
+        exclusionState.globalExclusions,
+        exclusionState.extensionFilters,
       );
-      const prompt = buildPrompt(
+
+      const built = buildPromptForPreset({
+        presetId: selectedModelPresetId,
         metaPrompt,
-        mainInstructions,
-        treeTxt,
-        liveFiles,
-      );
+        instructions: mainInstructions,
+        treeText,
+        files: liveFiles,
+      });
 
-      /* 3️⃣ copy – Clipboard API first, fallback second */
-      try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          await navigator.clipboard.writeText(prompt);
-        } else {
-          fallbackCopyText(prompt);
-        }
-      } catch {
-        fallbackCopyText(prompt);
-      }
+      await copyText(built.prompt);
+      setLastBuildStats({
+        estimatedInputTokens: built.estimatedInputTokens,
+        safeInputCapTokens: built.safeInputCapTokens,
+        omittedFiles: built.omittedFiles,
+      });
 
       setCopied(true);
-      setAnimateGlow(true);
-      setTimeout(() => setCopied(false), 2500);
-      setTimeout(() => setAnimateGlow(false), 1000);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unexpected copy failure.";
+      clearCopiedTimer();
+      copiedTimerRef.current = setTimeout(() => {
+        setCopied(false);
+        copiedTimerRef.current = null;
+      }, RESET_COPIED_MS);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unexpected copy failure.";
       setError(`Copy failed: ${message}`);
     } finally {
       setIsBuilding(false);
     }
   };
 
-  /* —— UI —— */
-  const disabled = !ready || isBuilding || isLoadingContents;
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        <Badge variant="outline" className="gap-1.5 text-xs">
+          {selectedPreset.label}
+        </Badge>
+        <Badge variant="outline" className="gap-1.5 text-xs">
+          <FileText size={13} />
+          {fileCount} file{fileCount === 1 ? "" : "s"}
+        </Badge>
+        <Badge variant="outline" className="gap-1.5 text-xs">
+          <BarChart2 size={13} />
+          {tokenCount.toLocaleString()} tokens
+        </Badge>
+        <Badge variant="outline" className="text-xs">
+          {charCount.toLocaleString()} chars
+        </Badge>
+        <Badge variant="outline" className="text-xs">
+          cap {selectedPreset.budget.safeInputCapTokens.toLocaleString()} tok
+        </Badge>
+      </div>
 
-    return (
-      <div className="relative w-full">
-
-      {/* Enhanced stats row */}
-      {(fileCount > 0 || tokenCount > 0) && (
-        <div className="flex justify-center flex-wrap gap-3 mb-4">
-          {fileCount > 0 && (
-            <Badge className="bg-[rgba(123,147,253,0.1)] text-[rgb(123,147,253)] border border-[rgba(123,147,253,0.3)] py-1 px-3 flex items-center">
-              <FileText size={14} className="mr-1.5" />
-              {fileCount} file{fileCount !== 1 && 's'}
-            </Badge>
-          )}
-          <Badge className="bg-[rgba(80,250,123,0.1)] text-[rgb(80,250,123)] border border-[rgba(80,250,123,0.3)] py-1 px-3 flex items-center">
-            <BarChart2 size={14} className="mr-1.5" />
-            {tokenCount.toLocaleString()} tokens
-          </Badge>
-          {charCount > 0 && (
-            <Badge className="bg-[rgba(189,147,249,0.1)] text-[rgb(189,147,249)] border border-[rgba(189,147,249,0.3)] py-1 px-3 flex items-center">
-              <span className="mr-1.5 font-mono text-xs">{ '{' }</span>
-              {charCount.toLocaleString()} chars
-            </Badge>
-          )}
-        </div>
-      )}
-
-      {/* Enhanced copy button */}
-      <TooltipProvider delayDuration={100}>
+      <TooltipProvider delayDuration={120}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className={cn(
-              "relative rounded-xl overflow-hidden",
-              animateGlow && "after:absolute after:inset-0 after:bg-[rgba(123,147,253,0.3)] after:animate-ping after:opacity-0"
-            )}>
+            <span className="block">
               <Button
                 onClick={handleCopy}
                 disabled={disabled}
                 className={cn(
-                  `relative w-full h-14 flex items-center justify-center gap-2 transition-all duration-300 text-lg font-medium rounded-xl`,
-                  copied 
-                    ? `bg-gradient-to-r from-[rgb(80,250,123)] to-[rgb(139,233,253)] text-[rgb(15,16,36)]` 
-                    : `bg-gradient-to-r from-[rgb(123,147,253)] to-[rgb(189,147,249)] text-white`,
-                  disabled && 'opacity-50 cursor-not-allowed',
-                  'shadow-[0_4px_20px_rgba(0,0,0,0.3)] hover:shadow-[0_6px_25px_rgba(0,0,0,0.4)] hover:-translate-y-0.5'
+                  "h-12 w-full justify-center gap-2 text-sm font-semibold",
+                  copied && "bg-emerald-600 text-white hover:bg-emerald-600/90",
                 )}
               >
-                {isBuilding || isLoadingContents ? (
+                {isBusy ? (
                   <>
-                    <div className="absolute inset-0 bg-gradient-to-r from-[rgba(15,16,36,0.2)] to-[rgba(15,16,36,0.4)] animate-pulse"></div>
-                    <Loader2 size={22} className="animate-spin" />
-                    <span>Generating Prompt...</span>
+                    <Loader2 className="animate-spin" />
+                    Preparing prompt...
                   </>
                 ) : copied ? (
                   <>
-                    <CheckCircle size={22} strokeWidth={2.5} />
-                    <span>Copied Successfully!</span>
+                    <CheckCircle />
+                    Copied
                   </>
                 ) : (
                   <>
-                    <div className="absolute top-0 left-[-100%] w-full h-full bg-gradient-to-r from-transparent via-white to-transparent opacity-20 animate-[shimmer_2s_infinite]"></div>
-                    <Sparkles size={22} className="mr-1" />
-                    <span>Copy to Clipboard</span>
+                    <ClipboardCopy />
+                    Generate and Copy Prompt
                   </>
                 )}
               </Button>
-            </div>
+            </span>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="bg-[rgba(15,16,36,0.95)] border border-[rgba(60,63,87,0.7)] shadow-xl backdrop-blur-lg">
-            {ready
-              ? 'Copy generated prompt to clipboard'
-              : 'Select files or add instructions first'}
+          <TooltipContent side="bottom">
+            {hasInput ? "Generate full prompt and copy to clipboard." : "Add instructions or select files first."}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      
-      {/* Extra micro-info text */}
-      {ready && !copied && !isBuilding && !isLoadingContents && (
-        <div className="mt-3 text-center text-xs text-[rgb(140,143,170)] animate-fade-in">
-          <p>
-            Your prompt will include{" "}
-            {fileCount === 1 ? "1 file" : `${fileCount} files`} and project structure information
-          </p>
-        </div>
-      )}
+
+      <p className="text-xs text-[rgb(var(--color-text-muted))]">
+        {!hasInput
+          ? "Step 3 is locked until you add instructions or select files."
+          : lastBuildStats
+          ? `Last copy: ~${lastBuildStats.estimatedInputTokens.toLocaleString()} input tokens, cap ${lastBuildStats.safeInputCapTokens.toLocaleString()}, omitted ${lastBuildStats.omittedFiles} file(s).`
+          : `Includes ${fileCount} selected file${fileCount === 1 ? "" : "s"} and project tree context.`}
+      </p>
     </div>
   );
 };

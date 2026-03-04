@@ -1,6 +1,8 @@
 import { useCallback, useState } from "react";
 import { usePromptStore } from "@/stores/usePromptStore";
 import { useAppStore } from "@/stores/useAppStore";
+import { useSettingsStore } from "@/stores/useSettingStore";
+import { resolveSmartSelectModelForApiKey } from "@/lib/modelPresets";
 import { fetchApiResult } from "./apiService";
 
 interface RefinePromptResponse {
@@ -17,6 +19,7 @@ export function usePromptService() {
     setNewMetaFileName,
   } = usePromptStore();
   const { setError } = useAppStore();
+  const getApiKey = useSettingsStore((state) => state.openrouterApiKey);
   const [isRefining, setIsRefining] = useState(false);
 
   const fetchMetaPromptList = useCallback(async () => {
@@ -76,9 +79,18 @@ export function usePromptService() {
 
       setIsRefining(true);
       try {
+        const rawApiKey = getApiKey.trim();
+        // "__SERVER_KEY__" is a sentinel meaning "backend has its own key" – don't send it
+        const userApiKey = rawApiKey === "__SERVER_KEY__" ? "" : rawApiKey;
+        const model = userApiKey ? resolveSmartSelectModelForApiKey(userApiKey) : undefined;
         const result = await fetchApiResult<RefinePromptResponse>("/api/prompt/refine", {
           method: "POST",
-          body: JSON.stringify({ text: textToRefine, treeText }),
+          body: JSON.stringify({
+            text: textToRefine,
+            treeText,
+            ...(userApiKey ? { apiKey: userApiKey } : {}),
+            ...(model ? { model } : {}),
+          }),
         });
         if (!result.ok || !result.data) return null;
         if (typeof result.data.refinedPrompt !== "string") {
@@ -90,7 +102,7 @@ export function usePromptService() {
         setIsRefining(false);
       }
     },
-    [setError],
+    [setError, getApiKey],
   );
 
   return {

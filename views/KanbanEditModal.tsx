@@ -238,7 +238,7 @@ const KanbanEditModal: React.FC<KanbanEditModalProps> = ({
                     </div>
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent className="glass border-[rgba(var(--color-border),0.7)]">
+                <SelectContent className="border-[rgba(var(--color-border),0.95)]">
                   {KanbanPriorityValues.map(p => (
                     <SelectItem 
                       key={p} 
