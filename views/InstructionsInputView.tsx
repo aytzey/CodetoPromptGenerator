@@ -1,7 +1,18 @@
-// FILE: views/InstructionsInputView.tsx
-// Enhanced with modern UI design
-import React, { useEffect, useState } from 'react';
-import { Save, RefreshCw, FileText, Download, Edit3, XCircle, Loader2, Undo, Redo, Sparkles, Wand2, MessageSquare, Brain, Zap } from 'lucide-react';
+import React, { useEffect } from "react";
+import {
+  Save,
+  RefreshCw,
+  FileText,
+  XCircle,
+  Loader2,
+  Undo,
+  Redo,
+  Sparkles,
+  Wand2,
+  MessageSquare,
+  Brain,
+  Zap,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -13,18 +24,16 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-// Import Stores and Service Hook
-import { usePromptStore } from '@/stores/usePromptStore';
-import { useProjectStore } from '@/stores/useProjectStore'; 
-import { useExclusionStore } from '@/stores/useExclusionStore'; 
-import { usePromptService } from '@/services/promptServiceHooks';
-import { useUndoRedo } from '@/lib/hooks/useUndoRedo';
-import { generateTextualTree } from '@/lib/treeUtils'; 
+import { usePromptStore } from "@/stores/usePromptStore";
+import { useProjectStore } from "@/stores/useProjectStore";
+import { useExclusionStore } from "@/stores/useExclusionStore";
+import { usePromptService } from "@/services/promptServiceHooks";
+import { useUndoRedo } from "@/lib/hooks/useUndoRedo";
+import { generateTextualTree } from "@/lib/treeUtils";
 
 const MAX_CHARS = 1000;
 
 const InstructionsInputView: React.FC = () => {
-  // Get state from Zustand stores
   const metaPrompt = usePromptStore(s => s.metaPrompt);
   const setMetaPrompt = usePromptStore(s => s.setMetaPrompt);
   const mainInstructionsFromStore = usePromptStore(s => s.mainInstructions);
@@ -42,11 +51,9 @@ const InstructionsInputView: React.FC = () => {
   const globalExclusions = useExclusionStore(s => s.globalExclusions); 
   const extensionFilters = useExclusionStore(s => s.extensionFilters); 
 
-  // Get actions from service hook
-  const { fetchMetaPromptList, loadMetaPrompt, saveMetaPrompt, useRefinePrompt } = usePromptService();
-  const { refinePrompt, isRefining } = useRefinePrompt();
+  const { fetchMetaPromptList, loadMetaPrompt, saveMetaPrompt, refinePrompt, isRefining } =
+    usePromptService();
 
-  // Undo/Redo Hook for Main Instructions
   const {
     currentValue: currentMainInstructions,
     updateCurrentValue: updateMainInstructionsValue,
@@ -56,7 +63,6 @@ const InstructionsInputView: React.FC = () => {
     canRedo: canRedoMain,
   } = useUndoRedo(mainInstructionsFromStore, setMainInstructionsInStore, { debounceMs: 0 });
 
-  // Calculate character counts and percentages
   const metaCount = metaPrompt.length;
   const mainCount = currentMainInstructions.length;
   const metaPercentage = Math.min(100, (metaCount / MAX_CHARS) * 100);

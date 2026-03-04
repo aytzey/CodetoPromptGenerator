@@ -1,23 +1,26 @@
-// FILE: views/CopyButtonView.tsx
-// views/CopyButtonView.tsx
-import React, { useRef, useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from "react";
 import {
-  Copy, CheckCircle, Loader2, BarChart2, FileText, Sparkles
-} from 'lucide-react';
+  CheckCircle,
+  Loader2,
+  BarChart2,
+  FileText,
+  Sparkles,
+} from "lucide-react";
 
-import { usePromptStore }   from '@/stores/usePromptStore';
-import { useProjectStore }  from '@/stores/useProjectStore';
-import { useExclusionStore } from '@/stores/useExclusionStore';
-import { useProjectService } from '@/services/projectServiceHooks';
+import { usePromptStore } from "@/stores/usePromptStore";
+import { useProjectStore } from "@/stores/useProjectStore";
+import { useExclusionStore } from "@/stores/useExclusionStore";
+import { useAppStore } from "@/stores/useAppStore";
+import { useProjectService } from "@/services/projectServiceHooks";
 
-import { Button }            from '@/components/ui/button';
-import { Badge }             from '@/components/ui/badge';
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Tooltip, TooltipProvider, TooltipTrigger, TooltipContent,
-} from '@/components/ui/tooltip';
-import { cn }                from '@/lib/utils';
-import { generateTextualTree } from '@/lib/treeUtils';
-import type { FileData } from '@/types';
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { generateTextualTree } from "@/lib/treeUtils";
+import type { FileData } from "@/types";
 
 /* ════════════════════════════════════════════════════════════════ */
 /* 🔸 LOCAL HELPER UTILITIES                                       */
@@ -124,6 +127,7 @@ const CopyButtonView: React.FC = () => {
   
   const globalExclusions = useExclusionStore(s => s.globalExclusions);
   const extensionFilters = useExclusionStore(s => s.extensionFilters);
+  const setError = useAppStore(s => s.setError);
 
   /* —— services —— */
   const { loadSelectedFileContents } = useProjectService();
@@ -186,8 +190,8 @@ const CopyButtonView: React.FC = () => {
       setTimeout(() => setCopied(false), 2500);
       setTimeout(() => setAnimateGlow(false), 1000);
     } catch (err) {
-      alert(`Copy failed: ${(err as Error).message}`);
-      console.error(err);
+      const message = err instanceof Error ? err.message : "Unexpected copy failure.";
+      setError(`Copy failed: ${message}`);
     } finally {
       setIsBuilding(false);
     }
@@ -273,7 +277,10 @@ const CopyButtonView: React.FC = () => {
       {/* Extra micro-info text */}
       {ready && !copied && !isBuilding && !isLoadingContents && (
         <div className="mt-3 text-center text-xs text-[rgb(140,143,170)] animate-fade-in">
-          <p>Your prompt will include {fileCount} files and project structure information</p>
+          <p>
+            Your prompt will include{" "}
+            {fileCount === 1 ? "1 file" : `${fileCount} files`} and project structure information
+          </p>
         </div>
       )}
     </div>
