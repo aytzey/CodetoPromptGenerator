@@ -7,6 +7,8 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app import create_app
+from controllers import autoselect_controller
+from services.service_exceptions import UpstreamServiceError
 
 
 @pytest.fixture
@@ -89,3 +91,20 @@ def test_selection_groups_validation(client, tmp_path):
         json={"groups": {"InvalidGroup": [123]}},
     )
     assert resp.status_code == 400
+
+
+def test_autoselect_upstream_error_maps_to_502(client, monkeypatch):
+    def _raise_upstream(*_args, **_kwargs):
+        raise UpstreamServiceError("Upstream HTTP 404")
+
+    monkeypatch.setattr(autoselect_controller._autosel, "autoselect_paths", _raise_upstream)
+
+    resp = client.post(
+        "/api/autoselect",
+        json={
+            "instructions": "Pick files",
+            "treePaths": ["README.md"],
+            "baseDir": os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")),
+        },
+    )
+    assert resp.status_code == 502

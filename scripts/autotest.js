@@ -134,7 +134,37 @@ function getPortConfig() { /* ... same as before ... */ }
     // Now delete it
     const deleteResp = await fetch(`${BACKEND_BASE_URL}/api/todos/${todoId}`, { method: "DELETE" }); // Use dynamic URL
     if (deleteResp.status !== 204) throw new Error(`Expected HTTP 204 but got ${deleteResp.status}`); // Expect 204 No Content
-    // No JSON body expected for 204
+    const body = await deleteResp.text();
+    if (body !== "") throw new Error("Expected empty response body for HTTP 204");
+  });
+
+  await runTest("Backend: POST /api/autoselect with invalid payload yields 400", async () => {
+    const resp = await fetch(`${BACKEND_BASE_URL}/api/autoselect`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (resp.status !== 400) {
+      throw new Error(`Expected HTTP 400 but got ${resp.status}`);
+    }
+  });
+
+  await runTest("Backend: POST /api/autoselect never returns 500 for upstream/model issues", async () => {
+    const baseDir = path.dirname(__dirname);
+    const resp = await fetch(`${BACKEND_BASE_URL}/api/autoselect`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instructions: "Select files for health-check",
+        treePaths: ["README.md"],
+        baseDir,
+      }),
+    });
+
+    // In healthy model setup this can be 200; with upstream problems it should be 502.
+    if (resp.status !== 200 && resp.status !== 502) {
+      throw new Error(`Expected HTTP 200 or 502 but got ${resp.status}`);
+    }
   });
 
 

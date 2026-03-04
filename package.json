@@ -22,7 +22,8 @@
     "electron:prod:local": "npm run build && cross-env APP_ENV=production concurrently --kill-others \"npm run backend:prod\" \"node scripts/run-electron.js\"",
     "electron:pack": "npm run build && electron-builder --dir",
     "electron:build:linux": "npm run build && electron-builder --linux deb AppImage",
-    "test": "node scripts/autotest.js"
+    "test:unit": "npx --yes tsx --test tests/**/*.test.ts",
+    "test": "npm run test:unit && node scripts/autotest.js"
   },
   "engines": {
     "node": ">=20"
