@@ -377,6 +377,10 @@ class AutoselectService:
                         )
 
                     if rsp.status_code == 200:
+                        logger.debug(
+                            "Google raw response (first 500 chars): %s",
+                            rsp.text[:500],
+                        )
                         return self._parse_google_content(rsp)
 
                     detail = self._extract_google_error_detail(rsp)
@@ -446,14 +450,36 @@ class AutoselectService:
                 if feedback:
                     raise UpstreamError(f"Google response blocked: {feedback}")
                 raise UpstreamError("Invalid Google response: 'candidates' missing.")
-            content = candidates[0].get("content", {})
+
+            candidate = candidates[0]
+            finish_reason = candidate.get("finishReason", "")
+            if finish_reason in ("SAFETY", "RECITATION", "OTHER"):
+                safety = candidate.get("safetyRatings", [])
+                logger.warning("Google response blocked (finishReason=%s): %s", finish_reason, safety)
+                raise UpstreamError(
+                    f"Google blocked the response (reason: {finish_reason}). "
+                    "Try rephrasing your instructions."
+                )
+
+            content = candidate.get("content", {})
             parts = content.get("parts", [])
             if not isinstance(parts, list):
                 raise UpstreamError("Invalid Google response: 'parts' missing.")
             text_parts = [part.get("text", "") for part in parts if isinstance(part, dict)]
             raw = "".join(text_parts).strip()
             if not raw:
-                raise UpstreamError("Google response text was empty.")
+                logger.warning(
+                    "Google response text empty. finishReason=%s, candidate=%s, "
+                    "full_response_keys=%s, promptFeedback=%s",
+                    finish_reason,
+                    json.dumps(candidate, ensure_ascii=False)[:1000],
+                    list(data.keys()),
+                    data.get("promptFeedback"),
+                )
+                raise UpstreamError(
+                    f"Google returned empty text (finishReason: {finish_reason}). "
+                    "The model may have been unable to generate output for this input."
+                )
             return raw
         except Exception as exc:
             if isinstance(exc, UpstreamError):
