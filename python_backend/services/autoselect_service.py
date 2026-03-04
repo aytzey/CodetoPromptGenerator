@@ -121,9 +121,42 @@ class AutoselectService:
         "build",
         "coverage",
         "venv",
+        ".venv",
         "__pycache__",
         ".git",
         "out",
+        "artifacts",
+        "outputs",
+        "logs",
+        ".cache",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+        "htmlcov",
+    }
+
+    # Extensions that are almost never source code — filtered before LLM call
+    _NON_CODE_EXTENSIONS: Set[str] = {
+        ".log", ".csv", ".tsv", ".pid", ".lock",
+        ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".bmp", ".webp",
+        ".woff", ".woff2", ".ttf", ".eot", ".otf",
+        ".zip", ".tar", ".gz", ".bz2", ".7z", ".rar",
+        ".bin", ".exe", ".dll", ".so", ".dylib",
+        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+        ".mp3", ".mp4", ".avi", ".mov", ".wav", ".flac",
+        ".db", ".sqlite", ".sqlite3",
+        ".pyc", ".pyo", ".class", ".o", ".obj",
+        ".parquet", ".feather", ".hdf5", ".h5",
+        ".pkl", ".pickle", ".joblib",
+        ".bak", ".tmp", ".swp", ".swo",
+        ".map", ".min.js", ".min.css",
+        ".md", ".rst", ".txt",
+    }
+
+    # Directory names that contain data/artifacts, not source code
+    _DATA_DIRECTORY_SEGMENTS: Set[str] = {
+        "data", "datasets", "samples", "fixtures",
+        "migrations", "seeds",
     }
 
     # ------------------------------------------------------------------ init
@@ -605,12 +638,33 @@ class AutoselectService:
     def _normalise_allowed_paths(self, tree_paths: List[str], base_dir: Optional[str]) -> List[str]:
         seen: Set[str] = set()
         out: List[str] = []
+        skipped_non_code = 0
 
         for raw in tree_paths:
             if not isinstance(raw, str):
                 continue
             norm = self._norm(raw)
             if not norm:
+                continue
+
+            # Skip non-code files early to save LLM tokens
+            ext = pathlib.PurePosixPath(norm).suffix.lower()
+            if ext in self._NON_CODE_EXTENSIONS:
+                skipped_non_code += 1
+                continue
+
+            # Skip paths inside irrelevant or data-only directories
+            segments = set(pathlib.PurePosixPath(norm.lower()).parts)
+            if segments & self._IRRELEVANT_SEGMENTS:
+                skipped_non_code += 1
+                continue
+
+            # data/ dirs with non-code content: skip files that aren't .py/.js etc.
+            _CODE_EXTS = {".py", ".js", ".ts", ".tsx", ".jsx", ".sh", ".bash",
+                          ".rb", ".go", ".rs", ".java", ".kt", ".scala", ".c",
+                          ".cpp", ".h", ".hpp", ".cs", ".vue", ".svelte"}
+            if segments & self._DATA_DIRECTORY_SEGMENTS and ext not in _CODE_EXTS:
+                skipped_non_code += 1
                 continue
 
             if base_dir and os.path.isdir(base_dir):
@@ -626,6 +680,11 @@ class AutoselectService:
             seen.add(lowered)
             out.append(norm)
 
+        if skipped_non_code:
+            logger.info(
+                "Filtered %d non-code/artifact files before LLM call (%d candidates remain)",
+                skipped_non_code, len(out),
+            )
         return out
 
     @classmethod
@@ -671,7 +730,12 @@ class AutoselectService:
     def _is_runtime_artifact_path(self, path: str) -> bool:
         folded_path = self._fold_text(path)
         segments = set(pathlib.PurePosixPath(folded_path).parts)
-        return bool(segments & self._IRRELEVANT_SEGMENTS)
+        if segments & self._IRRELEVANT_SEGMENTS:
+            return True
+        ext = pathlib.PurePosixPath(folded_path).suffix.lower()
+        if ext in self._NON_CODE_EXTENSIONS:
+            return True
+        return False
 
     def _path_relevance_score(
         self,
@@ -714,7 +778,11 @@ class AutoselectService:
                     score += q_freq * best_overlap * 0.75 * idf_map.get(token, 1.0)
 
         if self._is_runtime_artifact_path(path):
-            score -= 2.0
+            ext = pathlib.PurePosixPath(path).suffix.lower()
+            if ext in self._NON_CODE_EXTENSIONS:
+                score -= 10.0  # heavy penalty for non-code files
+            else:
+                score -= 3.0   # moderate penalty for artifact directories
         return score
 
     def _score_paths(self, instructions: str, paths: List[str]) -> List[Tuple[float, int, int, int, str]]:
@@ -1145,8 +1213,9 @@ class AutoselectService:
             "2) Use file-graph summaries as primary evidence; filenames are only secondary hints.\n"
             "3) For broad or ambiguous tasks, include representative files across entrypoints, orchestration/routing, services, data access, shared types/config, and relevant tests.\n"
             "4) For specific tasks, include the target implementation plus direct callers/callees and impacted validation/schema/tests.\n"
-            "5) Avoid generated/runtime/vendor artifacts unless they are explicitly part of the task.\n"
-            f"6) {guidance}\n"
+            "5) Avoid generated/runtime/vendor artifacts, data files (.log, .csv, .json data, .pkl, .parquet, images), and build outputs unless explicitly part of the task.\n"
+            "6) Focus on SOURCE CODE files (.py, .ts, .tsx, .js, .jsx, .css, .html, .yaml config, etc.) that implement behavior.\n"
+            f"7) {guidance}\n"
             "Return ONLY those paths inside the required JSON schema: "
             '{"selected":["relative/path/file.ext"]}.\n\n'
         )
