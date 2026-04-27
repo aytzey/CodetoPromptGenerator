@@ -1,7 +1,9 @@
 import React, {
   useCallback,
+  useEffect,
   useImperativeHandle,
   useMemo,
+  useRef,
   useState,
   forwardRef,
 } from "react";
@@ -27,6 +29,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { findNodeByPath } from "@/lib/fileFilters";
+import { filterPromptSelectablePaths, normalizeExclusionPattern } from "@/lib/selectionFilters";
+import { useExclusionService } from "@/services/exclusionServiceHooks";
+import { useExclusionStore } from "@/stores/useExclusionStore";
 import type { FileNode } from "@/types";
 
 export interface FileTreeViewHandle {
@@ -47,6 +52,22 @@ interface TreeRow {
 }
 
 const ROW_HEIGHT = 36;
+const CONTEXT_MENU_WIDTH = 260;
+const CONTEXT_MENU_HEIGHT = 92;
+
+type ContextMenuState = {
+  x: number;
+  y: number;
+  node: FileNode;
+};
+
+type ToastFn = (message: string, options?: { variant?: "default" | "success" | "error" }) => void;
+
+const toast = (message: string, variant: "default" | "success" | "error" = "default") => {
+  if (typeof window === "undefined") return;
+  const maybeToast = (window as Window & { toast?: ToastFn }).toast;
+  maybeToast?.(message, { variant });
+};
 
 const collectFileDescendants = (node: FileNode): string[] => {
   if (node.type === "file") return [node.relativePath];
@@ -86,6 +107,11 @@ const getFileIcon = (path: string): ReactElement => {
 const FileTreeView = forwardRef<FileTreeViewHandle, FileTreeViewProps>(
   ({ tree, fullTree, selectedFiles, onSelectFiles }, ref) => {
     const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+    const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+    const contextMenuRef = useRef<HTMLDivElement | null>(null);
+    const localExclusions = useExclusionStore((state) => state.localExclusions);
+    const isSavingLocal = useExclusionStore((state) => state.isSavingLocal);
+    const { updateLocalExclusions } = useExclusionService();
 
     useImperativeHandle(
       ref,
@@ -121,6 +147,62 @@ const FileTreeView = forwardRef<FileTreeViewHandle, FileTreeViewProps>(
       });
     }, []);
 
+    useEffect(() => {
+      if (!contextMenu) return;
+
+      const closeOnPointerDown = (event: MouseEvent) => {
+        if (contextMenuRef.current?.contains(event.target as Node)) return;
+        setContextMenu(null);
+      };
+      const closeOnEscape = (event: KeyboardEvent) => {
+        if (event.key === "Escape") setContextMenu(null);
+      };
+      const close = () => setContextMenu(null);
+
+      window.addEventListener("mousedown", closeOnPointerDown);
+      window.addEventListener("keydown", closeOnEscape);
+      window.addEventListener("resize", close);
+      window.addEventListener("scroll", close, true);
+
+      return () => {
+        window.removeEventListener("mousedown", closeOnPointerDown);
+        window.removeEventListener("keydown", closeOnEscape);
+        window.removeEventListener("resize", close);
+        window.removeEventListener("scroll", close, true);
+      };
+    }, [contextMenu]);
+
+    const openContextMenu = useCallback((event: React.MouseEvent, node: FileNode) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const x = Math.max(8, Math.min(event.clientX, window.innerWidth - CONTEXT_MENU_WIDTH - 8));
+      const y = Math.max(8, Math.min(event.clientY, window.innerHeight - CONTEXT_MENU_HEIGHT - 8));
+      setContextMenu({ x, y, node });
+    }, []);
+
+    const addContextNodeToLocalExclusions = useCallback(async () => {
+      if (!contextMenu || isSavingLocal) return;
+
+      const path = normalizeExclusionPattern(contextMenu.node.relativePath);
+      if (!path) {
+        setContextMenu(null);
+        return;
+      }
+
+      if (localExclusions.includes(path)) {
+        toast("Already in project exclusions.");
+        setContextMenu(null);
+        return;
+      }
+
+      const success = await updateLocalExclusions([...localExclusions, path]);
+      if (success) {
+        toast("Added to project exclusions.", "success");
+      }
+      setContextMenu(null);
+    }, [contextMenu, isSavingLocal, localExclusions, updateLocalExclusions]);
+
     const flatten = useCallback(
       (nodes: FileNode[], depth = 0): TreeRow[] => {
         return sortNodes(nodes).flatMap((node) => {
@@ -144,7 +226,7 @@ const FileTreeView = forwardRef<FileTreeViewHandle, FileTreeViewProps>(
     const toggleSelection = useCallback(
       (node: FileNode) => {
         const sourceNode = findNodeByPath(fullTree, node.relativePath) ?? node;
-        const descendantFiles = collectFileDescendants(sourceNode);
+        const descendantFiles = filterPromptSelectablePaths(collectFileDescendants(sourceNode));
         if (descendantFiles.length === 0) return;
 
         const next = new Set(selectedSet);
@@ -167,7 +249,7 @@ const FileTreeView = forwardRef<FileTreeViewHandle, FileTreeViewProps>(
       const isDirectory = node.type === "directory";
       const isOpen = isDirectory && !collapsed.has(node.absolutePath);
       const sourceNode = findNodeByPath(fullTree, node.relativePath) ?? node;
-      const descendantFiles = collectFileDescendants(sourceNode);
+      const descendantFiles = filterPromptSelectablePaths(collectFileDescendants(sourceNode));
       const isEmpty = descendantFiles.length === 0;
       const allSelected = !isEmpty && descendantFiles.every((path) => selectedSet.has(path));
       const partiallySelected =
@@ -188,6 +270,7 @@ const FileTreeView = forwardRef<FileTreeViewHandle, FileTreeViewProps>(
             "hover:bg-[rgba(var(--color-primary),0.06)]",
             allSelected && "bg-[rgba(var(--color-primary),0.1)]",
           )}
+          onContextMenu={(event) => openContextMenu(event, node)}
         >
           {isDirectory ? (
             <button
@@ -272,6 +355,35 @@ const FileTreeView = forwardRef<FileTreeViewHandle, FileTreeViewProps>(
             </List>
           )}
         </AutoSizer>
+        {contextMenu ? (
+          <div
+            ref={contextMenuRef}
+            className="fixed z-50 w-[260px] rounded-md border border-[rgba(var(--color-border),0.55)] bg-[rgb(var(--color-bg-primary))] p-1 shadow-xl"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            role="menu"
+          >
+            <div className="truncate border-b border-[rgba(var(--color-border),0.35)] px-3 py-2 font-mono text-[11px] text-[rgb(var(--color-text-muted))]">
+              {contextMenu.node.relativePath}
+            </div>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-[rgb(var(--color-text-primary))] hover:bg-[rgba(var(--color-primary),0.08)] disabled:cursor-not-allowed disabled:opacity-55"
+              onClick={addContextNodeToLocalExclusions}
+              disabled={
+                isSavingLocal ||
+                localExclusions.includes(normalizeExclusionPattern(contextMenu.node.relativePath) ?? "")
+              }
+              role="menuitem"
+            >
+              {contextMenu.node.type === "directory" ? <Folder size={15} /> : <File size={15} />}
+              <span>
+                {localExclusions.includes(normalizeExclusionPattern(contextMenu.node.relativePath) ?? "")
+                  ? "Already in local exclusions"
+                  : "Add to local exclusions"}
+              </span>
+            </button>
+          </div>
+        ) : null}
       </div>
     );
   },

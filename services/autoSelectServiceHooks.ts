@@ -6,9 +6,11 @@ import { useProjectStore } from "@/stores/useProjectStore";
 import { usePromptStore } from "@/stores/usePromptStore";
 import { useSettingsStore } from "@/stores/useSettingStore";
 import { useAppStore } from "@/stores/useAppStore";
+import { useExclusionStore } from "@/stores/useExclusionStore";
 import { resolveSmartSelectModelForApiKey } from "@/lib/modelPresets";
 
 import { flattenFilePaths } from "@/lib/fileFilters";
+import { filterPromptSelectablePaths, isExcludedByPatterns } from "@/lib/selectionFilters";
 import type { AutoSelectRequest, AutoSelectResponse } from "@/types";
 
 /* ────────────────────────────────────────────────────────────────────────── *
@@ -29,15 +31,19 @@ export function useAutoSelectService() {
   const autoSelect = useCallback(
     async (opts?: { debug?: boolean }) => {
       const { projectPath, fileTree, setSelectedFilePaths } = projectStore.getState();
+      const { globalExclusions, localExclusions } = useExclusionStore.getState();
       if (!projectPath) {
         setError("No project folder selected. Choose a folder first.");
         return;
       }
       if (isSelecting) return;
 
-      const treePaths = flattenFilePaths(fileTree);
+      const activeExclusions = [...globalExclusions, ...localExclusions];
+      const treePaths = filterPromptSelectablePaths(
+        flattenFilePaths(fileTree).filter((path) => !isExcludedByPatterns(path, activeExclusions)),
+      );
       if (treePaths.length === 0) {
-        setError("File tree is empty. Load a project folder first.");
+        setError("No selectable source files remain after exclusions. Check project/global exclusions.");
         return;
       }
 

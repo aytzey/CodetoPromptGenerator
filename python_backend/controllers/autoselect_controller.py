@@ -29,6 +29,8 @@ def _validate_payload(data: Dict[str, Any]) -> AutoSelectRequest:
         return AutoSelectRequest.model_validate(data)         # type: ignore[attr-defined]
     if hasattr(AutoSelectRequest, "parse_obj"):               # Pydantic v1
         return AutoSelectRequest.parse_obj(data)              # type: ignore[attr-defined]
+    if hasattr(AutoSelectRequest, "from_dict"):
+        return AutoSelectRequest.from_dict(data)
     try:                                                      # plain dataclass
         return AutoSelectRequest(**data)                      # type: ignore[arg-type]
     except Exception as exc:

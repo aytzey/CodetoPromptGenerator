@@ -84,3 +84,21 @@ def handle_local_exclusions():
     except Exception as exc:
         logger.exception("Error updating local exclusions for %s", project_path)
         return error_response(str(exc), "Failed to update local exclusions", 500)
+
+
+@exclusions_blueprint.route("/api/projectIgnoreExclusions", methods=["GET"])
+def handle_project_ignore_exclusions():
+    project_path = request.args.get("projectPath")
+    if not project_path:
+        return error_response("Missing 'projectPath' query parameter.", 400)
+    if not os.path.isdir(project_path):
+        return error_response(f"Project path '{project_path}' not found or is not a directory.", 404)
+
+    try:
+        entries = _exclude.get_project_ignore_exclusions(project_path)
+        return success_response(data=entries)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    except Exception as exc:
+        logger.exception("Error getting project ignore exclusions for %s", project_path)
+        return error_response(str(exc), "Failed to retrieve project ignore exclusions", 500)

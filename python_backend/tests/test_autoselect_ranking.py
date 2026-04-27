@@ -36,6 +36,27 @@ def test_candidate_pool_returns_all_paths_when_under_limit():
     assert pooled == allowed
 
 
+def test_normalise_allowed_paths_filters_to_prompt_selectable_files(tmp_path: Path):
+    svc = _make_service()
+
+    paths = [
+        "src/app.ts",
+        "src/.env.example",
+        "src/.dockerignore",
+        "src-tauri/target/debug/build.rs",
+        "docs/assets/hero.png",
+        "public/logo.svg",
+        "package-lock.json",
+        "README.md",
+    ]
+    for rel in paths:
+        target = tmp_path / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("x", encoding="utf-8")
+
+    assert svc._normalise_allowed_paths(paths, str(tmp_path)) == ["src/app.ts"]
+
+
 def test_candidate_pool_uses_llm_shortlist_when_available(monkeypatch):
     svc = _make_service()
     svc._MAX_CANDIDATE_POOL = 3  # type: ignore[attr-defined]

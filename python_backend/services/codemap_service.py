@@ -536,6 +536,15 @@ class CodemapService:
     def _lang_for(path: str) -> Optional[str]:
         return _EXT_TO_LANG.get(os.path.splitext(path)[1].lower())
 
+    @staticmethod
+    def _is_within_base(base_dir: str, candidate: str) -> bool:
+        base_abs = os.path.abspath(base_dir)
+        candidate_abs = os.path.abspath(candidate)
+        try:
+            return os.path.commonpath([base_abs, candidate_abs]) == base_abs
+        except ValueError:
+            return False
+
     def _error_stub(self, message: str) -> Dict[str, str]:
         return {"error": message}
 
@@ -598,9 +607,23 @@ class CodemapService:
         if not isinstance(rel_paths, list):
             raise ValueError("rel_paths must be a list")
 
+        base_abs = os.path.abspath(base_dir)
         result: Dict[str, Dict[str, Union[List[str], str]]] = {}
-        for rel in rel_paths:
-            abs_path = os.path.join(base_dir, rel)
+        for raw_rel in rel_paths:
+            if not isinstance(raw_rel, str):
+                result[str(raw_rel)] = self._error_stub("Path must be a string")
+                continue
+
+            rel = os.path.normpath(raw_rel.strip()).replace("\\", "/")
+            if not rel or os.path.isabs(rel):
+                result[raw_rel] = self._error_stub("Invalid relative path")
+                continue
+
+            abs_path = os.path.abspath(os.path.join(base_abs, rel))
+            if not self._is_within_base(base_abs, abs_path):
+                result[rel] = self._error_stub("Path escapes project root")
+                continue
+
             if not os.path.isfile(abs_path):
                 result[rel] = self._error_stub("Not a regular file")
                 continue

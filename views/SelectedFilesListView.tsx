@@ -25,13 +25,14 @@ import { useCodemapExtractor } from "@/services/codemapServiceHooks";
 import { useAppStore } from "@/stores/useAppStore";
 import { useExclusionStore } from "@/stores/useExclusionStore";
 import { useProjectStore } from "@/stores/useProjectStore";
-import type { CodemapResponse, FileData } from "@/types";
+import type { CodemapResponse, FileData, FileNode } from "@/types";
 
 type SortMode = "name" | "tokens";
 
 interface SelectionSummary {
   dirs: string[];
   files: FileData[];
+  unloadedFiles: string[];
   totalTokens: number;
   totalChars: number;
   visiblePaths: string[];
@@ -75,25 +76,46 @@ const matchesExtension = (path: string, filters: string[]) => {
   });
 };
 
+const collectDirectoryPaths = (nodes: FileNode[]): Set<string> => {
+  const dirs = new Set<string>();
+  const walk = (items: FileNode[]) => {
+    items.forEach((node) => {
+      if (node.type !== "directory") return;
+      dirs.add(node.relativePath);
+      if (node.children?.length) walk(node.children);
+    });
+  };
+  walk(nodes);
+  return dirs;
+};
+
 const computeSelectionSummary = (
   selectedPaths: string[],
   filesData: FileData[],
   extensionFilters: string[],
   sortMode: SortMode,
+  directoryPaths: Set<string>,
 ): SelectionSummary => {
   const fileMap = new Map(filesData.map((file) => [file.path, file]));
   const dirs = new Set<string>();
+  const unloadedFiles = new Set<string>();
   const filteredFiles: FileData[] = [];
 
   selectedPaths.forEach((path) => {
-    const file = fileMap.get(path);
-    if (!file) {
-      dirs.add(path);
+    if (!matchesExtension(path, extensionFilters)) {
       return;
     }
-    if (matchesExtension(file.path, extensionFilters)) {
-      filteredFiles.push(file);
+
+    const file = fileMap.get(path);
+    if (!file) {
+      if (directoryPaths.has(path)) {
+        dirs.add(path);
+      } else {
+        unloadedFiles.add(path);
+      }
+      return;
     }
+    filteredFiles.push(file);
   });
 
   const files =
@@ -104,11 +126,13 @@ const computeSelectionSummary = (
   const totalTokens = files.reduce((total, file) => total + (file.tokenCount ?? 0), 0);
   const totalChars = files.reduce((total, file) => total + file.content.length, 0);
   const sortedDirs = Array.from(dirs).sort();
-  const visiblePaths = [...sortedDirs, ...files.map((file) => file.path)];
+  const sortedUnloadedFiles = Array.from(unloadedFiles).sort();
+  const visiblePaths = [...sortedDirs, ...sortedUnloadedFiles, ...files.map((file) => file.path)];
 
   return {
     dirs: sortedDirs,
     files,
+    unloadedFiles: sortedUnloadedFiles,
     totalTokens,
     totalChars,
     visiblePaths,
@@ -125,6 +149,7 @@ export default function SelectedFilesListView() {
   const selectedFilePaths = useProjectStore((state) => state.selectedFilePaths);
   const setSelectedFilePaths = useProjectStore((state) => state.setSelectedFilePaths);
   const filesData = useProjectStore((state) => state.filesData);
+  const fileTree = useProjectStore((state) => state.fileTree);
 
   const extensionFilters = useExclusionStore((state) => state.extensionFilters);
   const codemapFilterEmpty = useAppStore((state) => state.codemapFilterEmpty);
@@ -132,10 +157,11 @@ export default function SelectedFilesListView() {
 
   const { trigger: extractCodemap, isMutating } = useCodemapExtractor();
   const [sortMode, setSortMode] = useState<SortMode>("name");
+  const directoryPaths = useMemo(() => collectDirectoryPaths(fileTree), [fileTree]);
 
   const summary = useMemo(
-    () => computeSelectionSummary(selectedFilePaths, filesData, extensionFilters, sortMode),
-    [selectedFilePaths, filesData, extensionFilters, sortMode],
+    () => computeSelectionSummary(selectedFilePaths, filesData, extensionFilters, sortMode, directoryPaths),
+    [selectedFilePaths, filesData, extensionFilters, sortMode, directoryPaths],
   );
 
   const removePath = useCallback(
@@ -161,7 +187,7 @@ export default function SelectedFilesListView() {
     openCodemapModal(result);
   }, [summary.visiblePaths, extractCodemap, codemapFilterEmpty, setSelectedFilePaths, openCodemapModal]);
 
-  if (summary.dirs.length + summary.files.length === 0) {
+  if (summary.dirs.length + summary.files.length + summary.unloadedFiles.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 rounded-md border border-dashed border-[rgba(var(--color-border),0.45)] py-10 text-center text-sm text-[rgb(var(--color-text-muted))]">
         <Inbox className="h-8 w-8 opacity-70" />
@@ -176,7 +202,8 @@ export default function SelectedFilesListView() {
         <Badge variant="outline" className="gap-1.5 text-xs">
           <Layers size={13} />
           {summary.dirs.length > 0 ? `${summary.dirs.length} dir, ` : ""}
-          {summary.files.length} file{summary.files.length === 1 ? "" : "s"}
+          {summary.files.length + summary.unloadedFiles.length} file
+          {summary.files.length + summary.unloadedFiles.length === 1 ? "" : "s"}
         </Badge>
         <Badge variant="outline" className="gap-1.5 text-xs">
           <BarChart2 size={13} />
@@ -240,6 +267,26 @@ export default function SelectedFilesListView() {
                 <span className="truncate font-mono text-sm text-[rgb(var(--color-text-primary))]">{dir}</span>
               </div>
               <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removePath(dir)}>
+                <X size={14} />
+              </Button>
+            </li>
+          ))}
+
+          {summary.unloadedFiles.map((path) => (
+            <li
+              key={path}
+              className="flex items-center justify-between rounded-md border border-[rgba(var(--color-border),0.35)] bg-[rgba(var(--color-bg-primary),0.45)] px-3 py-2"
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded bg-[rgba(var(--color-bg-secondary),0.5)]">
+                  {getExtensionIcon(path)}
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate font-mono text-sm text-[rgb(var(--color-text-primary))]">{path}</p>
+                  <p className="text-xs text-[rgb(var(--color-text-muted))]">Content not loaded</p>
+                </div>
+              </div>
+              <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removePath(path)}>
                 <X size={14} />
               </Button>
             </li>

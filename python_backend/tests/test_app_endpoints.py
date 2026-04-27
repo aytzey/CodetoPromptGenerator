@@ -93,6 +93,17 @@ def test_selection_groups_validation(client, tmp_path):
     assert resp.status_code == 400
 
 
+def test_autoselect_invalid_payload_returns_400_before_service_call(client, monkeypatch):
+    def _fail_if_called(*_args, **_kwargs):
+        raise AssertionError("autoselect service should not be called for invalid payload")
+
+    monkeypatch.setattr(autoselect_controller._autosel, "autoselect_paths", _fail_if_called)
+
+    resp = client.post("/api/autoselect", json={})
+
+    assert resp.status_code == 400
+
+
 def test_autoselect_upstream_error_maps_to_502(client, monkeypatch):
     def _raise_upstream(*_args, **_kwargs):
         raise UpstreamServiceError("Upstream HTTP 404")
@@ -108,3 +119,22 @@ def test_autoselect_upstream_error_maps_to_502(client, monkeypatch):
         },
     )
     assert resp.status_code == 502
+
+
+def test_project_ignore_exclusions_endpoint_returns_source_patterns(client, tmp_path):
+    project_dir = tmp_path / "ignore-source-project"
+    project_dir.mkdir()
+    (project_dir / ".gitignore").write_text("graphify-out/\n!out/.gitkeep\n", encoding="utf-8")
+    (project_dir / ".dockerignore").write_text("out\n", encoding="utf-8")
+
+    resp = client.get(
+        "/api/projectIgnoreExclusions",
+        query_string={"projectPath": str(project_dir)},
+    )
+
+    assert resp.status_code == 200
+    assert resp.get_json()["data"] == [
+        {"source": ".gitignore", "pattern": "graphify-out/", "negated": False},
+        {"source": ".gitignore", "pattern": "!out/.gitkeep", "negated": True},
+        {"source": ".dockerignore", "pattern": "out", "negated": False},
+    ]

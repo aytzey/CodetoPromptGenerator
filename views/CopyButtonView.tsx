@@ -117,6 +117,8 @@ const CopyButtonView: React.FC = () => {
         projectState.fileTree,
         exclusionState.globalExclusions,
         exclusionState.extensionFilters,
+        0,
+        exclusionState.localExclusions,
       );
 
       const built = buildPromptForPreset({

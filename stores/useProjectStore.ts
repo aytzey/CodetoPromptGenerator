@@ -2,6 +2,11 @@
 import { create } from "zustand";
 import type { FileNode } from "@/types";
 import { LS_KEY_LAST_PROJECT_PATH } from "@/lib/constants/localStorage";
+import {
+  filterPromptSelectablePaths,
+  isExcludedByPatterns,
+  isPromptSelectionExcludedPath,
+} from "@/lib/selectionFilters";
 
 /* ──────────────────────────────────────────────────────────── *
  *                        Helpers                               *
@@ -23,19 +28,19 @@ const arraysShallowEqual = <T>(a: T[], b: T[]): boolean =>
  * Handles direct matches and *.ext wildcards.
  */
 const isExcluded = (filePath: string, exclusionPatterns: Set<string>): boolean => {
-  if (exclusionPatterns.has(filePath)) {
+  const normalizedPath = filePath.replace(/\\/g, '/');
+  const segments = normalizedPath.split('/').filter(Boolean);
+  const fileName = segments[segments.length - 1] ?? normalizedPath;
+
+  if (isPromptSelectionExcludedPath(normalizedPath)) {
+    return true;
+  }
+
+  if (exclusionPatterns.has(normalizedPath) || exclusionPatterns.has(fileName)) {
     return true; // Direct match
   }
-  // Check wildcard patterns (*.ext)
-  for (const pattern of exclusionPatterns) {
-    if (pattern.startsWith('*.')) {
-      const extension = pattern.substring(1); // Includes the dot, e.g., ".log"
-      if (filePath.toLowerCase().endsWith(extension.toLowerCase())) {
-        return true;
-      }
-    }
-    // Add other pattern types here if needed (e.g., dir/**)
-    // For now, only handle direct match and *.ext
+  if (isExcludedByPatterns(normalizedPath, exclusionPatterns)) {
+    return true;
   }
   return false;
 };
@@ -125,20 +130,22 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   /* ───── selection ───── */
   selectedFilePaths: [],
   setSelectedFilePaths: (paths) => {
-    const normalizedPaths = paths.map(p => p.replace(/\\/g, '/')); // Normalize slashes
+    const normalizedPaths = filterPromptSelectablePaths(paths);
     if (sameSet(normalizedPaths, get().selectedFilePaths)) return; // identical
     set({ selectedFilePaths: normalizedPaths });
   },
 
   toggleFilePathSelection: (path, isSel, descendants) => {
     const normalizedPath = path.replace(/\\/g, '/');
-    const normalizedDescendants = descendants.map(d => d.replace(/\\/g, '/'));
+    const normalizedDescendants = filterPromptSelectablePaths(descendants);
     
     // Using set(state => ...) to ensure atomicity for complex updates if needed,
     // though direct set is also fine here as it's one property.
     set((state) => {
       const cur = new Set(state.selectedFilePaths);
-      const pathsToModify = [normalizedPath, ...normalizedDescendants];
+      const pathsToModify = isPromptSelectionExcludedPath(normalizedPath)
+        ? normalizedDescendants
+        : [normalizedPath, ...normalizedDescendants];
 
       pathsToModify.forEach((p) => {
           if (isSel) {
@@ -163,7 +170,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       (filePath) => !isExcluded(filePath, combinedExclusions)
     );
 
-    const normalizedFilesToSelect = filesToSelect.map(p => p.replace(/\\/g, '/'));
+    const normalizedFilesToSelect = filterPromptSelectablePaths(filesToSelect);
 
     if (sameSet(normalizedFilesToSelect, get().selectedFilePaths)) return;
     set({ selectedFilePaths: normalizedFilesToSelect });

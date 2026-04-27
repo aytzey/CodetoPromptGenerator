@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import { useExclusionStore } from '@/stores/useExclusionStore';
 import { useProjectStore } from '@/stores/useProjectStore'; // To trigger tree reload
 import { useAppStore } from '@/stores/useAppStore';
+import type { ProjectIgnoreExclusion } from '@/types';
 import { fetchApi } from './apiService';
 import { useProjectService } from './projectServiceHooks'; // To get reload function
 
@@ -20,33 +21,38 @@ export function useExclusionService() {
     const fetchGlobalExclusions = useCallback(async () => {
         setIsLoadingGlobal(true);
         setError(null);
-        const result = await fetchApi<string[]>(`/api/exclusions`);
-        if (result) {
-            setGlobalExclusions(result);
-        } else {
-            setGlobalExclusions([]);
+        try {
+            const result = await fetchApi<string[]>(`/api/exclusions`);
+            if (result !== null) {
+                setGlobalExclusions(result);
+            } else {
+                setGlobalExclusions([]);
+            }
+        } finally {
+            setIsLoadingGlobal(false);
         }
-        setIsLoadingGlobal(false);
     }, [setIsLoadingGlobal, setGlobalExclusions, setError]);
 
     const updateGlobalExclusions = useCallback(async (exclusions: string[]) => {
         setIsSavingGlobal(true);
         setError(null);
-        const result = await fetchApi<string[]>(`/api/exclusions`, {
-            method: 'POST',
-            body: JSON.stringify({ exclusions }),
-        });
-        if (result) {
-            setGlobalExclusions(result);
-            // Refresh project tree as global exclusions changed
-            if (projectPath) {
-                await loadProjectTree();
+        try {
+            const result = await fetchApi<string[]>(`/api/exclusions`, {
+                method: 'POST',
+                body: JSON.stringify({ exclusions }),
+            });
+            if (result !== null) {
+                setGlobalExclusions(result);
+                // Refresh project tree as global exclusions changed
+                if (projectPath) {
+                    await loadProjectTree();
+                }
             }
+            // Return success status if needed by the component
+            return result !== null;
+        } finally {
+            setIsSavingGlobal(false);
         }
-        // Error handled by fetchApi
-        setIsSavingGlobal(false);
-        // Return success status if needed by the component
-        return result !== null;
     }, [setIsSavingGlobal, setGlobalExclusions, setError, projectPath, loadProjectTree]);
 
     // === Local Exclusions ===
@@ -60,15 +66,18 @@ export function useExclusionService() {
 
         setIsLoadingLocal(true);
         setError(null);
-        const result = await fetchApi<string[]>(
-            `/api/localExclusions?projectPath=${encodeURIComponent(currentProjectPath)}`
-        );
-        if (result) {
-            setLocalExclusions(result);
-        } else {
-            setLocalExclusions([]);
+        try {
+            const result = await fetchApi<string[]>(
+                `/api/localExclusions?projectPath=${encodeURIComponent(currentProjectPath)}`
+            );
+            if (result !== null) {
+                setLocalExclusions(result);
+            } else {
+                setLocalExclusions([]);
+            }
+        } finally {
+            setIsLoadingLocal(false);
         }
-        setIsLoadingLocal(false);
     }, [setIsLoadingLocal, setLocalExclusions, setError]); // projectPath is implicit via getState
 
     const updateLocalExclusions = useCallback(async (exclusions: string[]) => {
@@ -81,24 +90,43 @@ export function useExclusionService() {
 
         setIsSavingLocal(true); // Use a specific saving state if needed
         setError(null);
-        const result = await fetchApi<string[]>(
-            `/api/localExclusions?projectPath=${encodeURIComponent(currentProjectPath)}`, {
-                method: 'POST',
-                body: JSON.stringify({ localExclusions: exclusions }),
+        try {
+            const result = await fetchApi<string[]>(
+                `/api/localExclusions?projectPath=${encodeURIComponent(currentProjectPath)}`, {
+                    method: 'POST',
+                    body: JSON.stringify({ localExclusions: exclusions }),
+                }
+            );
+            if (result !== null) {
+                setLocalExclusions(result);
+                if (currentProjectPath) {
+                    await loadProjectTree();
+                }
             }
-        );
-        if (result) {
-            setLocalExclusions(result);
+            return result !== null;
+        } finally {
+            setIsSavingLocal(false);
         }
-        // Error handled by fetchApi
-        setIsSavingLocal(false);
-        return result !== null;
-    }, [setIsSavingLocal, setLocalExclusions, setError]); // projectPath implicit
+    }, [setIsSavingLocal, setLocalExclusions, setError, loadProjectTree]); // projectPath implicit
+
+    const fetchProjectIgnoreExclusions = useCallback(async () => {
+        const currentProjectPath = useProjectStore.getState().projectPath;
+        if (!currentProjectPath) {
+            return [];
+        }
+
+        setError(null);
+        const result = await fetchApi<ProjectIgnoreExclusion[]>(
+            `/api/projectIgnoreExclusions?projectPath=${encodeURIComponent(currentProjectPath)}`
+        );
+        return result ?? [];
+    }, [setError]);
 
     return {
         fetchGlobalExclusions,
         updateGlobalExclusions,
         fetchLocalExclusions,
-        updateLocalExclusions
+        updateLocalExclusions,
+        fetchProjectIgnoreExclusions
     };
 }

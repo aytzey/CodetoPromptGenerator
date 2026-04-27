@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { fetchApiResult } from "./apiService";
 import type { FileData, FileNode } from "@/types";
+import { flattenFilePaths } from "@/lib/fileFilters";
 
 let latestTreeRequestId = 0;
 let latestContentsRequestId = 0;
@@ -28,7 +29,16 @@ export function useProjectService() {
       if (requestId !== latestTreeRequestId) return;
       if (store.getState().projectPath !== requestPath) return;
 
-      store.getState().setFileTree(result.ok && result.data ? result.data : []);
+      if (!result.ok || !result.data) return;
+
+      const nextTree = result.data;
+      store.getState().setFileTree(nextTree);
+
+      const availableFiles = new Set(flattenFilePaths(nextTree));
+      const currentSelection = store.getState().selectedFilePaths;
+      if (currentSelection.some((path) => !availableFiles.has(path))) {
+        store.getState().setSelectedFilePaths(currentSelection.filter((path) => availableFiles.has(path)));
+      }
     } finally {
       if (requestId === latestTreeRequestId) {
         store.getState().setIsLoadingTree(false);
@@ -73,9 +83,14 @@ export function useProjectService() {
         .join("\u0000");
       if (currentPathsKey !== requestPathsKey) return;
 
-      if (!result.ok || !result.data) return;
+      if (!result.ok || !result.data) {
+        store.getState().setFilesData([]);
+        return;
+      }
 
-      const validFiles = result.data.filter((file) => (file.tokenCount ?? 0) > 0);
+      const validFiles = result.data.filter(
+        (file) => typeof file.content === "string" && (file.tokenCount ?? 0) >= 0,
+      );
       store.getState().setFilesData(validFiles);
     } finally {
       if (requestId === latestContentsRequestId) {

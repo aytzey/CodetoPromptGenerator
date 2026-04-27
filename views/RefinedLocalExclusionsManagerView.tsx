@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  File,
   FileX,
+  Folder,
   FolderOpen,
   Info,
   Loader2,
@@ -15,21 +17,38 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  type ExclusionCandidate,
+  flattenExclusionCandidates,
+} from "@/lib/exclusionCandidates";
+import { normalizeExclusionPattern } from "@/lib/selectionFilters";
 import { useExclusionService } from "@/services/exclusionServiceHooks";
 import { useAppStore } from "@/stores/useAppStore";
 import { useExclusionStore } from "@/stores/useExclusionStore";
 import { useProjectStore } from "@/stores/useProjectStore";
+import type { ProjectIgnoreExclusion } from "@/types";
 
 const SUGGESTIONS = [
+  "*.tsbuildinfo",
   "*.test.js",
   "*.spec.ts",
   "*.test.tsx",
+  "*.log",
+  "*.map",
+  "*.min.js",
+  "*.min.css",
+  "*.png",
+  "*.svg",
+  ".env*",
+  "node_modules",
+  "dist",
+  "build",
+  "out",
+  "target",
   "test/",
   "tests/",
   "__tests__/",
-  "*.min.js",
-  "*.min.css",
-  "*.map",
   ".cache/",
   "tmp/",
   "temp/",
@@ -38,32 +57,107 @@ const SUGGESTIONS = [
 ];
 
 const normalize = (value: string) => value.trim();
+const normalizeForCompare = (value: string) => normalizeExclusionPattern(value) ?? normalize(value);
+
+interface ProjectCandidateOption extends ExclusionCandidate {
+  value: string;
+}
+
+const candidateIcon = (candidate: ExclusionCandidate) => {
+  if (candidate.type === "directory") return <Folder size={13} />;
+  if (candidate.type === "file") return <File size={13} />;
+  return <FileX size={13} />;
+};
 
 const RefinedLocalExclusionsManagerView: React.FC = () => {
   const projectPath = useProjectStore((state) => state.projectPath);
+  const fileTree = useProjectStore((state) => state.fileTree);
   const localExclusions = useExclusionStore((state) => state.localExclusions);
   const isLoadingLocal = useExclusionStore((state) => state.isLoadingLocal);
   const isSavingLocal = useExclusionStore((state) => state.isSavingLocal);
   const error = useAppStore((state) => state.error);
-  const { fetchLocalExclusions, updateLocalExclusions } = useExclusionService();
+  const { fetchLocalExclusions, updateLocalExclusions, fetchProjectIgnoreExclusions } = useExclusionService();
 
   const [newPattern, setNewPattern] = useState("");
+  const [selectedCandidate, setSelectedCandidate] = useState("");
+  const [projectIgnoreExclusions, setProjectIgnoreExclusions] = useState<ProjectIgnoreExclusion[]>([]);
+  const [isLoadingProjectIgnores, setIsLoadingProjectIgnores] = useState(false);
 
   useEffect(() => {
     if (!projectPath) return;
     void fetchLocalExclusions();
-  }, [projectPath, fetchLocalExclusions]);
 
-  const availableSuggestions = useMemo(
-    () => SUGGESTIONS.filter((pattern) => !localExclusions.includes(pattern)),
+    let cancelled = false;
+    setIsLoadingProjectIgnores(true);
+    void fetchProjectIgnoreExclusions()
+      .then((entries) => {
+        if (!cancelled) {
+          setProjectIgnoreExclusions(entries);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingProjectIgnores(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectPath, fetchLocalExclusions, fetchProjectIgnoreExclusions]);
+
+  const normalizedLocalExclusions = useMemo(
+    () => new Set(localExclusions.map(normalizeForCompare)),
     [localExclusions],
   );
 
+  const availableSuggestions = useMemo(
+    () => SUGGESTIONS.filter((pattern) => !normalizedLocalExclusions.has(normalizeForCompare(pattern))),
+    [normalizedLocalExclusions],
+  );
+
+  const projectCandidates = useMemo(
+    () => {
+      const seen = new Set<string>();
+      return flattenExclusionCandidates(fileTree).filter((candidate) => {
+        const key = normalizeForCompare(candidate.path);
+        if (!key || normalizedLocalExclusions.has(key) || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    },
+    [fileTree, normalizedLocalExclusions],
+  );
+
+  const candidateOptions = useMemo<ProjectCandidateOption[]>(
+    () =>
+      projectCandidates.map((candidate, index) => ({
+        ...candidate,
+        value: `${candidate.source ?? "tree"}:${candidate.type}:${index}`,
+      })),
+    [projectCandidates],
+  );
+
+  const effectiveExclusionCount = useMemo(() => {
+    const keys = new Set<string>();
+    localExclusions.forEach((pattern) => keys.add(normalizeForCompare(pattern)));
+    projectIgnoreExclusions.forEach((entry) => keys.add(normalizeForCompare(entry.pattern)));
+    return keys.size;
+  }, [localExclusions, projectIgnoreExclusions]);
+
   const addPattern = async () => {
     const pattern = normalize(newPattern);
-    if (!pattern || localExclusions.includes(pattern)) return;
+    if (!pattern || normalizedLocalExclusions.has(normalizeForCompare(pattern))) return;
     await updateLocalExclusions([...localExclusions, pattern]);
     setNewPattern("");
+  };
+
+  const addCandidate = async () => {
+    const candidate = candidateOptions.find((option) => option.value === selectedCandidate);
+    const path = candidate?.path ?? "";
+    if (!path || normalizedLocalExclusions.has(normalizeForCompare(path))) return;
+    await updateLocalExclusions([...localExclusions, path]);
+    setSelectedCandidate("");
   };
 
   const removePattern = async (pattern: string) => {
@@ -97,11 +191,11 @@ const RefinedLocalExclusionsManagerView: React.FC = () => {
           <FileX size={16} className="text-[rgb(var(--color-tertiary))]" />
           Project Exclusions
           <Badge variant="outline" className="ml-auto">
-            {localExclusions.length}
+            {effectiveExclusionCount}
           </Badge>
         </CardTitle>
         <p className="text-xs text-[rgb(var(--color-text-muted))]">
-          Exclusions applied only to the current project.
+          Local rules plus ignore-file rules applied only to the current project.
         </p>
       </CardHeader>
 
@@ -128,7 +222,47 @@ const RefinedLocalExclusionsManagerView: React.FC = () => {
               variant="outline"
               className="h-8"
               onClick={() => void addPattern()}
-              disabled={!normalize(newPattern) || localExclusions.includes(normalize(newPattern)) || isSavingLocal}
+              disabled={
+                !normalize(newPattern) ||
+                normalizedLocalExclusions.has(normalizeForCompare(newPattern)) ||
+                isSavingLocal
+              }
+            >
+              {isSavingLocal ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Select value={selectedCandidate} onValueChange={setSelectedCandidate} disabled={isSavingLocal || candidateOptions.length === 0}>
+              <SelectTrigger className="h-8 min-w-0 flex-1">
+                <SelectValue placeholder="Select a project file or folder" />
+              </SelectTrigger>
+              <SelectContent className="max-h-80">
+                {candidateOptions.slice(0, 500).map((candidate) => (
+                  <SelectItem
+                    key={candidate.value}
+                    value={candidate.value}
+                  >
+                    <span className="inline-flex min-w-0 items-center gap-2 font-mono text-xs">
+                      {candidateIcon(candidate)}
+                      <span className="truncate">{candidate.path}</span>
+                      {candidate.source ? (
+                        <Badge variant="outline" className="ml-1 h-5 shrink-0 px-1.5 text-[10px]">
+                          {candidate.source}
+                        </Badge>
+                      ) : null}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8"
+              onClick={() => void addCandidate()}
+              disabled={!selectedCandidate || isSavingLocal}
             >
               {isSavingLocal ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
             </Button>
@@ -157,6 +291,12 @@ const RefinedLocalExclusionsManagerView: React.FC = () => {
               Loading...
             </span>
           ) : null}
+          {isLoadingProjectIgnores ? (
+            <span className="inline-flex items-center gap-1">
+              <Loader2 size={12} className="animate-spin" />
+              Reading ignore files...
+            </span>
+          ) : null}
           {isSavingLocal ? (
             <span className="inline-flex items-center gap-1 text-[rgb(var(--color-warning))]">
               <Loader2 size={12} className="animate-spin" />
@@ -171,7 +311,7 @@ const RefinedLocalExclusionsManagerView: React.FC = () => {
               <Loader2 size={15} className="animate-spin" />
               Loading exclusions...
             </div>
-          ) : localExclusions.length === 0 ? (
+          ) : effectiveExclusionCount === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-[rgb(var(--color-text-muted))]">
               <AlertTriangle className="h-5 w-5 opacity-70" />
               No project exclusions yet.
@@ -183,7 +323,7 @@ const RefinedLocalExclusionsManagerView: React.FC = () => {
                   key={`${pattern}-${index}`}
                   className="flex items-center justify-between rounded-md border border-[rgba(var(--color-border),0.35)] bg-[rgba(var(--color-bg-primary),0.45)] px-3 py-2"
                 >
-                  <span className="font-mono text-sm text-[rgb(var(--color-text-primary))]">{pattern}</span>
+                  <span className="min-w-0 truncate font-mono text-sm text-[rgb(var(--color-text-primary))]">{pattern}</span>
                   <Button
                     size="icon"
                     variant="ghost"
@@ -195,6 +335,26 @@ const RefinedLocalExclusionsManagerView: React.FC = () => {
                   </Button>
                 </li>
               ))}
+              {projectIgnoreExclusions.map((entry, index) => (
+                <li
+                  key={`${entry.source}-${entry.pattern}-${index}`}
+                  className="flex items-center justify-between gap-3 rounded-md border border-[rgba(var(--color-border),0.35)] bg-[rgba(var(--color-bg-primary),0.28)] px-3 py-2"
+                >
+                  <span className="min-w-0 truncate font-mono text-sm text-[rgb(var(--color-text-primary))]">
+                    {entry.pattern}
+                  </span>
+                  <span className="ml-auto inline-flex shrink-0 items-center gap-1">
+                    {entry.negated ? (
+                      <Badge variant="outline" className="text-[10px]">
+                        include
+                      </Badge>
+                    ) : null}
+                    <Badge variant="outline" className="text-[10px]">
+                      {entry.source}
+                    </Badge>
+                  </span>
+                </li>
+              ))}
             </ul>
           )}
         </ScrollArea>
@@ -204,7 +364,7 @@ const RefinedLocalExclusionsManagerView: React.FC = () => {
             <Info size={12} />
             About project exclusions
           </p>
-          <p>Used by project actions like “Select All”.</p>
+          <p>Local rules can be edited here; .gitignore, .dockerignore, .ignore, and .codetopromptignore rules are read-only.</p>
           <p>Global exclusions stay active in addition to these rules.</p>
         </div>
       </CardContent>

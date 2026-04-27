@@ -1,5 +1,6 @@
 // NEW FILE: lib/treeUtils.ts
 import type { FileNode } from '@/types';
+import { isExcludedByPatterns, isPromptSelectionExcludedPath } from '@/lib/selectionFilters';
 
 /**
  * Replicates the exclusion + extension filtering from existing logic
@@ -16,17 +17,15 @@ export function generateTextualTree(
   globalExcludes: string[],
   filterExt: string[],
   depth = 0,
+  localExcludes: string[] = [],
 ): string {
   const indent   = '  '.repeat(depth);
-  // Convert to Set for efficient lookup
-  const excludes = new Set(globalExcludes);
+  const excludes = [...globalExcludes, ...localExcludes];
 
   return tree
     // Filter based on global exclusions (simple name/segment matching)
     .filter(n => {
-      const segs = n.relativePath.split('/');
-      // Check if any segment or the full path is in the exclusion set
-      return !segs.some(s => excludes.has(s)) && !excludes.has(n.relativePath);
+      return !isPromptSelectionExcludedPath(n.relativePath) && !isExcludedByPatterns(n.relativePath, excludes);
     })
     // Filter based on extensions if filterExt is provided
     .filter(n => {
@@ -42,7 +41,7 @@ export function generateTextualTree(
       const line = `${indent}${icon} ${n.name}`;
       if (n.type === 'directory' && n.children) {
         // Recursively generate subtree, passing filters down
-        const sub = generateTextualTree(n.children, globalExcludes, filterExt, depth + 1);
+        const sub = generateTextualTree(n.children, globalExcludes, filterExt, depth + 1, localExcludes);
         // Only include the directory line if the subtree is not empty after filtering
         return sub.trim() ? `${line}\n${sub}` : '';
       }

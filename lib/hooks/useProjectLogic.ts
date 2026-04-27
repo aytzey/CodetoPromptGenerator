@@ -6,7 +6,7 @@ import {
   applyExtensionFilter,
   applySearchFilter,
   applyWildcardFilter,
-  flattenTree,
+  flattenFilePaths,
   parseWildcardInput,
 } from "@/lib/fileFilters";
 
@@ -84,9 +84,7 @@ export function useProjectLogic() {
 
   const handleSelectAll = useCallback(() => {
     if (!projectPath) return;
-    const allVisibleFiles = flattenTree(visibleTree).filter(
-      (p) => !p.endsWith("/"),
-    );
+    const allVisibleFiles = flattenFilePaths(visibleTree);
     selectAllFiles(
       allVisibleFiles,
       new Set(globalExclusions),

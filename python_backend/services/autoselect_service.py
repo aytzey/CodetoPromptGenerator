@@ -116,14 +116,20 @@ class AutoselectService:
     })
     _IRRELEVANT_SEGMENTS: Set[str] = {
         "node_modules",
+        ".github",
         ".next",
+        ".next-tauri-disabled-api",
         "dist",
         "build",
         "coverage",
+        "target",
         "venv",
         ".venv",
+        "env",
         "__pycache__",
         ".git",
+        ".secrets",
+        ".worktrees",
         "out",
         "artifacts",
         "outputs",
@@ -132,7 +138,13 @@ class AutoselectService:
         ".tox",
         ".mypy_cache",
         ".pytest_cache",
+        ".ruff_cache",
+        ".turbo",
+        ".vercel",
+        ".yarn",
         "htmlcov",
+        "bower_components",
+        "jspm_packages",
     }
 
     # Extensions that are almost never source code — filtered before LLM call
@@ -151,6 +163,16 @@ class AutoselectService:
         ".bak", ".tmp", ".swp", ".swo",
         ".map", ".min.js", ".min.css",
         ".md", ".rst", ".txt",
+    }
+    _NON_CODE_FILENAMES: Set[str] = {
+        ".ds_store",
+        "bun.lockb",
+        "cargo.lock",
+        "package-lock.json",
+        "pnpm-lock.yaml",
+        "poetry.lock",
+        "tsconfig.tsbuildinfo",
+        "yarn.lock",
     }
 
     # Directory names that contain data/artifacts, not source code
@@ -635,6 +657,34 @@ class AutoselectService:
             return True
         return name in {"dockerfile", "makefile", "jenkinsfile", "license", "readme", "readme.md"}
 
+    @staticmethod
+    def _is_protected_prompt_file_name(name: str) -> bool:
+        lowered = name.lower()
+        return (
+            lowered == ".env"
+            or lowered == ".envrc"
+            or lowered.startswith(".env.")
+            or (lowered.startswith(".") and lowered.endswith("ignore"))
+        )
+
+    def _is_prompt_selectable_path(self, path: str) -> bool:
+        folded_path = self._fold_text(path)
+        pure = pathlib.PurePosixPath(folded_path)
+        segments = set(pure.parts)
+        if segments & self._IRRELEVANT_SEGMENTS:
+            return False
+        if any(self._is_protected_prompt_file_name(part) for part in pure.parts):
+            return False
+        name = pure.name.lower()
+        if name in self._NON_CODE_FILENAMES:
+            return False
+        ext = pure.suffix.lower()
+        if ext in self._NON_CODE_EXTENSIONS:
+            return False
+        if name.endswith(".min.js") or name.endswith(".min.css"):
+            return False
+        return True
+
     def _normalise_allowed_paths(self, tree_paths: List[str], base_dir: Optional[str]) -> List[str]:
         seen: Set[str] = set()
         out: List[str] = []
@@ -647,19 +697,13 @@ class AutoselectService:
             if not norm:
                 continue
 
-            # Skip non-code files early to save LLM tokens
-            ext = pathlib.PurePosixPath(norm).suffix.lower()
-            if ext in self._NON_CODE_EXTENSIONS:
-                skipped_non_code += 1
-                continue
-
-            # Skip paths inside irrelevant or data-only directories
-            segments = set(pathlib.PurePosixPath(norm.lower()).parts)
-            if segments & self._IRRELEVANT_SEGMENTS:
+            if not self._is_prompt_selectable_path(norm):
                 skipped_non_code += 1
                 continue
 
             # data/ dirs with non-code content: skip files that aren't .py/.js etc.
+            ext = pathlib.PurePosixPath(norm).suffix.lower()
+            segments = set(pathlib.PurePosixPath(norm.lower()).parts)
             _CODE_EXTS = {".py", ".js", ".ts", ".tsx", ".jsx", ".sh", ".bash",
                           ".rb", ".go", ".rs", ".java", ".kt", ".scala", ".c",
                           ".cpp", ".h", ".hpp", ".cs", ".vue", ".svelte"}

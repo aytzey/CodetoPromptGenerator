@@ -1,6 +1,7 @@
 // File: stores/useExclusionStore.ts
 // NEW FILE
 import { create } from 'zustand';
+import { normalizeExclusionPatterns } from '@/lib/selectionFilters';
 
 interface ExclusionState {
   globalExclusions: string[];
@@ -24,9 +25,9 @@ interface ExclusionState {
 
 export const useExclusionStore = create<ExclusionState>((set, get) => ({
   globalExclusions: [],
-  setGlobalExclusions: (exclusions) => set({ globalExclusions: exclusions }),
+  setGlobalExclusions: (exclusions) => set({ globalExclusions: normalizeExclusionPatterns(exclusions) }),
   localExclusions: [],
-  setLocalExclusions: (exclusions) => set({ localExclusions: exclusions }),
+  setLocalExclusions: (exclusions) => set({ localExclusions: normalizeExclusionPatterns(exclusions) }),
   extensionFilters: [],
   setExtensionFilters: (filters) => set({ extensionFilters: filters }),
   addExtensionFilter: (filter) => {

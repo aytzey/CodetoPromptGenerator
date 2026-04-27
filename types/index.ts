@@ -71,6 +71,12 @@ export interface AutoSelectResponse {
   codemap?: CodemapResponse;         // optional debug summaries (when ?debug=1)
 }
 
+export interface ProjectIgnoreExclusion {
+  source: string;
+  pattern: string;
+  negated: boolean;
+}
+
 /* █████  KANBAN  ██████████████████████████████████████████████████████ */
 export const KanbanStatusValues   = ['todo', 'in-progress', 'done'] as const;
 export const KanbanPriorityValues = ['low', 'medium', 'high']       as const;

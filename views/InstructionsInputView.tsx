@@ -59,6 +59,7 @@ const InstructionsInputView: React.FC = () => {
 
   const fileTree = useProjectStore((state) => state.fileTree);
   const globalExclusions = useExclusionStore((state) => state.globalExclusions);
+  const localExclusions = useExclusionStore((state) => state.localExclusions);
   const extensionFilters = useExclusionStore((state) => state.extensionFilters);
 
   const { fetchMetaPromptList, loadMetaPrompt, saveMetaPrompt, refinePrompt, isRefining } =
@@ -85,7 +86,7 @@ const InstructionsInputView: React.FC = () => {
 
   const handleRefinePrompt = async () => {
     if (!currentMainInstructions.trim() || isRefining) return;
-    const treeText = generateTextualTree(fileTree, globalExclusions, extensionFilters);
+    const treeText = generateTextualTree(fileTree, globalExclusions, extensionFilters, 0, localExclusions);
     const refinedText = await refinePrompt(currentMainInstructions, treeText);
     if (refinedText !== null) {
       updateMainInstructionsValue(refinedText);
