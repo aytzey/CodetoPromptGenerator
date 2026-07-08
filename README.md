@@ -1,5 +1,9 @@
 # Code to Prompt Generator Tool
 
+[![CI](https://github.com/aytzey/CodetoPromptGenerator/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/aytzey/CodetoPromptGenerator/actions/workflows/ci.yml)
+
+**Turn any codebase into an LLM-ready prompt in one click — Tree-sitter code maps plus LLM-driven smart file selection pick the right context for you.**
+
 A tool for quickly assembling Large Language Model (LLM) prompts from a local file tree. You can select or exclude specific files/folders, compose meta and main instructions, and instantly copy everything (including file contents) to your clipboard for LLM usage.
 
 ![Screenshot from 2025-03-05 01-14-47](https://github.com/user-attachments/assets/3a82881f-41f9-4268-9778-fc9c314aa4ee)
@@ -169,18 +173,13 @@ This will create an unpacked application in `dist/<platform>-unpacked/`.
 
 ## Testing
 
-The project includes an autotest script to verify core backend and frontend functionality.
+The project includes unit tests and an end-to-end autotest script that verifies core backend and frontend functionality.
 
-1. Start the application in development mode:
-   ```bash
-   npm run electron:dev
-   ```
-2. Wait for both the frontend and backend to be ready.
-3. In a separate terminal, run the tests:
-   ```bash
-   npm test
-   ```
-A summary of passed/failed tests will be printed.
+```bash
+npm test
+```
+
+This runs the TypeScript unit tests (`npm run test:unit`) and then `scripts/autotest.js`, which starts the Flask backend and Next.js dev server itself, runs HTTP checks against both, and prints a passed/failed summary. Backend unit tests run separately with pytest (see below).
 
 ### Quality Gates
 

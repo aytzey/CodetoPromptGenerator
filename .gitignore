@@ -22,3 +22,6 @@ python_backend/instance/
 
 # OS/editor noise
 .DS_Store
+
+# Local environment
+.env.local
